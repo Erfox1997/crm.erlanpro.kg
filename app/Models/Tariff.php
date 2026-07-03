@@ -28,4 +28,17 @@ class Tariff extends Model
     {
         return $this->hasMany(Company::class);
     }
+
+    public static function free(): self
+    {
+        return self::query()->firstOrCreate(
+            ['slug' => 'free'],
+            [
+                'name' => 'Бесплатный',
+                'sort_order' => 1,
+                'max_managers' => 2,
+                'max_deals' => 100,
+            ],
+        );
+    }
 }

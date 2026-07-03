@@ -26,18 +26,45 @@ class InstagramMessengerService
             ->first();
     }
 
+    public static function normalizeAccessToken(string $token): string
+    {
+        $token = trim($token);
+        $token = preg_replace('/\s+/', '', $token) ?? $token;
+
+        if (str_starts_with(strtolower($token), 'bearer')) {
+            $token = trim(substr($token, 6));
+        }
+
+        return trim($token, " \t\n\r\0\x0B\"'");
+    }
+
     /**
      * @return array{id: string, username: ?string, name: ?string}
      */
     public function fetchProfile(string $accessToken): array
     {
+        $accessToken = self::normalizeAccessToken($accessToken);
+
+        if ($accessToken === '' || strlen($accessToken) < 20) {
+            throw new \InvalidArgumentException(__('Маркер доступа пустой или слишком короткий. Скопируйте полную строку из Meta for Developers.'));
+        }
+
         $response = $this->client($accessToken)->get($this->url('me'), [
-            'fields' => 'id,username,name',
+            'fields' => 'id,username,name,instagram_business_account{id,username,name}',
         ]);
 
         $response->throw();
 
         $data = $response->json();
+        $igAccount = $data['instagram_business_account'] ?? null;
+
+        if (is_array($igAccount) && ($igAccount['id'] ?? null)) {
+            return [
+                'id' => (string) $igAccount['id'],
+                'username' => $igAccount['username'] ?? null,
+                'name' => $igAccount['name'] ?? null,
+            ];
+        }
 
         return [
             'id' => (string) ($data['id'] ?? ''),
@@ -48,7 +75,7 @@ class InstagramMessengerService
 
     public function refreshIntegrationMetadata(CompanyIntegration $integration): CompanyIntegration
     {
-        $profile = $this->fetchProfile($integration->api_token);
+        $profile = $this->fetchProfile((string) $integration->api_token);
 
         $metadata = $integration->metadata ?? [];
         $metadata['instagram_user_id'] = $profile['id'];
@@ -364,6 +391,8 @@ class InstagramMessengerService
 
     protected function client(string $accessToken): \Illuminate\Http\Client\PendingRequest
     {
+        $accessToken = self::normalizeAccessToken($accessToken);
+
         return Http::acceptJson()
             ->timeout(30)
             ->withToken($accessToken);

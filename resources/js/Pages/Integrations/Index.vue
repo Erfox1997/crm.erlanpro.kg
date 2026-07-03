@@ -149,9 +149,13 @@ function disconnect(provider) {
                                         rel="noopener noreferrer"
                                         class="text-indigo-600 hover:underline"
                                     >Meta for Developers</a>
-                                    нажмите «Сгенерировать маркер» у аккаунта
-                                    erlanpro.kg, скопируйте строку и вставьте
-                                    сюда. ID и секрет приложения уже в
+                                    откройте своё приложение → Instagram →
+                                    «Сгенерировать маркер» у аккаунта
+                                    erlanpro.kg. Скопируйте только строку
+                                    маркера (обычно начинается с
+                                    <code class="rounded bg-slate-100 px-1">EAA</code>),
+                                    без слова Bearer и без кавычек. ID и секрет
+                                    приложения уже в
                                     <code class="rounded bg-slate-100 px-1">.env</code>.
                                 </p>
                                 <TextInput

@@ -49,27 +49,39 @@ class IntegrationController extends Controller
             'api_token' => 'required|string|max:2000',
         ]);
 
-        $integration = CompanyIntegration::query()->updateOrCreate(
-            [
-                'company_id' => $companyId,
-                'provider' => $integrationProvider->value,
-            ],
-            [
-                'api_token' => $validated['api_token'],
-            ],
-        );
+        $apiToken = $validated['api_token'];
 
         if ($integrationProvider === IntegrationProvider::Instagram) {
+            $apiToken = InstagramMessengerService::normalizeAccessToken($apiToken);
+
             try {
-                app(InstagramMessengerService::class)->refreshIntegrationMetadata($integration);
+                $profile = app(InstagramMessengerService::class)->fetchProfile($apiToken);
             } catch (\Throwable $e) {
                 return back()->withErrors([
-                    'api_token' => __('Токен сохранён, но Instagram API ответил ошибкой: :msg', [
+                    'api_token' => __('Instagram API отклонил маркер: :msg', [
                         'msg' => $e->getMessage(),
                     ]),
                 ]);
             }
         }
+
+        $attributes = ['api_token' => $apiToken];
+
+        if ($integrationProvider === IntegrationProvider::Instagram) {
+            $attributes['metadata'] = [
+                'instagram_user_id' => $profile['id'],
+                'username' => $profile['username'],
+                'name' => $profile['name'],
+            ];
+        }
+
+        $integration = CompanyIntegration::query()->updateOrCreate(
+            [
+                'company_id' => $companyId,
+                'provider' => $integrationProvider->value,
+            ],
+            $attributes,
+        );
 
         return back()->with('success', __('Токен :name сохранён.', [
             'name' => $integrationProvider->label(),

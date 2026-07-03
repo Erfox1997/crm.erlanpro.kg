@@ -42,7 +42,7 @@ class RegisteredUserController extends Controller
         ]);
 
         $user = DB::transaction(function () use ($validated) {
-            $tariff = Tariff::query()->where('slug', 'free')->firstOrFail();
+            $tariff = Tariff::free();
 
             $company = Company::query()->create([
                 'name' => $validated['company_name'],
@@ -66,6 +66,6 @@ class RegisteredUserController extends Controller
 
         Auth::login($user);
 
-        return redirect(route('dashboard', absolute: false));
+        return redirect(route('verification.notice', absolute: false));
     }
 }
