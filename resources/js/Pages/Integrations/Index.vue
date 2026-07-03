@@ -6,8 +6,8 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
-import { reactive } from 'vue';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
+import { reactive, ref } from 'vue';
 
 const props = defineProps({
     integrations: {
@@ -19,6 +19,9 @@ const props = defineProps({
         default: 'Интеграции',
     },
 });
+
+const page = usePage();
+const showManualInstagramToken = ref(false);
 
 const tokenInputs = reactive(
     Object.fromEntries(
@@ -62,6 +65,18 @@ function disconnect(provider) {
         preserveScroll: true,
     });
 }
+
+function instagramAccountLabel(item) {
+    if (!item.account) {
+        return null;
+    }
+
+    if (item.account.username) {
+        return `@${item.account.username}`;
+    }
+
+    return item.account.name;
+}
 </script>
 
 <template>
@@ -74,14 +89,20 @@ function disconnect(provider) {
                     {{ pageTitle }}
                 </h2>
                 <p class="mt-1 text-sm text-gray-500">
-                    Подключите мессенджеры и соцсети через API-токен вашей
-                    компании.
+                    Подключите мессенджеры и соцсети к вашей компании.
                 </p>
             </div>
         </template>
 
         <div class="py-8">
             <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+                <div
+                    v-if="page.props.flash?.success"
+                    class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+                >
+                    {{ page.props.flash.success }}
+                </div>
+
                 <div class="grid gap-6">
                     <section
                         v-for="item in integrations"
@@ -121,43 +142,127 @@ function disconnect(provider) {
                                     <p class="mt-2 text-sm text-slate-600">
                                         {{ item.description }}
                                     </p>
+                                    <p
+                                        v-if="item.provider === 'instagram' && item.has_token && instagramAccountLabel(item)"
+                                        class="mt-2 text-sm font-medium text-slate-800"
+                                    >
+                                        Аккаунт: {{ instagramAccountLabel(item) }}
+                                    </p>
                                 </div>
                             </div>
                         </div>
 
+                        <InputError
+                            v-if="item.provider === 'instagram'"
+                            class="mt-4"
+                            :message="page.props.errors?.instagram"
+                        />
+
+                        <div
+                            v-if="item.provider === 'instagram'"
+                            class="mt-6 space-y-4"
+                        >
+                            <div class="rounded-lg border border-pink-100 bg-white/80 p-4">
+                                <p class="text-sm font-medium text-slate-900">
+                                    Подключение через Meta OAuth
+                                </p>
+                                <p class="mt-2 text-xs leading-relaxed text-slate-500">
+                                    Нажмите кнопку ниже — откроется окно Meta.
+                                    Войдите в аккаунт, к которому привязан
+                                    Instagram erlanpro.kg, и подтвердите доступ.
+                                </p>
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <a
+                                        :href="item.oauth_url"
+                                        class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                                    >
+                                        {{ item.has_token ? 'Переподключить через Meta' : 'Подключить через Meta' }}
+                                    </a>
+                                    <SecondaryButton
+                                        v-if="item.has_token"
+                                        type="button"
+                                        @click="disconnect(item.provider)"
+                                    >
+                                        Отключить
+                                    </SecondaryButton>
+                                </div>
+                            </div>
+
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+                                <p class="font-medium text-slate-800">
+                                    Webhook для Meta (шаг 3 в кабинете разработчика)
+                                </p>
+                                <p class="mt-2">
+                                    <span class="font-medium">URL:</span>
+                                    <code class="ml-1 break-all rounded bg-white px-1 py-0.5">{{ item.webhook_url }}</code>
+                                </p>
+                                <p class="mt-2">
+                                    <span class="font-medium">Verify Token:</span>
+                                    значение из
+                                    <code class="rounded bg-white px-1">META_WEBHOOK_VERIFY_TOKEN</code>
+                                    в .env (например
+                                    <code class="rounded bg-white px-1">crm-ulan-meta-webhook</code>)
+                                </p>
+                                <p class="mt-2">
+                                    <span class="font-medium">OAuth Redirect URI</span>
+                                    (шаг 4 — Instagram Login):
+                                    <code class="ml-1 break-all rounded bg-white px-1 py-0.5">{{ item.oauth_callback_url }}</code>
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="text-xs font-medium text-indigo-600 hover:text-indigo-500"
+                                @click="showManualInstagramToken = !showManualInstagramToken"
+                            >
+                                {{ showManualInstagramToken ? 'Скрыть ручной ввод токена' : 'Ввести токен вручную (запасной вариант)' }}
+                            </button>
+
+                            <form
+                                v-if="showManualInstagramToken"
+                                class="space-y-4 border-t border-slate-200 pt-4"
+                                @submit.prevent="saveToken(item.provider)"
+                            >
+                                <div>
+                                    <InputLabel
+                                        :for="'token_' + item.provider"
+                                        value="Маркер доступа Instagram"
+                                    />
+                                    <TextInput
+                                        :id="'token_' + item.provider"
+                                        v-model="tokenInputs[item.provider]"
+                                        type="password"
+                                        class="mt-1 block w-full font-mono text-sm"
+                                        placeholder="EAA..."
+                                        autocomplete="off"
+                                    />
+                                    <InputError
+                                        class="mt-2"
+                                        :message="forms[item.provider].errors.api_token"
+                                    />
+                                </div>
+                                <PrimaryButton
+                                    type="submit"
+                                    :disabled="
+                                        forms[item.provider].processing ||
+                                        !tokenInputs[item.provider]?.trim()
+                                    "
+                                >
+                                    Сохранить токен вручную
+                                </PrimaryButton>
+                            </form>
+                        </div>
+
                         <form
+                            v-else
                             class="mt-6 space-y-4"
                             @submit.prevent="saveToken(item.provider)"
                         >
                             <div>
                                 <InputLabel
                                     :for="'token_' + item.provider"
-                                    :value="
-                                        item.provider === 'instagram'
-                                            ? 'Маркер доступа Instagram'
-                                            : 'API токен'
-                                    "
+                                    value="API токен"
                                 />
-                                <p
-                                    v-if="item.provider === 'instagram'"
-                                    class="mb-2 text-xs leading-relaxed text-slate-500"
-                                >
-                                    В
-                                    <a
-                                        href="https://developers.facebook.com/"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        class="text-indigo-600 hover:underline"
-                                    >Meta for Developers</a>
-                                    откройте своё приложение → Instagram →
-                                    «Сгенерировать маркер» у аккаунта
-                                    erlanpro.kg. Скопируйте только строку
-                                    маркера (обычно начинается с
-                                    <code class="rounded bg-slate-100 px-1">EAA</code>),
-                                    без слова Bearer и без кавычек. ID и секрет
-                                    приложения уже в
-                                    <code class="rounded bg-slate-100 px-1">.env</code>.
-                                </p>
                                 <TextInput
                                     :id="'token_' + item.provider"
                                     v-model="tokenInputs[item.provider]"

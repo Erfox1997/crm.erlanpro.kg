@@ -1,0 +1,26 @@
+cd /var/www/web/sites/crm.erlanpro.kg
+
+git pull
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan config:clear
+php artisan route:clear
+npm ci
+npm run build
+
+# --- Meta for Developers (https://developers.facebook.com/) ---
+# 1. Приложение → Instagram → добавить аккаунт erlanpro.kg
+# 2. Шаг 3 Webhooks:
+#    URL: https://crm.erlanpro.kg/webhooks/meta
+#    Verify Token: значение META_WEBHOOK_VERIFY_TOKEN из .env
+#    Подписка: messages (instagram)
+# 3. Шаг 4 Instagram Login → Настроить:
+#    Valid OAuth Redirect URIs:
+#    https://crm.erlanpro.kg/integrations/instagram/oauth/callback
+# 4. Facebook Login → Settings → Valid OAuth Redirect URIs (тот же URL)
+# 5. .env на сервере:
+#    APP_URL=https://crm.erlanpro.kg
+#    INSTAGRAM_APP_ID=...
+#    INSTAGRAM_APP_SECRET=...
+#    META_WEBHOOK_VERIFY_TOKEN=crm-ulan-meta-webhook
+# 6. В CRM: Интеграции → Подключить через Meta

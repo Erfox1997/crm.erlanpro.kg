@@ -23,7 +23,7 @@ enum IntegrationProvider: string
     {
         return match ($this) {
             self::Wappi => 'WhatsApp через Wappi — входящие сообщения и чаты.',
-            self::Instagram => 'Аккаунт erlanpro.kg в Meta подключён — осталось сгенерировать маркер доступа и вставить его в CRM.',
+            self::Instagram => 'Подключите Instagram через Meta OAuth — входящие сообщения и чаты в CRM.',
             self::Telegram => 'Telegram-бот или личный аккаунт через API.',
             self::Facebook => 'Facebook Messenger и страница компании.',
         };

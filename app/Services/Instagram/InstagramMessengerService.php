@@ -26,6 +26,121 @@ class InstagramMessengerService
             ->first();
     }
 
+    public function oauthRedirectUri(): string
+    {
+        $configured = config('services.meta.oauth_redirect_uri');
+
+        if (is_string($configured) && $configured !== '') {
+            return $configured;
+        }
+
+        return route('integrations.instagram.callback', absolute: true);
+    }
+
+    public function oauthAuthorizationUrl(string $state): string
+    {
+        $appId = (string) config('services.instagram.app_id');
+        if ($appId === '') {
+            throw new \RuntimeException(__('INSTAGRAM_APP_ID не задан в .env'));
+        }
+
+        $query = http_build_query([
+            'client_id' => $appId,
+            'redirect_uri' => $this->oauthRedirectUri(),
+            'scope' => (string) config('services.meta.oauth_scopes'),
+            'response_type' => 'code',
+            'state' => $state,
+        ]);
+
+        return 'https://www.facebook.com/'.$this->graphVersion().'/dialog/oauth?'.$query;
+    }
+
+    public function exchangeCodeForLongLivedUserToken(string $code): string
+    {
+        $shortLivedToken = $this->requestAccessToken([
+            'client_id' => config('services.instagram.app_id'),
+            'client_secret' => config('services.instagram.app_secret'),
+            'redirect_uri' => $this->oauthRedirectUri(),
+            'code' => $code,
+        ]);
+
+        return $this->exchangeForLongLivedToken($shortLivedToken);
+    }
+
+    public function exchangeForLongLivedToken(string $shortLivedToken): string
+    {
+        return $this->requestAccessToken([
+            'grant_type' => 'fb_exchange_token',
+            'client_id' => config('services.instagram.app_id'),
+            'client_secret' => config('services.instagram.app_secret'),
+            'fb_exchange_token' => $shortLivedToken,
+        ]);
+    }
+
+    /**
+     * @return array{
+     *     page_id: string,
+     *     page_name: ?string,
+     *     access_token: string,
+     *     instagram_user_id: string,
+     *     username: ?string,
+     *     name: ?string
+     * }
+     */
+    public function resolveInstagramPageAccount(string $userAccessToken): array
+    {
+        $response = $this->client($userAccessToken)->get($this->url('me/accounts'), [
+            'fields' => 'id,name,access_token,instagram_business_account{id,username,name}',
+        ]);
+
+        $response->throw();
+
+        foreach ($response->json('data', []) as $page) {
+            $igAccount = $page['instagram_business_account'] ?? null;
+
+            if (! is_array($igAccount) || empty($igAccount['id'])) {
+                continue;
+            }
+
+            $pageToken = (string) ($page['access_token'] ?? '');
+            if ($pageToken === '') {
+                continue;
+            }
+
+            return [
+                'page_id' => (string) $page['id'],
+                'page_name' => $page['name'] ?? null,
+                'access_token' => $pageToken,
+                'instagram_user_id' => (string) $igAccount['id'],
+                'username' => $igAccount['username'] ?? null,
+                'name' => $igAccount['name'] ?? null,
+            ];
+        }
+
+        throw new \RuntimeException(
+            __('Не найден Instagram Business/Creator аккаунт, привязанный к странице Facebook. Подключите erlanpro.kg к странице в Meta Business Suite.'),
+        );
+    }
+
+    /**
+     * @param  array<string, string|null>  $params
+     */
+    protected function requestAccessToken(array $params): string
+    {
+        $response = Http::acceptJson()
+            ->timeout(30)
+            ->get($this->url('oauth/access_token'), array_filter($params));
+
+        $response->throw();
+
+        $token = (string) ($response->json('access_token') ?? '');
+        if ($token === '') {
+            throw new \RuntimeException(__('Meta не вернула access token.'));
+        }
+
+        return $token;
+    }
+
     public static function normalizeAccessToken(string $token): string
     {
         $token = trim($token);

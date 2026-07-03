@@ -4,6 +4,7 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DealController;
 use App\Http\Controllers\FunnelController;
+use App\Http\Controllers\InstagramOAuthController;
 use App\Http\Controllers\IntegrationController;
 use App\Http\Controllers\MessengerController;
 use App\Http\Controllers\MetaWebhookController;
@@ -48,6 +49,8 @@ Route::middleware(['auth', 'verified', 'company'])->group(function () {
     Route::get('/tasks', fn () => Inertia::render('Placeholder', ['title' => 'Задачи']))->name('tasks.index');
     Route::get('/warehouse', fn () => Inertia::render('Placeholder', ['title' => 'Склад']))->name('warehouse.index');
     Route::get('/integrations', [IntegrationController::class, 'index'])->name('integrations.index');
+    Route::get('/integrations/instagram/oauth', [InstagramOAuthController::class, 'redirect'])->name('integrations.instagram.oauth');
+    Route::get('/integrations/instagram/oauth/callback', [InstagramOAuthController::class, 'callback'])->name('integrations.instagram.callback');
     Route::put('/integrations/{provider}', [IntegrationController::class, 'update'])->name('integrations.update');
     Route::delete('/integrations/{provider}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
     Route::get('/tariffs', fn () => Inertia::render('Placeholder', ['title' => 'Тарифы']))->name('tariffs.index');

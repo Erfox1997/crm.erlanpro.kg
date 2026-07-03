@@ -43,6 +43,11 @@ return [
     'meta' => [
         'graph_version' => env('META_GRAPH_VERSION', 'v21.0'),
         'webhook_verify_token' => env('META_WEBHOOK_VERIFY_TOKEN', 'crm-ulan-meta-webhook'),
+        'oauth_scopes' => env(
+            'META_OAUTH_SCOPES',
+            'instagram_basic,instagram_manage_messages,pages_show_list,pages_read_engagement,pages_manage_metadata,business_management',
+        ),
+        'oauth_redirect_uri' => env('META_OAUTH_REDIRECT_URI'),
     ],
 
 ];

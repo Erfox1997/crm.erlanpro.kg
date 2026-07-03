@@ -23,13 +23,27 @@ class IntegrationController extends Controller
 
         $integrations = collect(IntegrationProvider::cases())->map(function (IntegrationProvider $provider) use ($stored) {
             $record = $stored->get($provider->value);
+            $hasToken = $record !== null && $record->api_token !== null && $record->api_token !== '';
 
-            return [
+            $item = [
                 'provider' => $provider->value,
                 'name' => $provider->label(),
                 'description' => $provider->description(),
-                'has_token' => $record !== null && $record->api_token !== null && $record->api_token !== '',
+                'has_token' => $hasToken,
             ];
+
+            if ($provider === IntegrationProvider::Instagram) {
+                $item['oauth_url'] = route('integrations.instagram.oauth');
+                $item['oauth_callback_url'] = app(InstagramMessengerService::class)->oauthRedirectUri();
+                $item['webhook_url'] = url('/webhooks/meta');
+                $item['account'] = $hasToken ? [
+                    'username' => $record->metadata['username'] ?? null,
+                    'name' => $record->metadata['name'] ?? null,
+                    'connected_via' => $record->metadata['connected_via'] ?? 'manual',
+                ] : null;
+            }
+
+            return $item;
         })->values();
 
         return Inertia::render('Integrations/Index', [
@@ -72,6 +86,7 @@ class IntegrationController extends Controller
                 'instagram_user_id' => $profile['id'],
                 'username' => $profile['username'],
                 'name' => $profile['name'],
+                'connected_via' => 'manual',
             ];
         }
 
