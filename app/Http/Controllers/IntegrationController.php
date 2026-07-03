@@ -33,9 +33,11 @@ class IntegrationController extends Controller
             ];
 
             if ($provider === IntegrationProvider::Instagram) {
+                $appId = InstagramMessengerService::normalizeAppId((string) config('services.instagram.app_id'));
                 $item['oauth_url'] = route('integrations.instagram.oauth');
                 $item['oauth_callback_url'] = app(InstagramMessengerService::class)->oauthRedirectUri();
                 $item['webhook_url'] = url('/webhooks/meta');
+                $item['meta_app_id'] = $appId !== '' ? $appId : null;
                 $item['account'] = $hasToken ? [
                     'username' => $record->metadata['username'] ?? null,
                     'name' => $record->metadata['name'] ?? null,

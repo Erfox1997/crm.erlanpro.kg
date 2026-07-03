@@ -171,6 +171,14 @@ function instagramAccountLabel(item) {
                                     Войдите в аккаунт, к которому привязан
                                     Instagram erlanpro.kg, и подтвердите доступ.
                                 </p>
+                                <p
+                                    v-if="item.meta_app_id"
+                                    class="mt-2 text-xs text-slate-500"
+                                >
+                                    ID приложения из .env:
+                                    <code class="rounded bg-white px-1">{{ item.meta_app_id }}</code>
+                                    — должен совпадать с Meta → Настройки → Основное → ID приложения.
+                                </p>
                                 <div class="mt-4 flex flex-wrap gap-2">
                                     <a
                                         :href="item.oauth_url"

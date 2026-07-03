@@ -39,9 +39,13 @@ class InstagramMessengerService
 
     public function oauthAuthorizationUrl(string $state): string
     {
-        $appId = (string) config('services.instagram.app_id');
+        $appId = self::normalizeAppId((string) config('services.instagram.app_id'));
         if ($appId === '') {
             throw new \RuntimeException(__('INSTAGRAM_APP_ID не задан в .env'));
+        }
+
+        if (! preg_match('/^\d{10,20}$/', $appId)) {
+            throw new \RuntimeException(__('INSTAGRAM_APP_ID должен быть числовым ID приложения из Meta → Настройки → Основное → ID приложения.'));
         }
 
         $query = http_build_query([
@@ -139,6 +143,11 @@ class InstagramMessengerService
         }
 
         return $token;
+    }
+
+    public static function normalizeAppId(string $appId): string
+    {
+        return trim($appId, " \t\n\r\0\x0B\"'");
     }
 
     public static function normalizeAccessToken(string $token): string

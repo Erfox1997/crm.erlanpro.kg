@@ -25,11 +25,18 @@ class InstagramOAuthController extends Controller
                 ]);
         }
 
-        $state = Str::random(40);
+        try {
+            $oauthUrl = $this->instagram->oauthAuthorizationUrl($state = Str::random(40));
+        } catch (\Throwable $e) {
+            return redirect()
+                ->route('integrations.index')
+                ->withErrors(['instagram' => $e->getMessage()]);
+        }
+
         $request->session()->put('instagram_oauth_state', $state);
         $request->session()->put('instagram_oauth_company_id', (int) $request->user()->company_id);
 
-        return redirect()->away($this->instagram->oauthAuthorizationUrl($state));
+        return redirect()->away($oauthUrl);
     }
 
     public function callback(Request $request): RedirectResponse
