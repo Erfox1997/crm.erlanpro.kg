@@ -1,10 +1,16 @@
 cd /var/www/web/sites/crm.erlanpro.kg
 
 git pull
-composer install --no-dev --optimize-autoloader
+
+# Если composer ругается на vendor/* — переустановите зависимости с нуля:
+rm -rf vendor
+composer install --no-dev --optimize-autoloader --no-interaction
+
 php artisan migrate --force
 php artisan config:clear
 php artisan route:clear
+php artisan view:clear
+
 npm ci
 npm run build
 
