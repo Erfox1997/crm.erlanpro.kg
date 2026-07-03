@@ -20,10 +20,10 @@ npm run build
 #    URL: https://crm.erlanpro.kg/webhooks/meta
 #    Verify Token: значение META_WEBHOOK_VERIFY_TOKEN из .env
 #    Подписка: messages (instagram)
-# 3. Шаг 4 Instagram Login → Настроить:
+# 3. Шаг 4 Instagram Login → Настройки входа от имени компании:
 #    Valid OAuth Redirect URIs:
 #    https://crm.erlanpro.kg/integrations/instagram/oauth/callback
-# 4. Facebook Login → Settings → Valid OAuth Redirect URIs (тот же URL)
+#    (CRM использует instagram.com/oauth, не facebook.com)
 # 5. .env на сервере:
 #    APP_URL=https://crm.erlanpro.kg
 #    INSTAGRAM_APP_ID=...

@@ -88,6 +88,7 @@ class IntegrationController extends Controller
                 'instagram_user_id' => $profile['id'],
                 'username' => $profile['username'],
                 'name' => $profile['name'],
+                'auth_mode' => 'instagram_login',
                 'connected_via' => 'manual',
             ];
         }

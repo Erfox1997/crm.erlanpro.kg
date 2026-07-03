@@ -74,7 +74,7 @@ class InstagramOAuthController extends Controller
 
         try {
             $userToken = $this->instagram->exchangeCodeForLongLivedUserToken($code);
-            $account = $this->instagram->resolveInstagramPageAccount($userToken);
+            $account = $this->instagram->resolveInstagramLoginAccount($userToken);
 
             CompanyIntegration::query()->updateOrCreate(
                 [
@@ -87,8 +87,7 @@ class InstagramOAuthController extends Controller
                         'instagram_user_id' => $account['instagram_user_id'],
                         'username' => $account['username'],
                         'name' => $account['name'],
-                        'page_id' => $account['page_id'],
-                        'page_name' => $account['page_name'],
+                        'auth_mode' => 'instagram_login',
                         'connected_via' => 'oauth',
                     ],
                 ],

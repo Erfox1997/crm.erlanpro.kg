@@ -45,7 +45,7 @@ return [
         'webhook_verify_token' => env('META_WEBHOOK_VERIFY_TOKEN', 'crm-ulan-meta-webhook'),
         'oauth_scopes' => env(
             'META_OAUTH_SCOPES',
-            'instagram_basic,instagram_manage_messages,pages_show_list,pages_read_engagement,pages_manage_metadata,business_management',
+            'instagram_business_basic,instagram_business_manage_messages',
         ),
         'oauth_redirect_uri' => env('META_OAUTH_REDIRECT_URI'),
     ],

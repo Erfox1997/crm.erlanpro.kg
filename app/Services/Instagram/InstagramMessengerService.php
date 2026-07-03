@@ -56,29 +56,92 @@ class InstagramMessengerService
             'state' => $state,
         ]);
 
-        return 'https://www.facebook.com/'.$this->graphVersion().'/dialog/oauth?'.$query;
+        return 'https://www.instagram.com/oauth/authorize?'.$query;
     }
 
     public function exchangeCodeForLongLivedUserToken(string $code): string
     {
-        $shortLivedToken = $this->requestAccessToken([
-            'client_id' => config('services.instagram.app_id'),
-            'client_secret' => config('services.instagram.app_secret'),
-            'redirect_uri' => $this->oauthRedirectUri(),
-            'code' => $code,
-        ]);
+        $code = preg_replace('/#_.*$/', '', $code) ?? $code;
+
+        $response = Http::asForm()
+            ->timeout(30)
+            ->post('https://api.instagram.com/oauth/access_token', [
+                'client_id' => config('services.instagram.app_id'),
+                'client_secret' => config('services.instagram.app_secret'),
+                'grant_type' => 'authorization_code',
+                'redirect_uri' => $this->oauthRedirectUri(),
+                'code' => $code,
+            ]);
+
+        $response->throw();
+
+        $shortLivedToken = (string) ($response->json('access_token') ?? '');
+        if ($shortLivedToken === '') {
+            throw new \RuntimeException(__('Meta не вернула short-lived access token.'));
+        }
 
         return $this->exchangeForLongLivedToken($shortLivedToken);
     }
 
     public function exchangeForLongLivedToken(string $shortLivedToken): string
     {
-        return $this->requestAccessToken([
-            'grant_type' => 'fb_exchange_token',
-            'client_id' => config('services.instagram.app_id'),
-            'client_secret' => config('services.instagram.app_secret'),
-            'fb_exchange_token' => $shortLivedToken,
-        ]);
+        $response = Http::acceptJson()
+            ->timeout(30)
+            ->get('https://graph.instagram.com/access_token', [
+                'grant_type' => 'ig_exchange_token',
+                'client_secret' => config('services.instagram.app_secret'),
+                'access_token' => $shortLivedToken,
+            ]);
+
+        $response->throw();
+
+        $token = (string) ($response->json('access_token') ?? '');
+        if ($token === '') {
+            throw new \RuntimeException(__('Meta не вернула long-lived access token.'));
+        }
+
+        return $token;
+    }
+
+    /**
+     * @return array{
+     *     access_token: string,
+     *     instagram_user_id: string,
+     *     username: ?string,
+     *     name: ?string
+     * }
+     */
+    public function resolveInstagramLoginAccount(string $accessToken, ?string $userId = null): array
+    {
+        $profile = $this->fetchInstagramLoginProfile($accessToken);
+
+        return [
+            'access_token' => $accessToken,
+            'instagram_user_id' => $userId ?: $profile['id'],
+            'username' => $profile['username'],
+            'name' => $profile['name'],
+        ];
+    }
+
+    /**
+     * @return array{id: string, username: ?string, name: ?string}
+     */
+    public function fetchInstagramLoginProfile(string $accessToken): array
+    {
+        $response = $this->client($accessToken, 'instagram_login')->get(
+            $this->url('me', 'instagram_login'),
+            ['fields' => 'user_id,username,name'],
+        );
+
+        $response->throw();
+
+        $data = $response->json();
+
+        return [
+            'id' => (string) ($data['user_id'] ?? $data['id'] ?? ''),
+            'username' => $data['username'] ?? null,
+            'name' => $data['name'] ?? null,
+        ];
     }
 
     /**
@@ -93,7 +156,7 @@ class InstagramMessengerService
      */
     public function resolveInstagramPageAccount(string $userAccessToken): array
     {
-        $response = $this->client($userAccessToken)->get($this->url('me/accounts'), [
+        $response = $this->client($userAccessToken, 'facebook_login')->get($this->url('me/accounts', 'facebook_login'), [
             'fields' => 'id,name,access_token,instagram_business_account{id,username,name}',
         ]);
 
@@ -129,11 +192,11 @@ class InstagramMessengerService
     /**
      * @param  array<string, string|null>  $params
      */
-    protected function requestAccessToken(array $params): string
+    protected function requestFacebookAccessToken(array $params): string
     {
         $response = Http::acceptJson()
             ->timeout(30)
-            ->get($this->url('oauth/access_token'), array_filter($params));
+            ->get($this->url('oauth/access_token', 'facebook_login'), array_filter($params));
 
         $response->throw();
 
@@ -173,7 +236,13 @@ class InstagramMessengerService
             throw new \InvalidArgumentException(__('Маркер доступа пустой или слишком короткий. Скопируйте полную строку из Meta for Developers.'));
         }
 
-        $response = $this->client($accessToken)->get($this->url('me'), [
+        try {
+            return $this->fetchInstagramLoginProfile($accessToken);
+        } catch (\Throwable) {
+            // Fallback for page tokens from Facebook Login.
+        }
+
+        $response = $this->client($accessToken, 'facebook_login')->get($this->url('me', 'facebook_login'), [
             'fields' => 'id,username,name,instagram_business_account{id,username,name}',
         ]);
 
@@ -229,12 +298,18 @@ class InstagramMessengerService
         $synced = 0;
 
         try {
-            $response = $this->client($integration->api_token)->get(
-                $this->url("{$igUserId}/conversations"),
-                [
-                    'platform' => 'instagram',
-                    'fields' => 'id,updated_time,participants',
-                ],
+            $authMode = $this->authMode($integration);
+            $query = [
+                'fields' => 'id,updated_time,participants',
+            ];
+
+            if ($authMode === 'facebook_login') {
+                $query['platform'] = 'instagram';
+            }
+
+            $response = $this->client($integration->api_token, $authMode)->get(
+                $this->url("{$igUserId}/conversations", $authMode),
+                $query,
             );
 
             $response->throw();
@@ -287,16 +362,27 @@ class InstagramMessengerService
             return;
         }
 
-        $messagesResponse = $this->client($integration->api_token)->get(
-            $this->url("{$externalId}/messages"),
-            [
-                'fields' => 'id,created_time,from,to,message',
-            ],
-        );
+        $authMode = $this->authMode($integration);
+
+        if ($authMode === 'instagram_login') {
+            $messagesResponse = $this->client($integration->api_token, $authMode)->get(
+                $this->url($externalId, $authMode),
+                ['fields' => 'messages{id,created_time,from,to,message}'],
+            );
+        } else {
+            $messagesResponse = $this->client($integration->api_token, $authMode)->get(
+                $this->url("{$externalId}/messages", $authMode),
+                ['fields' => 'id,created_time,from,to,message'],
+            );
+        }
 
         $messagesResponse->throw();
 
-        foreach ($messagesResponse->json('data', []) as $messageData) {
+        $messageItems = $authMode === 'instagram_login'
+            ? $messagesResponse->json('messages.data', [])
+            : $messagesResponse->json('data', []);
+
+        foreach ($messageItems as $messageData) {
             $this->storeMessageFromApi($integration, $conversation, $igUserId, $messageData);
         }
 
@@ -386,8 +472,10 @@ class InstagramMessengerService
             throw new \RuntimeException(__('Instagram не настроен: нет ID аккаунта.'));
         }
 
-        $response = $this->client($integration->api_token)->post(
-            $this->url("{$igUserId}/messages"),
+        $authMode = $this->authMode($integration);
+
+        $response = $this->client($integration->api_token, $authMode)->post(
+            $this->url("{$igUserId}/messages", $authMode),
             [
                 'recipient' => ['id' => $conversation->participant_id],
                 'message' => ['text' => $text],
@@ -513,7 +601,14 @@ class InstagramMessengerService
             ->first(fn (CompanyIntegration $i) => (string) ($i->metadata['instagram_user_id'] ?? '') === $instagramAccountId);
     }
 
-    protected function client(string $accessToken): \Illuminate\Http\Client\PendingRequest
+    protected function authMode(?CompanyIntegration $integration): string
+    {
+        $mode = (string) ($integration?->metadata['auth_mode'] ?? 'instagram_login');
+
+        return $mode === 'facebook_login' ? 'facebook_login' : 'instagram_login';
+    }
+
+    protected function client(string $accessToken, ?string $authMode = null): \Illuminate\Http\Client\PendingRequest
     {
         $accessToken = self::normalizeAccessToken($accessToken);
 
@@ -522,9 +617,17 @@ class InstagramMessengerService
             ->withToken($accessToken);
     }
 
-    protected function url(string $path): string
+    protected function url(string $path, ?string $authMode = 'instagram_login'): string
     {
-        return 'https://graph.facebook.com/'.$this->graphVersion().'/'.ltrim($path, '/');
+        if ($path === 'oauth/access_token') {
+            return 'https://graph.facebook.com/'.$this->graphVersion().'/oauth/access_token';
+        }
+
+        $host = $authMode === 'facebook_login'
+            ? 'https://graph.facebook.com/'
+            : 'https://graph.instagram.com/';
+
+        return $host.$this->graphVersion().'/'.ltrim($path, '/');
     }
 
     protected function formatApiError(RequestException $e): string
