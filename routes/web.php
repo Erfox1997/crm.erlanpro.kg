@@ -67,6 +67,9 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
     Route::get('/messenger', [MessengerController::class, 'index'])->name('messenger.index');
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
     Route::post('/messenger/conversations/{conversation}/messages', [MessengerController::class, 'send'])->name('messenger.send');
+    Route::get('/messenger/messages/{message}/attachments/{index}', [MessengerController::class, 'attachment'])
+        ->whereNumber('index')
+        ->name('messenger.attachment');
     Route::get('/funnels', [FunnelController::class, 'index'])->name('funnels.index');
     Route::post('/pipelines', [PipelineController::class, 'store'])->name('pipelines.store');
     Route::patch('/pipelines/{pipeline}', [PipelineController::class, 'update'])->name('pipelines.update');

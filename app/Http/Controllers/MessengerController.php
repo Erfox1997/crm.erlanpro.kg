@@ -3,20 +3,26 @@
 namespace App\Http\Controllers;
 
 use App\Enums\IntegrationProvider;
+use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
+use App\Services\Meta\MetaAttachmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MessengerController extends Controller
 {
     public function __construct(
         private InstagramMessengerService $instagram,
         private FacebookMessengerService $facebook,
+        private MetaAttachmentService $metaAttachments,
     ) {}
 
     public function index(Request $request): Response
@@ -81,7 +87,7 @@ class MessengerController extends Controller
                         'id' => $m->id,
                         'direction' => $m->direction,
                         'body' => $m->body,
-                        'attachments' => $m->normalizedAttachments(),
+                        'attachments' => $this->mapAttachmentsForFrontend($m),
                         'status' => $m->status,
                         'sent_at' => $m->sent_at?->toIso8601String(),
                     ]);
@@ -105,6 +111,26 @@ class MessengerController extends Controller
             'messages' => $messages,
             'webhookUrl' => url('/webhooks/meta'),
         ]);
+    }
+
+    public function attachment(Request $request, MessengerMessage $message, int $index): BinaryFileResponse|StreamedResponse
+    {
+        $companyId = (int) $request->user()->company_id;
+        abort_unless($message->company_id === $companyId, 403);
+
+        $conversation = $message->conversation()->firstOrFail();
+        $integration = $this->integrationForConversation($companyId, $conversation);
+
+        $source = $this->instagram->resolveAttachmentPlayback($integration, $message, $index);
+
+        if ($source['type'] === 'local') {
+            return response()->file($source['path'], [
+                'Content-Type' => $source['mime_type'] ?? 'audio/mp4',
+                'Cache-Control' => 'private, max-age=3600',
+            ]);
+        }
+
+        return $this->metaAttachments->streamRemoteUrl($integration, (string) $source['url']);
     }
 
     public function sync(Request $request): RedirectResponse
@@ -164,8 +190,13 @@ class MessengerController extends Controller
         abort_unless($conversation->company_id === $companyId, 403);
 
         $validated = $request->validate([
-            'body' => 'required|string|max:2000',
+            'body' => 'nullable|string|max:2000',
+            'audio' => 'nullable|file|max:16384',
         ]);
+
+        if (! $request->hasFile('audio') && trim((string) ($validated['body'] ?? '')) === '') {
+            return back()->withErrors(['body' => __('Введите текст или запишите голосовое сообщение.')]);
+        }
 
         try {
             if ($conversation->channel === IntegrationProvider::Facebook->value) {
@@ -174,14 +205,22 @@ class MessengerController extends Controller
                     return back()->withErrors(['body' => __('Facebook не подключён.')]);
                 }
 
-                $this->facebook->sendMessage($integration, $conversation, $validated['body']);
+                if ($request->hasFile('audio')) {
+                    $this->sendAudio($this->facebook, $integration, $conversation, $request->file('audio'));
+                } else {
+                    $this->facebook->sendMessage($integration, $conversation, (string) $validated['body']);
+                }
             } else {
                 $integration = $this->instagram->integrationForCompany($companyId);
                 if (! $integration) {
                     return back()->withErrors(['body' => __('Instagram не подключён.')]);
                 }
 
-                $this->instagram->sendMessage($integration, $conversation, $validated['body']);
+                if ($request->hasFile('audio')) {
+                    $this->sendAudio($this->instagram, $integration, $conversation, $request->file('audio'));
+                } else {
+                    $this->instagram->sendMessage($integration, $conversation, (string) $validated['body']);
+                }
             }
 
             $conversation->update(['last_message_at' => now()]);
@@ -192,5 +231,67 @@ class MessengerController extends Controller
         } catch (\Throwable $e) {
             return back()->withErrors(['body' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
+     */
+    protected function mapAttachmentsForFrontend(MessengerMessage $message): array
+    {
+        return collect($message->normalizedAttachments())
+            ->values()
+            ->map(function (array $attachment, int $index) use ($message) {
+                $hasSource = ($attachment['url'] ?? '') !== ''
+                    || ($attachment['storage_path'] ?? '') !== '';
+
+                return [
+                    'type' => $attachment['type'] ?? 'file',
+                    'url' => $hasSource
+                        ? route('messenger.attachment', ['message' => $message->id, 'index' => $index])
+                        : '',
+                    'name' => $attachment['name'] ?? null,
+                    'mime_type' => $attachment['mime_type'] ?? null,
+                ];
+            })
+            ->all();
+    }
+
+    protected function integrationForConversation(int $companyId, MessengerConversation $conversation): CompanyIntegration
+    {
+        if ($conversation->channel === IntegrationProvider::Facebook->value) {
+            $integration = $this->facebook->integrationForCompany($companyId);
+            if (! $integration) {
+                throw new \RuntimeException(__('Facebook не подключён.'));
+            }
+
+            return $integration;
+        }
+
+        $integration = $this->instagram->integrationForCompany($companyId);
+        if (! $integration) {
+            throw new \RuntimeException(__('Instagram не подключён.'));
+        }
+
+        return $integration;
+    }
+
+    protected function sendAudio(
+        FacebookMessengerService|InstagramMessengerService $service,
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        UploadedFile $audio,
+    ): void {
+        $path = $audio->getRealPath();
+        if (! is_string($path) || $path === '') {
+            throw new \RuntimeException(__('Не удалось прочитать аудиофайл.'));
+        }
+
+        $service->sendAudioMessage(
+            $integration,
+            $conversation,
+            $path,
+            $audio->getClientOriginalName() ?: 'voice.webm',
+            $audio->getMimeType(),
+        );
     }
 }

@@ -45,7 +45,15 @@ const searchQuery = ref('');
 
 const sendForm = useForm({
     body: '',
+    audio: null,
 });
+
+const isRecording = ref(false);
+const recordingSeconds = ref(0);
+let mediaRecorder = null;
+let recordingStream = null;
+let recordingTimer = null;
+let audioChunks = [];
 
 const messengerConnected = computed(() => props.instagramConnected || props.facebookConnected);
 
@@ -102,20 +110,134 @@ function syncConversations() {
 }
 
 function sendMessage() {
-    if (!props.selectedConversation) {
+    if (!props.selectedConversation || !sendForm.body.trim()) {
         return;
     }
 
-    sendForm.post(
+    sendForm.transform((data) => ({
+        body: data.body,
+        audio: null,
+    })).post(
         route('messenger.send', props.selectedConversation.id),
         {
             preserveScroll: true,
+            forceFormData: true,
             onSuccess: () => {
-                sendForm.reset('body');
+                sendForm.reset('body', 'audio');
                 scrollToBottom();
             },
         },
     );
+}
+
+function pickRecorderMimeType() {
+    const candidates = [
+        'audio/mp4',
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+    ];
+
+    return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? '';
+}
+
+async function startRecording() {
+    if (!props.selectedConversation || sendForm.processing || isRecording.value) {
+        return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+        window.alert('Запись голоса не поддерживается в этом браузере.');
+        return;
+    }
+
+    try {
+        recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = pickRecorderMimeType();
+        audioChunks = [];
+        mediaRecorder = mimeType
+            ? new MediaRecorder(recordingStream, { mimeType })
+            : new MediaRecorder(recordingStream);
+
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+        };
+
+        mediaRecorder.onstop = () => {
+            stopRecordingTracks();
+            sendVoiceMessage();
+        };
+
+        mediaRecorder.start();
+        isRecording.value = true;
+        recordingSeconds.value = 0;
+        recordingTimer = window.setInterval(() => {
+            recordingSeconds.value += 1;
+        }, 1000);
+    } catch {
+        stopRecordingTracks();
+        window.alert('Не удалось получить доступ к микрофону.');
+    }
+}
+
+function stopRecordingTracks() {
+    recordingStream?.getTracks().forEach((track) => track.stop());
+    recordingStream = null;
+}
+
+function stopRecording() {
+    if (!isRecording.value || !mediaRecorder) {
+        return;
+    }
+
+    window.clearInterval(recordingTimer);
+    recordingTimer = null;
+    isRecording.value = false;
+
+    if (mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+}
+
+function sendVoiceMessage() {
+    if (!props.selectedConversation || audioChunks.length === 0) {
+        return;
+    }
+
+    const mimeType = mediaRecorder?.mimeType || audioChunks[0]?.type || 'audio/webm';
+    const extension = mimeType.includes('mp4') ? 'm4a' : 'webm';
+    const blob = new Blob(audioChunks, { type: mimeType });
+    const file = new File([blob], `voice.${extension}`, { type: mimeType });
+
+    sendForm.transform(() => ({
+        body: '',
+        audio: file,
+    })).post(
+        route('messenger.send', props.selectedConversation.id),
+        {
+            preserveScroll: true,
+            forceFormData: true,
+            onSuccess: () => {
+                sendForm.reset('body', 'audio');
+                audioChunks = [];
+                mediaRecorder = null;
+                scrollToBottom();
+            },
+            onFinish: () => {
+                audioChunks = [];
+                mediaRecorder = null;
+            },
+        },
+    );
+}
+
+function formatRecordingTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+
+    return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
 function formatTime(iso) {
@@ -565,18 +687,37 @@ watch(
                         class="bg-[#f0f2f5] px-4 py-3"
                         @submit.prevent="sendMessage"
                     >
+                        <div
+                            v-if="isRecording"
+                            class="mb-2 flex items-center justify-between rounded-lg bg-white px-4 py-2 text-sm text-[#111b21] shadow-sm"
+                        >
+                            <span class="flex items-center gap-2">
+                                <span class="inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
+                                Запись {{ formatRecordingTime(recordingSeconds) }}
+                            </span>
+                            <button
+                                type="button"
+                                class="rounded-full bg-[#00a884] px-3 py-1 text-xs font-medium text-white"
+                                @click="stopRecording"
+                            >
+                                Отправить
+                            </button>
+                        </div>
+
                         <div class="flex items-end gap-2">
                             <input
                                 v-model="sendForm.body"
                                 type="text"
                                 placeholder="Введите сообщение"
                                 class="flex-1 rounded-lg border-0 bg-white px-4 py-2.5 text-sm text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30"
-                                :disabled="sendForm.processing"
+                                :disabled="sendForm.processing || isRecording"
                             />
+
                             <button
+                                v-if="sendForm.body.trim()"
                                 type="submit"
                                 class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#008f6f] disabled:opacity-40"
-                                :disabled="sendForm.processing || !sendForm.body.trim()"
+                                :disabled="sendForm.processing || isRecording"
                                 title="Отправить"
                             >
                                 <svg
@@ -586,6 +727,35 @@ watch(
                                 >
                                     <path
                                         d="M1.101 21.757L23.8 12.028 1.101 2.3l.011 7.682 13.623 1.816-13.623 1.817-.011 7.682z"
+                                    />
+                                </svg>
+                            </button>
+
+                            <button
+                                v-else
+                                type="button"
+                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-[#e9edef] disabled:opacity-40"
+                                :class="isRecording ? 'bg-red-50 text-red-600' : ''"
+                                :disabled="sendForm.processing"
+                                title="Голосовое сообщение"
+                                @click="isRecording ? stopRecording() : startRecording()"
+                            >
+                                <svg
+                                    class="h-5 w-5"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M12 18.75a4.5 4.5 0 004.5-4.5V9a4.5 4.5 00-9 0v5.25a4.5 4.5 004.5 4.5z"
+                                    />
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M8.25 18.75v1.125c0 .621.504 1.125 1.125 1.125h5.25c.621 0 1.125-.504 1.125-1.125V18.75"
                                     />
                                 </svg>
                             </button>

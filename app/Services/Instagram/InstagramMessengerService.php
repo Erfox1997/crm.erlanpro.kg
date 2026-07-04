@@ -6,6 +6,7 @@ use App\Enums\IntegrationProvider;
 use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
+use App\Services\Meta\MetaAttachmentService;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
@@ -13,6 +14,10 @@ use Illuminate\Support\Facades\Http;
 
 class InstagramMessengerService
 {
+    public function __construct(
+        private MetaAttachmentService $metaAttachments,
+    ) {}
+
     public function graphVersion(): string
     {
         return (string) config('services.meta.graph_version', 'v21.0');
@@ -532,12 +537,12 @@ class InstagramMessengerService
         if ($authMode === 'instagram_login') {
             $messagesResponse = $this->client($integration->api_token, $authMode)->get(
                 $this->url($externalId, $authMode),
-                ['fields' => 'messages{id,created_time,from,to,message,attachments{mime_type,name,file_url,image_data,video_data}}'],
+                ['fields' => 'messages{id,created_time,from,to,message,'.MetaAttachmentService::ATTACHMENT_FIELDS.'}'],
             );
         } else {
             $messagesResponse = $this->client($integration->api_token, $authMode)->get(
                 $this->url($externalId, $authMode),
-                ['fields' => 'messages{message,from,created_time,id,attachments{mime_type,name,file_url,image_data,video_data}}'],
+                ['fields' => 'messages{message,from,created_time,id,'.MetaAttachmentService::ATTACHMENT_FIELDS.'}'],
             );
         }
 
@@ -694,6 +699,88 @@ class InstagramMessengerService
         ]);
     }
 
+    public function sendAudioMessage(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        string $filePath,
+        string $originalName,
+        ?string $mimeType = null,
+    ): MessengerMessage {
+        $igUserId = (string) ($integration->metadata['instagram_user_id'] ?? '');
+        if ($igUserId === '') {
+            $integration = $this->refreshIntegrationMetadata($integration);
+            $igUserId = (string) ($integration->metadata['instagram_user_id'] ?? '');
+        }
+
+        if ($igUserId === '') {
+            throw new \RuntimeException(__('Instagram не настроен: нет ID аккаунта.'));
+        }
+
+        $authMode = $this->authMode($integration);
+        $pageId = (string) ($integration->metadata['page_id'] ?? '');
+
+        if ($authMode === 'facebook_login') {
+            if ($pageId === '') {
+                throw new \RuntimeException(__('Instagram не настроен: нет page_id Facebook.'));
+            }
+
+            $uploadEntityId = $pageId;
+            $messagesEntityId = $pageId;
+        } else {
+            $uploadEntityId = $igUserId;
+            $messagesEntityId = $igUserId;
+        }
+
+        $attachmentId = $this->metaAttachments->uploadAudio(
+            $integration,
+            $filePath,
+            $originalName,
+            $authMode,
+            $uploadEntityId,
+        );
+
+        $result = $this->metaAttachments->sendAudioAttachment(
+            $integration,
+            $conversation->participant_id,
+            $attachmentId,
+            $authMode,
+            $messagesEntityId,
+        );
+
+        $storedPath = $this->storeLocalAudioCopy($integration->company_id, $filePath, $originalName);
+
+        return MessengerMessage::query()->create([
+            'company_id' => $integration->company_id,
+            'messenger_conversation_id' => $conversation->id,
+            'direction' => 'outbound',
+            'external_id' => $result['message_id'] !== '' ? $result['message_id'] : null,
+            'body' => '',
+            'attachments' => [[
+                'type' => 'audio',
+                'url' => '',
+                'name' => $originalName,
+                'mime_type' => $mimeType,
+                'storage_path' => $storedPath,
+            ]],
+            'status' => 'sent',
+            'sent_at' => now(),
+        ]);
+    }
+
+    public function storeLocalAudioCopy(int $companyId, string $filePath, string $originalName): string
+    {
+        $directory = storage_path('app/messenger/'.$companyId);
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        $filename = uniqid('voice_', true).'_'.preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
+        $destination = $directory.'/'.$filename;
+        copy($filePath, $destination);
+
+        return 'messenger/'.$companyId.'/'.$filename;
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      */
@@ -770,15 +857,15 @@ class InstagramMessengerService
             ? Carbon::createFromTimestampMs((int) $event['timestamp'])
             : now();
 
+        $attachments = $this->resolveWebhookAttachments($integration, $message);
+
         MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
             'messenger_conversation_id' => $conversation->id,
             'direction' => $direction,
             'external_id' => $externalId,
             'body' => (string) ($message['text'] ?? ''),
-            'attachments' => ($attachments = $this->normalizeAttachmentsFromWebhook($message)) !== []
-                ? $attachments
-                : null,
+            'attachments' => $attachments !== [] ? $attachments : null,
             'status' => $direction === 'outbound' ? 'sent' : 'received',
             'sent_at' => $sentAt,
         ]);
@@ -875,7 +962,7 @@ class InstagramMessengerService
     /**
      * @param  list<array{type: string, url: string, name: ?string, mime_type: ?string}>  $attachments
      */
-    protected function attachmentsHavePlayableMedia(array $attachments): bool
+    public function attachmentsHavePlayableMedia(array $attachments): bool
     {
         foreach ($attachments as $attachment) {
             if (($attachment['url'] ?? '') !== '') {
@@ -920,7 +1007,7 @@ class InstagramMessengerService
         try {
             $response = $this->client($integration->api_token, $authMode)->get(
                 $this->url($messageId, $authMode),
-                ['fields' => 'attachments{mime_type,name,file_url,image_data,video_data}'],
+                ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
             );
             $response->throw();
 
@@ -981,6 +1068,77 @@ class InstagramMessengerService
 
     /**
      * @param  array<string, mixed>  $message
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string, storage_path?: string}>
+     */
+    public function resolveWebhookAttachments(CompanyIntegration $integration, array $message): array
+    {
+        $attachments = $this->normalizeAttachmentsFromWebhook($message);
+
+        if ($attachments !== [] && $this->attachmentsHavePlayableMedia($attachments)) {
+            return $attachments;
+        }
+
+        $messageId = (string) ($message['mid'] ?? '');
+        if ($messageId === '') {
+            return $attachments;
+        }
+
+        $fetched = $this->fetchMessageAttachmentsFromApi($integration, $messageId);
+
+        return $fetched !== [] ? $fetched : $attachments;
+    }
+
+    /**
+     * @return array{type: string, path?: string, url?: string, mime_type: ?string}
+     */
+    public function resolveAttachmentPlayback(
+        CompanyIntegration $integration,
+        MessengerMessage $message,
+        int $index,
+    ): array {
+        $attachments = $message->normalizedAttachments();
+        $attachment = $attachments[$index] ?? null;
+
+        if (! is_array($attachment)) {
+            throw new \RuntimeException(__('Вложение не найдено.'));
+        }
+
+        $storagePath = (string) ($attachment['storage_path'] ?? '');
+        if ($storagePath !== '') {
+            $fullPath = storage_path('app/'.$storagePath);
+            if (is_file($fullPath)) {
+                return [
+                    'type' => 'local',
+                    'path' => $fullPath,
+                    'mime_type' => $attachment['mime_type'] ?? null,
+                ];
+            }
+        }
+
+        $url = (string) ($attachment['url'] ?? '');
+        if ($url === '' && $message->external_id) {
+            $fetched = $this->fetchMessageAttachmentsFromApi($integration, (string) $message->external_id);
+            $fetchedAttachment = $fetched[$index] ?? $fetched[0] ?? null;
+            if (is_array($fetchedAttachment) && ($fetchedAttachment['url'] ?? '') !== '') {
+                $url = (string) $fetchedAttachment['url'];
+                $attachments[$index] = array_merge($attachment, $fetchedAttachment);
+                $message->update(['attachments' => $attachments]);
+            }
+        }
+
+        if ($url === '') {
+            throw new \RuntimeException(__('Не удалось получить ссылку на аудио.'));
+        }
+
+        return [
+            'type' => 'remote',
+            'url' => $url,
+            'mime_type' => $attachment['mime_type'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
      * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
      */
     public function normalizeAttachmentsFromWebhook(array $message): array
@@ -998,17 +1156,23 @@ class InstagramMessengerService
             }
 
             $type = (string) ($item['type'] ?? 'file');
-            $url = (string) ($item['payload']['url'] ?? $item['payload']['story_media_url'] ?? '');
+            $url = (string) (
+                $item['payload']['url']
+                ?? $item['payload']['story_media_url']
+                ?? $item['payload']['src']
+                ?? ''
+            );
+            $mimeType = isset($item['payload']['mime_type']) ? (string) $item['payload']['mime_type'] : null;
 
             if ($url === '') {
                 continue;
             }
 
             $attachments[] = [
-                'type' => $this->normalizeAttachmentType($type, null),
+                'type' => $this->normalizeAttachmentType($type, $mimeType),
                 'url' => $url,
                 'name' => isset($item['title']) ? (string) $item['title'] : null,
-                'mime_type' => null,
+                'mime_type' => $mimeType,
             ];
         }
 
@@ -1092,6 +1256,10 @@ class InstagramMessengerService
 
         if (in_array($type, ['audio', 'image', 'video', 'file'], true)) {
             return $type;
+        }
+
+        if (str_contains($type, 'audio') || str_contains($type, 'voice')) {
+            return 'audio';
         }
 
         $mimeType = strtolower((string) $mimeType);

@@ -7,6 +7,7 @@ use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Services\Instagram\InstagramMessengerService;
+use App\Services\Meta\MetaAttachmentService;
 use App\Services\Meta\MetaMessagingSupport;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
@@ -15,6 +16,7 @@ class FacebookMessengerService
 {
     public function __construct(
         private InstagramMessengerService $attachments,
+        private MetaAttachmentService $metaAttachments,
     ) {}
 
     public function integrationForCompany(int $companyId): ?CompanyIntegration
@@ -148,7 +150,7 @@ class FacebookMessengerService
 
         $messagesResponse = MetaMessagingSupport::client((string) $integration->api_token)->get(
             MetaMessagingSupport::graphUrl($externalId),
-            ['fields' => 'messages{message,from,created_time,id,attachments{mime_type,name,file_url,image_data,video_data}}'],
+            ['fields' => 'messages{message,from,created_time,id,'.MetaAttachmentService::ATTACHMENT_FIELDS.'}'],
         );
 
         $messagesResponse->throw();
@@ -209,7 +211,7 @@ class FacebookMessengerService
                     $updates['body'] = $body;
                 }
 
-                if ($attachments !== [] && empty($existing->attachments)) {
+                if ($attachments !== [] && ! $this->attachments->attachmentsHavePlayableMedia($existing->normalizedAttachments())) {
                     $updates['attachments'] = $attachments;
                 }
 
@@ -279,6 +281,59 @@ class FacebookMessengerService
             'direction' => 'outbound',
             'external_id' => $messageId !== '' ? $messageId : null,
             'body' => $text,
+            'status' => 'sent',
+            'sent_at' => now(),
+        ]);
+    }
+
+    public function sendAudioMessage(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        string $filePath,
+        string $originalName,
+        ?string $mimeType = null,
+    ): MessengerMessage {
+        $pageId = (string) ($integration->metadata['page_id'] ?? '');
+        if ($pageId === '') {
+            $integration = $this->refreshIntegrationMetadata($integration);
+            $pageId = (string) ($integration->metadata['page_id'] ?? '');
+        }
+
+        if ($pageId === '') {
+            throw new \RuntimeException(__('Facebook не настроен: нет page_id.'));
+        }
+
+        $attachmentId = $this->metaAttachments->uploadAudio(
+            $integration,
+            $filePath,
+            $originalName,
+            'facebook_login',
+            $pageId,
+        );
+
+        $result = $this->metaAttachments->sendAudioAttachment(
+            $integration,
+            $conversation->participant_id,
+            $attachmentId,
+            'facebook_login',
+            $pageId,
+        );
+
+        $storedPath = $this->attachments->storeLocalAudioCopy($integration->company_id, $filePath, $originalName);
+
+        return MessengerMessage::query()->create([
+            'company_id' => $integration->company_id,
+            'messenger_conversation_id' => $conversation->id,
+            'direction' => 'outbound',
+            'external_id' => $result['message_id'] !== '' ? $result['message_id'] : null,
+            'body' => '',
+            'attachments' => [[
+                'type' => 'audio',
+                'url' => '',
+                'name' => $originalName,
+                'mime_type' => $mimeType,
+                'storage_path' => $storedPath,
+            ]],
             'status' => 'sent',
             'sent_at' => now(),
         ]);
@@ -360,15 +415,15 @@ class FacebookMessengerService
             ? Carbon::createFromTimestampMs((int) $event['timestamp'])
             : now();
 
+        $attachments = $this->attachments->resolveWebhookAttachments($integration, $message);
+
         MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
             'messenger_conversation_id' => $conversation->id,
             'direction' => $direction,
             'external_id' => $externalId,
             'body' => (string) ($message['text'] ?? ''),
-            'attachments' => ($attachments = $this->attachments->normalizeAttachmentsFromWebhook($message)) !== []
-                ? $attachments
-                : null,
+            'attachments' => $attachments !== [] ? $attachments : null,
             'status' => $direction === 'outbound' ? 'sent' : 'received',
             'sent_at' => $sentAt,
         ]);
