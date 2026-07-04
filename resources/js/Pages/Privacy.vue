@@ -208,6 +208,10 @@ defineProps({
             <p class="text-center text-xs text-slate-500">
                 © {{ new Date().getFullYear() }} ErlanPro ·
                 <Link href="/" class="hover:text-slate-700">На главную</Link>
+                ·
+                <Link href="/terms" class="hover:text-slate-700"
+                    >Пользовательское соглашение</Link
+                >
             </p>
         </footer>
     </div>

@@ -27,7 +27,8 @@ npm run build
 #    - Добавить платформу «Веб-сайт», Site URL: https://crm.erlanpro.kg
 #    - Домены приложений: crm.erlanpro.kg
 #    - URL политики конфиденциальности: https://crm.erlanpro.kg/privacy
-#    - URL удаления данных (можно тот же): https://crm.erlanpro.kg/privacy#data-deletion
+#    - URL пользовательского соглашения: https://crm.erlanpro.kg/terms
+#    - URL удаления данных: https://crm.erlanpro.kg/privacy#data-deletion
 # 5. Роли приложения → ваш Facebook-аккаунт как Администратор/Разработчик
 #    (Instagram Tester недостаточно; входите в OAuth тем же Facebook-аккаунтом)
 # 6. .env на сервере — App ID из «Основное» (должен совпадать с CRM → Интеграции):
