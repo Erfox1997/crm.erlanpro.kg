@@ -27,6 +27,13 @@ Route::get('/', function () {
     ]);
 });
 
+Route::get('/privacy', function () {
+    return Inertia::render('Privacy', [
+        'appName' => config('app.name'),
+        'contactEmail' => config('mail.from.address', 'support@erlanpro.kg'),
+    ]);
+})->name('privacy');
+
 Route::middleware(['auth', 'verified', 'company'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
