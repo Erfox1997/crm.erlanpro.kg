@@ -314,7 +314,7 @@ watch(
                                                 :key="`${message.id}-${index}`"
                                             >
                                                 <audio
-                                                    v-if="attachment.type === 'audio'"
+                                                    v-if="attachment.type === 'audio' && attachment.url"
                                                     controls
                                                     preload="metadata"
                                                     class="max-w-full min-w-[14rem]"
@@ -322,6 +322,13 @@ watch(
                                                 >
                                                     {{ attachmentLabel(attachment.type) }}
                                                 </audio>
+
+                                                <p
+                                                    v-else-if="attachment.type === 'audio'"
+                                                    class="text-xs opacity-80"
+                                                >
+                                                    🎤 {{ attachmentLabel(attachment.type) }}
+                                                </p>
 
                                                 <img
                                                     v-else-if="attachment.type === 'image'"

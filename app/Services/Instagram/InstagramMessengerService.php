@@ -532,12 +532,12 @@ class InstagramMessengerService
         if ($authMode === 'instagram_login') {
             $messagesResponse = $this->client($integration->api_token, $authMode)->get(
                 $this->url($externalId, $authMode),
-                ['fields' => 'messages{id,created_time,from,to,message,attachments}'],
+                ['fields' => 'messages{id,created_time,from,to,message,attachments{mime_type,name,file_url,image_data,video_data}}'],
             );
         } else {
             $messagesResponse = $this->client($integration->api_token, $authMode)->get(
                 $this->url($externalId, $authMode),
-                ['fields' => 'messages{message,from,created_time,id,attachments}'],
+                ['fields' => 'messages{message,from,created_time,id,attachments{mime_type,name,file_url,image_data,video_data}}'],
             );
         }
 
@@ -587,7 +587,7 @@ class InstagramMessengerService
         array $messageData,
     ): ?MessengerMessage {
         $externalId = isset($messageData['id']) ? (string) $messageData['id'] : null;
-        $attachments = $this->normalizeAttachmentsFromApi($messageData);
+        $attachments = $this->resolveAttachmentsForMessage($integration, $messageData);
         $body = (string) ($messageData['message'] ?? '');
 
         if ($externalId) {
@@ -603,7 +603,7 @@ class InstagramMessengerService
                     $updates['body'] = $body;
                 }
 
-                if ($attachments !== [] && empty($existing->attachments)) {
+                if ($attachments !== [] && ! $this->attachmentsHavePlayableMedia($existing->normalizedAttachments())) {
                     $updates['attachments'] = $attachments;
                 }
 
@@ -850,6 +850,112 @@ class InstagramMessengerService
      * @param  array<string, mixed>  $messageData
      * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
      */
+    public function resolveAttachmentsForMessage(CompanyIntegration $integration, array $messageData): array
+    {
+        $attachments = $this->normalizeAttachmentsFromApi($messageData);
+
+        if ($attachments !== [] && $this->attachmentsHavePlayableMedia($attachments)) {
+            return $attachments;
+        }
+
+        $messageId = (string) ($messageData['id'] ?? '');
+        if ($messageId === '') {
+            return $attachments;
+        }
+
+        if (! $this->messageHasAttachmentHints($messageData) && $attachments === []) {
+            return [];
+        }
+
+        $fetched = $this->fetchMessageAttachmentsFromApi($integration, $messageId);
+
+        return $fetched !== [] ? $fetched : $attachments;
+    }
+
+    /**
+     * @param  list<array{type: string, url: string, name: ?string, mime_type: ?string}>  $attachments
+     */
+    protected function attachmentsHavePlayableMedia(array $attachments): bool
+    {
+        foreach ($attachments as $attachment) {
+            if (($attachment['url'] ?? '') !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $messageData
+     */
+    protected function messageHasAttachmentHints(array $messageData): bool
+    {
+        $items = $messageData['attachments']['data'] ?? [];
+
+        return is_array($items) && $items !== [];
+    }
+
+    /**
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
+     */
+    protected function fetchMessageAttachmentsFromApi(CompanyIntegration $integration, string $messageId): array
+    {
+        $authMode = $this->authMode($integration);
+
+        try {
+            $response = $this->client($integration->api_token, $authMode)->get(
+                $this->url("{$messageId}/attachments", $authMode),
+            );
+            $response->throw();
+
+            $items = $response->json('data', []);
+            if (is_array($items) && $items !== []) {
+                return $this->normalizeAttachmentItems($items);
+            }
+        } catch (\Throwable) {
+            // Fall through to message fields request.
+        }
+
+        try {
+            $response = $this->client($integration->api_token, $authMode)->get(
+                $this->url($messageId, $authMode),
+                ['fields' => 'attachments{mime_type,name,file_url,image_data,video_data}'],
+            );
+            $response->throw();
+
+            return $this->normalizeAttachmentsFromApi($response->json());
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
+     */
+    protected function normalizeAttachmentItems(array $items): array
+    {
+        $attachments = [];
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $parsed = $this->parseGraphAttachment($item);
+            if ($parsed !== null) {
+                $attachments[] = $parsed;
+            }
+        }
+
+        return $attachments;
+    }
+
+    /**
+     * @param  array<string, mixed>  $messageData
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
+     */
     public function normalizeAttachmentsFromApi(array $messageData): array
     {
         $items = $messageData['attachments']['data'] ?? [];
@@ -944,9 +1050,31 @@ class InstagramMessengerService
             }
         }
 
-        $fileUrl = (string) ($item['file_url'] ?? '');
+        if (isset($item['audio_data']) && is_array($item['audio_data'])) {
+            $url = (string) ($item['audio_data']['url'] ?? $item['audio_data']['file_url'] ?? '');
+
+            if ($url !== '') {
+                return [
+                    'type' => 'audio',
+                    'url' => $url,
+                    'name' => $name,
+                    'mime_type' => $mimeType,
+                ];
+            }
+        }
+
+        $fileUrl = (string) ($item['file_url'] ?? $item['url'] ?? '');
 
         if ($fileUrl === '') {
+            if ($this->looksLikeAudioAttachment($item, $mimeType, $name)) {
+                return [
+                    'type' => 'audio',
+                    'url' => '',
+                    'name' => $name,
+                    'mime_type' => $mimeType,
+                ];
+            }
+
             return null;
         }
 
@@ -981,5 +1109,27 @@ class InstagramMessengerService
         }
 
         return 'file';
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function looksLikeAudioAttachment(array $item, ?string $mimeType, ?string $name): bool
+    {
+        if (str_starts_with(strtolower((string) $mimeType), 'audio/')) {
+            return true;
+        }
+
+        $haystack = strtolower(implode(' ', array_filter([
+            $name,
+            (string) ($item['type'] ?? ''),
+        ])));
+
+        return str_contains($haystack, 'audio')
+            || str_contains($haystack, 'voice')
+            || str_contains($haystack, '.m4a')
+            || str_contains($haystack, '.aac')
+            || str_contains($haystack, '.mp3')
+            || str_contains($haystack, '.wav');
     }
 }
