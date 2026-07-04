@@ -67,7 +67,8 @@ class InstagramMessengerService
             return 'https://www.instagram.com/oauth/authorize?'.$query;
         }
 
-        return 'https://www.facebook.com/'.$this->graphVersion().'/dialog/oauth?'.$query;
+        // OAuth dialog must be unversioned; /v21.0/dialog/oauth returns PLATFORM_INVALID_APP_ID.
+        return 'https://www.facebook.com/dialog/oauth?'.$query;
     }
 
     public function exchangeCodeForLongLivedUserToken(string $code): string
