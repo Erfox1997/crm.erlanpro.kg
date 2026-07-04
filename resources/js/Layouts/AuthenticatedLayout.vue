@@ -1,5 +1,5 @@
 <script setup>
-import ApplicationLogo from '@/Components/ApplicationLogo.vue';
+import BrandLogo from '@/Components/BrandLogo.vue';
 import CrmSidebarLink from '@/Components/CrmSidebarLink.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
@@ -7,6 +7,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, ref, watch } from 'vue';
 
 const page = usePage();
+const branding = page.props.branding ?? {};
 
 const NAV_MODE_KEY = 'crm-sidebar-mode';
 
@@ -102,14 +103,13 @@ function toggleMobileDrawer() {
                     class="flex min-w-0 items-center gap-2 font-semibold text-white"
                     @click="closeMobileDrawer"
                 >
-                    <ApplicationLogo
-                        class="h-8 w-8 shrink-0 fill-current text-white"
+                    <BrandLogo
+                        light
+                        :show-domain="!collapseLabels"
+                        :name="branding.name ?? 'ErlanPro'"
+                        :domain="branding.domain ?? 'crm.erlanpro.kg'"
+                        icon-class="h-8 w-8"
                     />
-                    <span
-                        class="truncate"
-                        :class="collapseLabels ? 'md:sr-only' : ''"
-                        >CRM</span
-                    >
                 </Link>
                 <div class="flex shrink-0 items-center gap-1">
                     <button

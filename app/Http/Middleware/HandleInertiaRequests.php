@@ -35,6 +35,12 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'branding' => [
+                'appName' => config('app.name'),
+                'name' => 'ErlanPro',
+                'domain' => parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'crm.erlanpro.kg',
+                'logoUrl' => '/images/erlanpro-logo.svg',
+            ],
             'company' => fn () => $this->sharedCompany($request),
             'flash' => [
                 'success' => $request->session()->get('success'),

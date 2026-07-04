@@ -1,6 +1,6 @@
 <script setup>
-import ApplicationLogo from '@/Components/ApplicationLogo.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import BrandLogo from '@/Components/BrandLogo.vue';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 
 defineProps({
     canLogin: {
@@ -11,33 +11,35 @@ defineProps({
     },
     appName: {
         type: String,
-        default: 'CRM',
+        default: 'CRM ErlanPro',
     },
 });
+
+const page = usePage();
+const branding = page.props.branding ?? {};
 </script>
 
 <template>
-    <Head title="Главная" />
+    <Head title="CRM ErlanPro — crm.erlanpro.kg" />
 
     <div class="min-h-screen bg-slate-950 text-slate-100">
         <div
-            class="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(99,102,241,0.25),transparent)]"
+            class="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(16,185,129,0.22),transparent)]"
         />
         <div
-            class="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_100%_0%,rgba(6,182,212,0.12),transparent)]"
+            class="absolute inset-0 bg-[radial-gradient(ellipse_60%_40%_at_100%_0%,rgba(99,102,241,0.12),transparent)]"
         />
 
         <div class="relative mx-auto max-w-6xl px-4 pb-20 pt-8 sm:px-6 lg:px-8">
             <header
                 class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between"
             >
-                <Link href="/" class="inline-flex items-center gap-3">
-                    <ApplicationLogo
-                        class="h-10 w-10 shrink-0 fill-current text-white"
+                <Link href="/">
+                    <BrandLogo
+                        light
+                        :name="branding.name ?? 'ErlanPro'"
+                        :domain="branding.domain ?? 'crm.erlanpro.kg'"
                     />
-                    <span class="text-lg font-semibold tracking-tight text-white"
-                        >crm.ulan.kg</span
-                    >
                 </Link>
 
                 <nav
@@ -47,7 +49,7 @@ defineProps({
                     <Link
                         v-if="$page.props.auth.user"
                         :href="route('dashboard')"
-                        class="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-100"
+                        class="rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-400"
                     >
                         Перейти в CRM
                     </Link>
@@ -73,21 +75,20 @@ defineProps({
             <main class="mt-16 sm:mt-24">
                 <div class="mx-auto max-w-3xl text-center">
                     <p
-                        class="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-indigo-200"
+                        class="inline-flex rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-200"
                     >
-                        Облачная CRM для бизнеса
+                        crm.erlanpro.kg
                     </p>
                     <h1
                         class="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl sm:leading-tight"
                     >
-                        Воронки, клиенты и сделки без лишней суеты
+                        CRM для продаж и переписки в одном окне
                     </h1>
                     <p
                         class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-400"
                     >
-                        Заведите компанию за минуту, ведите сделки по этапам и
-                        держите контакты под рукой. Один аккаунт — одна
-                        команда, изоляция данных по компаниям.
+                        Воронки, клиенты, Instagram и Facebook Messenger —
+                        для команды ErlanPro. Данные каждой компании изолированы.
                     </p>
 
                     <div
@@ -97,7 +98,7 @@ defineProps({
                         <Link
                             v-if="canRegister"
                             :href="route('register')"
-                            class="inline-flex w-full justify-center rounded-xl bg-indigo-500 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:bg-indigo-400 sm:w-auto"
+                            class="inline-flex w-full justify-center rounded-xl bg-emerald-500 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-400 sm:w-auto"
                         >
                             Начать бесплатно
                         </Link>
@@ -111,7 +112,7 @@ defineProps({
                 </div>
 
                 <div
-                    class="mx-auto mt-20 grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3"
+                    class="mx-auto mt-20 grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-4"
                 >
                     <div
                         class="rounded-2xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-sm"
@@ -137,8 +138,7 @@ defineProps({
                             Воронка продаж
                         </h2>
                         <p class="mt-2 text-sm leading-relaxed text-slate-400">
-                            Колонки по этапам, перетаскивание карточек, понятный
-                            статус каждой сделки.
+                            Этапы сделок, drag-and-drop, понятный статус.
                         </p>
                     </div>
 
@@ -163,19 +163,18 @@ defineProps({
                             </svg>
                         </div>
                         <h2 class="mt-4 text-lg font-semibold text-white">
-                            Клиенты и контакты
+                            Клиенты
                         </h2>
                         <p class="mt-2 text-sm leading-relaxed text-slate-400">
-                            Единая база с телефоном и email, быстрый поиск и
-                            привязка к сделкам.
+                            База контактов с телефоном и email.
                         </p>
                     </div>
 
                     <div
-                        class="rounded-2xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-sm sm:col-span-2 lg:col-span-1"
+                        class="rounded-2xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-sm"
                     >
                         <div
-                            class="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300"
+                            class="flex h-10 w-10 items-center justify-center rounded-lg bg-pink-500/20 text-pink-300"
                         >
                             <svg
                                 class="h-5 w-5"
@@ -187,16 +186,43 @@ defineProps({
                                 <path
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
-                                    d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
+                                    d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
                                 />
                             </svg>
                         </div>
                         <h2 class="mt-4 text-lg font-semibold text-white">
-                            Дашборд и цифры
+                            Instagram
                         </h2>
                         <p class="mt-2 text-sm leading-relaxed text-slate-400">
-                            Сводка по сделкам, выручке с успешных этапов и
-                            количеству клиентов.
+                            Direct-сообщения @erlanpro.kg в CRM.
+                        </p>
+                    </div>
+
+                    <div
+                        class="rounded-2xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-sm"
+                    >
+                        <div
+                            class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/20 text-blue-300"
+                        >
+                            <svg
+                                class="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
+                                />
+                            </svg>
+                        </div>
+                        <h2 class="mt-4 text-lg font-semibold text-white">
+                            Facebook
+                        </h2>
+                        <p class="mt-2 text-sm leading-relaxed text-slate-400">
+                            Messenger страницы ErlanPro.
                         </p>
                     </div>
                 </div>
@@ -204,7 +230,17 @@ defineProps({
 
             <footer class="mt-24 border-t border-white/10 pt-10 text-center">
                 <p class="text-sm text-slate-500">
-                    {{ appName }} · безопасное хранение данных по компаниям
+                    © {{ new Date().getFullYear() }} ErlanPro ·
+                    {{ branding.domain ?? 'crm.erlanpro.kg' }}
+                </p>
+                <p class="mt-2 text-xs text-slate-600">
+                    <Link href="/privacy" class="hover:text-slate-400">
+                        Конфиденциальность
+                    </Link>
+                    ·
+                    <Link href="/terms" class="hover:text-slate-400">
+                        Соглашение
+                    </Link>
                 </p>
             </footer>
         </div>

@@ -1,6 +1,6 @@
 <script setup>
-import ApplicationLogo from '@/Components/ApplicationLogo.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import BrandLogo from '@/Components/BrandLogo.vue';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 
 defineProps({
     appName: {
@@ -12,6 +12,9 @@ defineProps({
         default: 'support@erlanpro.kg',
     },
 });
+
+const page = usePage();
+const branding = page.props.branding ?? {};
 </script>
 
 <template>
@@ -22,13 +25,12 @@ defineProps({
             <div
                 class="mx-auto flex max-w-3xl items-center justify-between px-4 py-5 sm:px-6"
             >
-                <Link href="/" class="inline-flex items-center gap-2">
-                    <ApplicationLogo
-                        class="h-8 w-8 shrink-0 fill-current text-slate-800"
+                <Link href="/">
+                    <BrandLogo
+                        :name="branding.name ?? 'ErlanPro'"
+                        :domain="branding.domain ?? 'crm.erlanpro.kg'"
+                        icon-class="h-8 w-8"
                     />
-                    <span class="font-semibold text-slate-900">{{
-                        appName
-                    }}</span>
                 </Link>
                 <Link
                     href="/login"

@@ -1,6 +1,9 @@
 <script setup>
-import ApplicationLogo from '@/Components/ApplicationLogo.vue';
-import { Link } from '@inertiajs/vue3';
+import BrandLogo from '@/Components/BrandLogo.vue';
+import { Link, usePage } from '@inertiajs/vue3';
+
+const page = usePage();
+const branding = page.props.branding ?? {};
 </script>
 
 <template>
@@ -21,12 +24,11 @@ import { Link } from '@inertiajs/vue3';
 
             <div class="relative z-10">
                 <Link href="/" class="inline-flex items-center gap-3 text-white">
-                    <ApplicationLogo
-                        class="h-10 w-10 shrink-0 fill-current text-white"
+                    <BrandLogo
+                        light
+                        :name="branding.name ?? 'ErlanPro'"
+                        :domain="branding.domain ?? 'crm.erlanpro.kg'"
                     />
-                    <span class="text-lg font-semibold tracking-tight"
-                        >crm.ulan.kg</span
-                    >
                 </Link>
                 <p
                     class="mt-10 max-w-sm text-2xl font-semibold leading-snug text-white"
@@ -40,7 +42,8 @@ import { Link } from '@inertiajs/vue3';
             </div>
 
             <p class="relative z-10 text-xs text-slate-500">
-                © {{ new Date().getFullYear() }} crm.ulan.kg
+                © {{ new Date().getFullYear() }}
+                {{ branding.domain ?? 'crm.erlanpro.kg' }}
             </p>
         </div>
 
@@ -50,14 +53,12 @@ import { Link } from '@inertiajs/vue3';
         >
             <div class="mx-auto w-full max-w-md">
                 <div class="mb-8 flex items-center justify-between lg:hidden">
-                    <Link href="/" class="inline-flex items-center gap-2">
-                        <ApplicationLogo
-                            class="h-9 w-9 fill-current text-slate-800"
+                    <Link href="/">
+                        <BrandLogo
+                            :name="branding.name ?? 'ErlanPro'"
+                            :domain="branding.domain ?? 'crm.erlanpro.kg'"
+                            icon-class="h-9 w-9"
                         />
-                        <span
-                            class="text-base font-semibold text-slate-900"
-                            >crm.ulan.kg</span
-                        >
                     </Link>
                 </div>
 
