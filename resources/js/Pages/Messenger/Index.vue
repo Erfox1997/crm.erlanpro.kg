@@ -12,7 +12,15 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    facebookConnected: {
+        type: Boolean,
+        default: false,
+    },
     instagramAccount: {
+        type: Object,
+        default: null,
+    },
+    facebookAccount: {
         type: Object,
         default: null,
     },
@@ -41,16 +49,27 @@ const sendForm = useForm({
     body: '',
 });
 
-const accountLabel = computed(() => {
-    if (!props.instagramAccount) {
-        return null;
+const messengerConnected = computed(() => props.instagramConnected || props.facebookConnected);
+
+const accountSummary = computed(() => {
+    const parts = [];
+
+    if (props.instagramConnected && props.instagramAccount) {
+        parts.push(`Instagram: @${props.instagramAccount.username || props.instagramAccount.name || '—'}`);
     }
-    return (
-        props.instagramAccount.username
-        || props.instagramAccount.name
-        || 'Instagram'
-    );
+
+    if (props.facebookConnected && props.facebookAccount) {
+        parts.push(`Facebook: ${props.facebookAccount.page_name || props.facebookAccount.page_id || '—'}`);
+    }
+
+    return parts.join(' · ');
 });
+
+function channelBadgeClass(channel) {
+    return channel === 'facebook'
+        ? 'bg-blue-100 text-blue-800'
+        : 'bg-pink-100 text-pink-800';
+}
 
 function openConversation(id) {
     router.get(
@@ -151,21 +170,21 @@ watch(
                         Мессенджер
                     </h2>
                     <p
-                        v-if="instagramConnected && accountLabel"
+                        v-if="messengerConnected && accountSummary"
                         class="mt-1 text-sm text-gray-500"
                     >
-                        Instagram: @{{ accountLabel }}
+                        {{ accountSummary }}
                     </p>
                     <p
                         v-else
                         class="mt-1 text-sm text-gray-500"
                     >
-                        Подключите Instagram в интеграциях для теста.
+                        Подключите Instagram или Facebook в интеграциях.
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
                     <SecondaryButton
-                        v-if="instagramConnected"
+                        v-if="messengerConnected"
                         type="button"
                         :disabled="syncing"
                         @click="syncConversations"
@@ -201,10 +220,10 @@ watch(
                         </div>
 
                         <div
-                            v-if="!instagramConnected"
+                            v-if="!messengerConnected"
                             class="px-4 py-8 text-center text-sm text-gray-500"
                         >
-                            Сначала сохраните токен Instagram в
+                            Сначала подключите Instagram или Facebook в
                             <Link
                                 :href="route('integrations.index')"
                                 class="text-pink-600 hover:underline"
@@ -237,9 +256,17 @@ watch(
                                     }"
                                     @click="openConversation(conversation.id)"
                                 >
-                                    <span class="truncate text-sm font-medium text-gray-900">
-                                        {{ participantLabel(conversation) }}
-                                    </span>
+                                    <div class="flex items-center gap-2">
+                                        <span
+                                            class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+                                            :class="channelBadgeClass(conversation.channel)"
+                                        >
+                                            {{ conversation.channel_label }}
+                                        </span>
+                                        <span class="truncate text-sm font-medium text-gray-900">
+                                            {{ participantLabel(conversation) }}
+                                        </span>
+                                    </div>
                                     <span
                                         v-if="conversation.preview"
                                         class="truncate text-xs text-gray-500"
@@ -264,11 +291,20 @@ watch(
 
                         <template v-else>
                             <div class="border-b border-gray-100 px-5 py-4">
-                                <p class="font-medium text-gray-900">
-                                    {{ selectedConversation.participant_name
-                                        || selectedConversation.participant_username
-                                        || selectedConversation.participant_id }}
-                                </p>
+                                <div class="flex items-center gap-2">
+                                    <span
+                                        v-if="selectedConversation.channel"
+                                        class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+                                        :class="channelBadgeClass(selectedConversation.channel)"
+                                    >
+                                        {{ selectedConversation.channel_label }}
+                                    </span>
+                                    <p class="font-medium text-gray-900">
+                                        {{ selectedConversation.participant_name
+                                            || selectedConversation.participant_username
+                                            || selectedConversation.participant_id }}
+                                    </p>
+                                </div>
                                 <p
                                     v-if="selectedConversation.participant_username"
                                     class="text-xs text-gray-500"
@@ -406,7 +442,7 @@ watch(
             </div>
 
             <p
-                v-if="instagramConnected && webhookUrl"
+                v-if="messengerConnected && webhookUrl"
                 class="mt-4 text-xs text-gray-400"
             >
                 Webhook для Meta (продакшен): {{ webhookUrl }}

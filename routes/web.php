@@ -4,14 +4,15 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DealController;
 use App\Http\Controllers\FunnelController;
-use App\Http\Controllers\InstagramOAuthController;
 use App\Http\Controllers\IntegrationController;
 use App\Http\Controllers\MessengerController;
+use App\Http\Controllers\MetaOAuthController;
 use App\Http\Controllers\MetaWebhookController;
 use App\Http\Controllers\PipelineController;
-use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PipelineTunnelController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StageController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -49,13 +50,17 @@ Route::middleware(['auth', 'verified', 'company'])->group(function () {
     Route::get('/tasks', fn () => Inertia::render('Placeholder', ['title' => 'Задачи']))->name('tasks.index');
     Route::get('/warehouse', fn () => Inertia::render('Placeholder', ['title' => 'Склад']))->name('warehouse.index');
     Route::get('/integrations', [IntegrationController::class, 'index'])->name('integrations.index');
-    Route::get('/integrations/instagram/oauth', [InstagramOAuthController::class, 'redirect'])->name('integrations.instagram.oauth');
-    Route::get('/integrations/instagram/oauth/callback', [InstagramOAuthController::class, 'callback'])->name('integrations.instagram.callback');
+    Route::get('/integrations/instagram/oauth', [MetaOAuthController::class, 'redirect'])->defaults('provider', 'instagram')->name('integrations.instagram.oauth');
+    Route::get('/integrations/instagram/oauth/callback', [MetaOAuthController::class, 'callback'])->defaults('provider', 'instagram')->name('integrations.instagram.callback');
+    Route::get('/integrations/facebook/oauth', [MetaOAuthController::class, 'redirect'])->defaults('provider', 'facebook')->name('integrations.facebook.oauth');
+    Route::get('/integrations/facebook/oauth/callback', [MetaOAuthController::class, 'callback'])->defaults('provider', 'facebook')->name('integrations.facebook.callback');
+    Route::get('/integrations/meta/oauth/{provider}/select-page', [MetaOAuthController::class, 'selectPage'])->name('integrations.meta.oauth.select-page');
+    Route::post('/integrations/meta/oauth/{provider}/select-page', [MetaOAuthController::class, 'storeSelectedPage'])->name('integrations.meta.oauth.select-page.store');
     Route::put('/integrations/{provider}', [IntegrationController::class, 'update'])->name('integrations.update');
     Route::delete('/integrations/{provider}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
     Route::get('/tariffs', fn () => Inertia::render('Placeholder', ['title' => 'Тарифы']))->name('tariffs.index');
 
-    Route::get('/deals', function (\Illuminate\Http\Request $request) {
+    Route::get('/deals', function (Request $request) {
         return redirect()->route('funnels.index', $request->query());
     })->name('deals.index');
     Route::post('/deals', [DealController::class, 'store'])->name('deals.store');

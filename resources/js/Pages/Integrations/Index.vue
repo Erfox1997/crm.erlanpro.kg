@@ -7,7 +7,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { reactive, ref } from 'vue';
+import { reactive } from 'vue';
 
 const props = defineProps({
     integrations: {
@@ -21,7 +21,10 @@ const props = defineProps({
 });
 
 const page = usePage();
-const showManualInstagramToken = ref(false);
+const showManualToken = reactive({
+    instagram: false,
+    facebook: false,
+});
 
 const tokenInputs = reactive(
     Object.fromEntries(
@@ -66,7 +69,7 @@ function disconnect(provider) {
     });
 }
 
-function instagramAccountLabel(item) {
+function accountLabel(item) {
     if (!item.account) {
         return null;
     }
@@ -75,7 +78,27 @@ function instagramAccountLabel(item) {
         return `@${item.account.username}`;
     }
 
+    if (item.account.page_name) {
+        return item.account.page_name;
+    }
+
     return item.account.name;
+}
+
+function isMetaProvider(provider) {
+    return provider === 'instagram' || provider === 'facebook';
+}
+
+function metaBorderClass(provider) {
+    return provider === 'instagram'
+        ? 'border-pink-100'
+        : 'border-blue-100';
+}
+
+function metaHelpText(provider) {
+    return provider === 'instagram'
+        ? 'Войдите в Facebook-аккаунт, к которому привязана Facebook-страница с Instagram, и подтвердите доступ.'
+        : 'Войдите в Facebook-аккаунт с доступом к странице компании и подтвердите доступ к Messenger.';
 }
 </script>
 
@@ -143,33 +166,34 @@ function instagramAccountLabel(item) {
                                         {{ item.description }}
                                     </p>
                                     <p
-                                        v-if="item.provider === 'instagram' && item.has_token && instagramAccountLabel(item)"
+                                        v-if="isMetaProvider(item.provider) && item.has_token && accountLabel(item)"
                                         class="mt-2 text-sm font-medium text-slate-800"
                                     >
-                                        Аккаунт: {{ instagramAccountLabel(item) }}
+                                        Аккаунт: {{ accountLabel(item) }}
                                     </p>
                                 </div>
                             </div>
                         </div>
 
                         <InputError
-                            v-if="item.provider === 'instagram'"
+                            v-if="isMetaProvider(item.provider)"
                             class="mt-4"
-                            :message="page.props.errors?.instagram"
+                            :message="page.props.errors?.[item.provider]"
                         />
 
                         <div
-                            v-if="item.provider === 'instagram'"
+                            v-if="isMetaProvider(item.provider)"
                             class="mt-6 space-y-4"
                         >
-                            <div class="rounded-lg border border-pink-100 bg-white/80 p-4">
+                            <div
+                                class="rounded-lg border bg-white/80 p-4"
+                                :class="metaBorderClass(item.provider)"
+                            >
                                 <p class="text-sm font-medium text-slate-900">
                                     Подключение через Meta OAuth
                                 </p>
                                 <p class="mt-2 text-xs leading-relaxed text-slate-500">
-                                    Нажмите кнопку ниже — откроется окно Meta.
-                                    Войдите в аккаунт, к которому привязан
-                                    Instagram erlanpro.kg, и подтвердите доступ.
+                                    {{ metaHelpText(item.provider) }}
                                 </p>
                                 <p
                                     v-if="item.meta_app_id"
@@ -177,12 +201,11 @@ function instagramAccountLabel(item) {
                                 >
                                     ID приложения из .env:
                                     <code class="rounded bg-white px-1">{{ item.meta_app_id }}</code>
-                                    — должен совпадать с Meta → Настройки → Основное → ID приложения.
                                 </p>
                                 <div class="mt-4 flex flex-wrap gap-2">
                                     <a
                                         :href="item.oauth_url"
-                                        class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                                        class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-indigo-500"
                                     >
                                         {{ item.has_token ? 'Переподключить через Meta' : 'Подключить через Meta' }}
                                     </a>
@@ -198,22 +221,14 @@ function instagramAccountLabel(item) {
 
                             <div class="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
                                 <p class="font-medium text-slate-800">
-                                    Webhook для Meta (шаг 3 в кабинете разработчика)
+                                    Webhook для Meta
                                 </p>
                                 <p class="mt-2">
                                     <span class="font-medium">URL:</span>
                                     <code class="ml-1 break-all rounded bg-white px-1 py-0.5">{{ item.webhook_url }}</code>
                                 </p>
                                 <p class="mt-2">
-                                    <span class="font-medium">Verify Token:</span>
-                                    значение из
-                                    <code class="rounded bg-white px-1">META_WEBHOOK_VERIFY_TOKEN</code>
-                                    в .env (например
-                                    <code class="rounded bg-white px-1">crm-ulan-meta-webhook</code>)
-                                </p>
-                                <p class="mt-2">
-                                    <span class="font-medium">OAuth Redirect URI</span>
-                                    (шаг 4 — Instagram Login):
+                                    <span class="font-medium">OAuth Redirect URI:</span>
                                     <code class="ml-1 break-all rounded bg-white px-1 py-0.5">{{ item.oauth_callback_url }}</code>
                                 </p>
                             </div>
@@ -221,20 +236,20 @@ function instagramAccountLabel(item) {
                             <button
                                 type="button"
                                 class="text-xs font-medium text-indigo-600 hover:text-indigo-500"
-                                @click="showManualInstagramToken = !showManualInstagramToken"
+                                @click="showManualToken[item.provider] = !showManualToken[item.provider]"
                             >
-                                {{ showManualInstagramToken ? 'Скрыть ручной ввод токена' : 'Ввести токен вручную (запасной вариант)' }}
+                                {{ showManualToken[item.provider] ? 'Скрыть ручной ввод токена' : 'Ввести Page token вручную (EAA...)' }}
                             </button>
 
                             <form
-                                v-if="showManualInstagramToken"
+                                v-if="showManualToken[item.provider]"
                                 class="space-y-4 border-t border-slate-200 pt-4"
                                 @submit.prevent="saveToken(item.provider)"
                             >
                                 <div>
                                     <InputLabel
                                         :for="'token_' + item.provider"
-                                        value="Маркер доступа Instagram"
+                                        value="Page Access Token (EAA...)"
                                     />
                                     <TextInput
                                         :id="'token_' + item.provider"
@@ -262,7 +277,7 @@ function instagramAccountLabel(item) {
                         </div>
 
                         <form
-                            v-else
+                            v-else-if="!isMetaProvider(item.provider)"
                             class="mt-6 space-y-4"
                             @submit.prevent="saveToken(item.provider)"
                         >

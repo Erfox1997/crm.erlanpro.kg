@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\IntegrationProvider;
 use App\Models\CompanyIntegration;
+use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
+use App\Services\Meta\MetaMessagingSupport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -21,7 +23,9 @@ class IntegrationController extends Controller
             ->get()
             ->keyBy('provider');
 
-        $integrations = collect(IntegrationProvider::cases())->map(function (IntegrationProvider $provider) use ($stored) {
+        $appId = MetaMessagingSupport::normalizeAppId((string) config('services.instagram.app_id'));
+
+        $integrations = collect(IntegrationProvider::cases())->map(function (IntegrationProvider $provider) use ($stored, $appId) {
             $record = $stored->get($provider->value);
             $hasToken = $record !== null && $record->api_token !== null && $record->api_token !== '';
 
@@ -32,17 +36,28 @@ class IntegrationController extends Controller
                 'has_token' => $hasToken,
             ];
 
-            if ($provider === IntegrationProvider::Instagram) {
-                $appId = InstagramMessengerService::normalizeAppId((string) config('services.instagram.app_id'));
-                $item['oauth_url'] = route('integrations.instagram.oauth');
-                $item['oauth_callback_url'] = app(InstagramMessengerService::class)->oauthRedirectUri();
+            if (in_array($provider, [IntegrationProvider::Instagram, IntegrationProvider::Facebook], true)) {
+                $item['oauth_url'] = route("integrations.{$provider->value}.oauth");
+                $item['oauth_callback_url'] = route("integrations.{$provider->value}.callback");
                 $item['webhook_url'] = url('/webhooks/meta');
                 $item['meta_app_id'] = $appId !== '' ? $appId : null;
-                $item['account'] = $hasToken ? [
+            }
+
+            if ($provider === IntegrationProvider::Instagram && $hasToken) {
+                $item['account'] = [
                     'username' => $record->metadata['username'] ?? null,
                     'name' => $record->metadata['name'] ?? null,
+                    'page_name' => $record->metadata['page_name'] ?? null,
                     'connected_via' => $record->metadata['connected_via'] ?? 'manual',
-                ] : null;
+                ];
+            }
+
+            if ($provider === IntegrationProvider::Facebook && $hasToken) {
+                $item['account'] = [
+                    'page_name' => $record->metadata['page_name'] ?? null,
+                    'page_id' => $record->metadata['page_id'] ?? null,
+                    'connected_via' => $record->metadata['connected_via'] ?? 'manual',
+                ];
             }
 
             return $item;
@@ -87,7 +102,26 @@ class IntegrationController extends Controller
             ];
         }
 
-        $integration = CompanyIntegration::query()->updateOrCreate(
+        if ($integrationProvider === IntegrationProvider::Facebook) {
+            $apiToken = MetaMessagingSupport::normalizeAccessToken($apiToken);
+
+            try {
+                $connection = app(FacebookMessengerService::class)->connectAccountFromManualToken($apiToken);
+            } catch (\Throwable $e) {
+                return back()->withErrors([
+                    'api_token' => __('Facebook API отклонил маркер: :msg', [
+                        'msg' => $e->getMessage(),
+                    ]),
+                ]);
+            }
+
+            $attributes = [
+                'api_token' => $connection['api_token'],
+                'metadata' => $connection['metadata'],
+            ];
+        }
+
+        CompanyIntegration::query()->updateOrCreate(
             [
                 'company_id' => $companyId,
                 'provider' => $integrationProvider->value,
