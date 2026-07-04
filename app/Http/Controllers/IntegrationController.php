@@ -7,7 +7,6 @@ use App\Models\CompanyIntegration;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Meta\MetaMessagingSupport;
-use App\Services\Meta\MetaOAuthService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -24,9 +23,7 @@ class IntegrationController extends Controller
             ->get()
             ->keyBy('provider');
 
-        $appId = MetaMessagingSupport::normalizeAppId((string) config('services.instagram.app_id'));
-
-        $integrations = collect(IntegrationProvider::cases())->map(function (IntegrationProvider $provider) use ($stored, $appId) {
+        $integrations = collect(IntegrationProvider::cases())->map(function (IntegrationProvider $provider) use ($stored) {
             $record = $stored->get($provider->value);
             $hasToken = $record !== null && $record->api_token !== null && $record->api_token !== '';
 
@@ -39,9 +36,6 @@ class IntegrationController extends Controller
 
             if (in_array($provider, [IntegrationProvider::Instagram, IntegrationProvider::Facebook], true)) {
                 $item['oauth_url'] = route("integrations.{$provider->value}.oauth");
-                $item['oauth_callback_url'] = route("integrations.{$provider->value}.callback");
-                $item['webhook_url'] = url('/webhooks/meta');
-                $item['meta_app_id'] = $appId !== '' ? $appId : null;
             }
 
             if ($provider === IntegrationProvider::Instagram && $hasToken) {
@@ -64,12 +58,9 @@ class IntegrationController extends Controller
             return $item;
         })->values();
 
-        $metaOAuthDiagnostics = app(MetaOAuthService::class)->appDiagnostics();
-
         return Inertia::render('Integrations/Index', [
             'integrations' => $integrations,
             'pageTitle' => 'Интеграции',
-            'metaOAuthDiagnostics' => $metaOAuthDiagnostics,
         ]);
     }
 

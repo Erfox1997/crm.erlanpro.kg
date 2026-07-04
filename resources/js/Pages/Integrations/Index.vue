@@ -18,10 +18,6 @@ const props = defineProps({
         type: String,
         default: 'Интеграции',
     },
-    metaOAuthDiagnostics: {
-        type: Object,
-        default: null,
-    },
 });
 
 const page = usePage();
@@ -65,7 +61,7 @@ function saveToken(provider) {
 }
 
 function disconnect(provider) {
-    if (!confirm('Отключить интеграцию и удалить сохранённый токен?')) {
+    if (!confirm('Отключить интеграцию?')) {
         return;
     }
     router.delete(route('integrations.destroy', provider), {
@@ -92,18 +88,6 @@ function accountLabel(item) {
 function isMetaProvider(provider) {
     return provider === 'instagram' || provider === 'facebook';
 }
-
-function metaBorderClass(provider) {
-    return provider === 'instagram'
-        ? 'border-pink-100'
-        : 'border-blue-100';
-}
-
-function metaHelpText(provider) {
-    return provider === 'instagram'
-        ? 'Войдите в Facebook-аккаунт, к которому привязана Facebook-страница с Instagram, и подтвердите доступ.'
-        : 'Войдите в Facebook-аккаунт с доступом к странице компании и подтвердите доступ к Messenger.';
-}
 </script>
 
 <template>
@@ -111,14 +95,9 @@ function metaHelpText(provider) {
 
     <AuthenticatedLayout>
         <template #header>
-            <div>
-                <h2 class="text-xl font-semibold text-gray-800">
-                    {{ pageTitle }}
-                </h2>
-                <p class="mt-1 text-sm text-gray-500">
-                    Подключите мессенджеры и соцсети к вашей компании.
-                </p>
-            </div>
+            <h2 class="text-xl font-semibold text-gray-800">
+                {{ pageTitle }}
+            </h2>
         </template>
 
         <div class="py-8">
@@ -130,39 +109,6 @@ function metaHelpText(provider) {
                     {{ page.props.flash.success }}
                 </div>
 
-                <div
-                    v-if="metaOAuthDiagnostics && !metaOAuthDiagnostics.ok"
-                    class="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950"
-                >
-                    <p class="font-semibold">
-                        OAuth Meta может не работать — проверьте настройки
-                    </p>
-                    <p class="mt-2 text-xs text-amber-900">
-                        Ошибка Facebook «Этот контент сейчас недоступен» почти всегда связана с настройками приложения Meta, а не с кодом CRM.
-                    </p>
-                    <ul class="mt-3 list-disc space-y-1 pl-5 text-xs">
-                        <li
-                            v-for="(issue, index) in metaOAuthDiagnostics.issues"
-                            :key="index"
-                        >
-                            {{ issue }}
-                        </li>
-                    </ul>
-                    <div
-                        v-if="metaOAuthDiagnostics.redirect_uris?.length"
-                        class="mt-3 text-xs"
-                    >
-                        <p class="font-medium">Redirect URI для Meta → Facebook Login:</p>
-                        <p
-                            v-for="uri in metaOAuthDiagnostics.redirect_uris"
-                            :key="uri"
-                            class="mt-1"
-                        >
-                            <code class="break-all rounded bg-white px-1 py-0.5">{{ uri }}</code>
-                        </p>
-                    </div>
-                </div>
-
                 <div class="grid gap-6">
                     <section
                         v-for="item in integrations"
@@ -170,45 +116,41 @@ function metaHelpText(provider) {
                         class="rounded-xl border bg-white p-6 shadow-sm"
                         :class="providerAccent[item.provider]"
                     >
-                        <div
-                            class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
-                        >
-                            <div class="flex min-w-0 gap-4">
-                                <IntegrationProviderIcon
-                                    :provider="item.provider"
-                                />
-                                <div class="min-w-0">
-                                    <div
-                                        class="flex flex-wrap items-center gap-2"
+                        <div class="flex min-w-0 gap-4">
+                            <IntegrationProviderIcon
+                                :provider="item.provider"
+                            />
+                            <div class="min-w-0 flex-1">
+                                <div
+                                    class="flex flex-wrap items-center gap-2"
+                                >
+                                    <h3
+                                        class="text-lg font-semibold text-slate-900"
                                     >
-                                        <h3
-                                            class="text-lg font-semibold text-slate-900"
-                                        >
-                                            {{ item.name }}
-                                        </h3>
-                                        <span
-                                            v-if="item.has_token"
-                                            class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800"
-                                        >
-                                            Подключено
-                                        </span>
-                                        <span
-                                            v-else
-                                            class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
-                                        >
-                                            Не подключено
-                                        </span>
-                                    </div>
-                                    <p class="mt-2 text-sm text-slate-600">
-                                        {{ item.description }}
-                                    </p>
-                                    <p
-                                        v-if="isMetaProvider(item.provider) && item.has_token && accountLabel(item)"
-                                        class="mt-2 text-sm font-medium text-slate-800"
+                                        {{ item.name }}
+                                    </h3>
+                                    <span
+                                        v-if="item.has_token"
+                                        class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800"
                                     >
-                                        Аккаунт: {{ accountLabel(item) }}
-                                    </p>
+                                        Подключено
+                                    </span>
+                                    <span
+                                        v-else
+                                        class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+                                    >
+                                        Не подключено
+                                    </span>
                                 </div>
+                                <p class="mt-1 text-sm text-slate-600">
+                                    {{ item.description }}
+                                </p>
+                                <p
+                                    v-if="isMetaProvider(item.provider) && item.has_token && accountLabel(item)"
+                                    class="mt-2 text-sm font-medium text-slate-800"
+                                >
+                                    {{ accountLabel(item) }}
+                                </p>
                             </div>
                         </div>
 
@@ -220,73 +162,41 @@ function metaHelpText(provider) {
 
                         <div
                             v-if="isMetaProvider(item.provider)"
-                            class="mt-6 space-y-4"
+                            class="mt-5 space-y-3"
                         >
-                            <div
-                                class="rounded-lg border bg-white/80 p-4"
-                                :class="metaBorderClass(item.provider)"
-                            >
-                                <p class="text-sm font-medium text-slate-900">
-                                    Подключение через Meta OAuth
-                                </p>
-                                <p class="mt-2 text-xs leading-relaxed text-slate-500">
-                                    {{ metaHelpText(item.provider) }}
-                                </p>
-                                <p
-                                    v-if="item.meta_app_id"
-                                    class="mt-2 text-xs text-slate-500"
+                            <div class="flex flex-wrap gap-2">
+                                <a
+                                    :href="item.oauth_url"
+                                    class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-indigo-500"
                                 >
-                                    ID приложения из .env:
-                                    <code class="rounded bg-white px-1">{{ item.meta_app_id }}</code>
-                                </p>
-                                <div class="mt-4 flex flex-wrap gap-2">
-                                    <a
-                                        :href="item.oauth_url"
-                                        class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-indigo-500"
-                                    >
-                                        {{ item.has_token ? 'Переподключить через Meta' : 'Подключить через Meta' }}
-                                    </a>
-                                    <SecondaryButton
-                                        v-if="item.has_token"
-                                        type="button"
-                                        @click="disconnect(item.provider)"
-                                    >
-                                        Отключить
-                                    </SecondaryButton>
-                                </div>
-                            </div>
-
-                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-                                <p class="font-medium text-slate-800">
-                                    Webhook для Meta
-                                </p>
-                                <p class="mt-2">
-                                    <span class="font-medium">URL:</span>
-                                    <code class="ml-1 break-all rounded bg-white px-1 py-0.5">{{ item.webhook_url }}</code>
-                                </p>
-                                <p class="mt-2">
-                                    <span class="font-medium">OAuth Redirect URI:</span>
-                                    <code class="ml-1 break-all rounded bg-white px-1 py-0.5">{{ item.oauth_callback_url }}</code>
-                                </p>
+                                    {{ item.has_token ? 'Переподключить' : 'Подключить' }}
+                                </a>
+                                <SecondaryButton
+                                    v-if="item.has_token"
+                                    type="button"
+                                    @click="disconnect(item.provider)"
+                                >
+                                    Отключить
+                                </SecondaryButton>
                             </div>
 
                             <button
                                 type="button"
-                                class="text-xs font-medium text-indigo-600 hover:text-indigo-500"
+                                class="text-xs text-slate-500 hover:text-slate-700"
                                 @click="showManualToken[item.provider] = !showManualToken[item.provider]"
                             >
-                                {{ showManualToken[item.provider] ? 'Скрыть ручной ввод токена' : 'Ввести Page token вручную (EAA...)' }}
+                                {{ showManualToken[item.provider] ? 'Скрыть' : 'Токен вручную' }}
                             </button>
 
                             <form
                                 v-if="showManualToken[item.provider]"
-                                class="space-y-4 border-t border-slate-200 pt-4"
+                                class="space-y-3 border-t border-slate-200 pt-3"
                                 @submit.prevent="saveToken(item.provider)"
                             >
                                 <div>
                                     <InputLabel
                                         :for="'token_' + item.provider"
-                                        value="Page Access Token (EAA...)"
+                                        value="Page token"
                                     />
                                     <TextInput
                                         :id="'token_' + item.provider"
@@ -308,14 +218,14 @@ function metaHelpText(provider) {
                                         !tokenInputs[item.provider]?.trim()
                                     "
                                 >
-                                    Сохранить токен вручную
+                                    Сохранить
                                 </PrimaryButton>
                             </form>
                         </div>
 
                         <form
                             v-else-if="!isMetaProvider(item.provider)"
-                            class="mt-6 space-y-4"
+                            class="mt-5 space-y-4"
                             @submit.prevent="saveToken(item.provider)"
                         >
                             <div>
@@ -330,18 +240,11 @@ function metaHelpText(provider) {
                                     class="mt-1 block w-full font-mono text-sm"
                                     :placeholder="
                                         item.has_token
-                                            ? 'Введите новый токен для замены'
-                                            : 'Вставьте API токен'
+                                            ? 'Новый токен'
+                                            : 'API токен'
                                     "
                                     autocomplete="off"
                                 />
-                                <p
-                                    v-if="item.has_token"
-                                    class="mt-1 text-xs text-slate-500"
-                                >
-                                    Токен сохранён. Для смены введите новый —
-                                    старый будет заменён.
-                                </p>
                                 <InputError
                                     class="mt-2"
                                     :message="
@@ -358,7 +261,7 @@ function metaHelpText(provider) {
                                         !tokenInputs[item.provider]?.trim()
                                     "
                                 >
-                                    Сохранить токен
+                                    Сохранить
                                 </PrimaryButton>
                                 <SecondaryButton
                                     v-if="item.has_token"
