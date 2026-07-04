@@ -130,7 +130,18 @@ function sendMessage() {
     );
 }
 
-function pickRecorderMimeType() {
+function pickRecorderMimeType(channel) {
+    if (channel === 'instagram') {
+        const instagramTypes = ['audio/mp4', 'audio/aac', 'audio/wav'];
+        const supported = instagramTypes.find((type) => MediaRecorder.isTypeSupported(type));
+
+        if (! supported) {
+            return null;
+        }
+
+        return supported;
+    }
+
     const candidates = [
         'audio/mp4',
         'audio/webm;codecs=opus',
@@ -153,7 +164,17 @@ async function startRecording() {
 
     try {
         recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mimeType = pickRecorderMimeType();
+        const mimeType = pickRecorderMimeType(props.selectedConversation.channel);
+
+        if (props.selectedConversation.channel === 'instagram' && ! mimeType) {
+            stopRecordingTracks();
+            window.alert(
+                'Для Instagram нужен формат M4A/MP4. Откройте CRM в Safari или Edge и попробуйте снова.',
+            );
+
+            return;
+        }
+
         audioChunks = [];
         mediaRecorder = mimeType
             ? new MediaRecorder(recordingStream, { mimeType })
@@ -207,7 +228,9 @@ function sendVoiceMessage() {
     }
 
     const mimeType = mediaRecorder?.mimeType || audioChunks[0]?.type || 'audio/webm';
-    const extension = mimeType.includes('mp4') ? 'm4a' : 'webm';
+    const extension = props.selectedConversation.channel === 'instagram'
+        ? (mimeType.includes('wav') ? 'wav' : 'm4a')
+        : (mimeType.includes('mp4') ? 'm4a' : 'webm');
     const blob = new Blob(audioChunks, { type: mimeType });
     const file = new File([blob], `voice.${extension}`, { type: mimeType });
 
@@ -628,9 +651,16 @@ watch(
 
                                         <p
                                             v-else-if="attachment.type === 'audio'"
-                                            class="text-xs text-[#667781]"
+                                            class="flex items-center gap-2 text-xs text-[#667781]"
                                         >
-                                            🎤 {{ attachmentLabel(attachment.type) }}
+                                            <span>🎤</span>
+                                            <span>{{ attachmentLabel(attachment.type) }}</span>
+                                            <span
+                                                v-if="!attachment.url"
+                                                class="text-[10px] opacity-70"
+                                            >
+                                                (нажмите «Обновить» в списке чатов)
+                                            </span>
                                         </p>
 
                                         <img

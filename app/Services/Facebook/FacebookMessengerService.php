@@ -211,8 +211,14 @@ class FacebookMessengerService
                     $updates['body'] = $body;
                 }
 
-                if ($attachments !== [] && ! $this->attachments->attachmentsHavePlayableMedia($existing->normalizedAttachments())) {
-                    $updates['attachments'] = $attachments;
+                if (! $this->attachments->attachmentsHavePlayableMedia($existing->normalizedAttachments())) {
+                    $resolved = $this->attachments->attachmentsHavePlayableMedia($attachments)
+                        ? $attachments
+                        : ($externalId ? $this->attachments->fetchMessageAttachmentsFromApi($integration, $externalId) : []);
+
+                    if ($resolved !== []) {
+                        $updates['attachments'] = $resolved;
+                    }
                 }
 
                 if ($updates !== []) {

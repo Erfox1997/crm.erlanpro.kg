@@ -608,8 +608,14 @@ class InstagramMessengerService
                     $updates['body'] = $body;
                 }
 
-                if ($attachments !== [] && ! $this->attachmentsHavePlayableMedia($existing->normalizedAttachments())) {
-                    $updates['attachments'] = $attachments;
+                if (! $this->attachmentsHavePlayableMedia($existing->normalizedAttachments())) {
+                    $resolved = $this->attachmentsHavePlayableMedia($attachments)
+                        ? $attachments
+                        : ($externalId ? $this->fetchMessageAttachmentsFromApi($integration, $externalId) : []);
+
+                    if ($resolved !== []) {
+                        $updates['attachments'] = $resolved;
+                    }
                 }
 
                 if ($updates !== []) {
@@ -745,7 +751,7 @@ class InstagramMessengerService
             $instagramPlatform,
         );
 
-        $storedPath = $this->storeLocalAudioCopy($integration->company_id, $filePath, $originalName);
+        $storedPath = $this->metaAttachments->storeSentAudioCopy($integration->company_id, $filePath, $originalName);
 
         return MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
@@ -767,16 +773,7 @@ class InstagramMessengerService
 
     public function storeLocalAudioCopy(int $companyId, string $filePath, string $originalName): string
     {
-        $directory = storage_path('app/messenger/'.$companyId);
-        if (! is_dir($directory)) {
-            mkdir($directory, 0755, true);
-        }
-
-        $filename = uniqid('voice_', true).'_'.preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
-        $destination = $directory.'/'.$filename;
-        copy($filePath, $destination);
-
-        return 'messenger/'.$companyId.'/'.$filename;
+        return $this->metaAttachments->storeSentAudioCopy($companyId, $filePath, $originalName);
     }
 
     /**
@@ -948,10 +945,6 @@ class InstagramMessengerService
             return $attachments;
         }
 
-        if (! $this->messageHasAttachmentHints($messageData) && $attachments === []) {
-            return [];
-        }
-
         $fetched = $this->fetchMessageAttachmentsFromApi($integration, $messageId);
 
         return $fetched !== [] ? $fetched : $attachments;
@@ -984,7 +977,7 @@ class InstagramMessengerService
     /**
      * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
      */
-    protected function fetchMessageAttachmentsFromApi(CompanyIntegration $integration, string $messageId): array
+    public function fetchMessageAttachmentsFromApi(CompanyIntegration $integration, string $messageId): array
     {
         $authMode = $this->authMode($integration);
         $attempts = $this->attachmentFetchAttempts($integration, $authMode, $messageId);
@@ -1029,25 +1022,19 @@ class InstagramMessengerService
         string $authMode,
         string $messageId,
     ): array {
-        $attempts = [
-            [
-                'auth_mode' => $authMode,
-                'path' => "{$messageId}/attachments",
-                'parse' => 'items',
-            ],
-            [
-                'auth_mode' => $authMode,
-                'path' => $messageId,
-                'query' => ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
-            ],
-        ];
-
+        $attempts = [];
         $pageId = (string) ($integration->metadata['page_id'] ?? '');
+
         if ($pageId !== '' && $authMode === 'facebook_login') {
             $attempts[] = [
                 'auth_mode' => 'facebook_login',
                 'path' => $messageId,
                 'query' => ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
+            ];
+            $attempts[] = [
+                'auth_mode' => 'facebook_login',
+                'path' => "{$messageId}/attachments",
+                'parse' => 'items',
             ];
         }
 
@@ -1055,9 +1042,25 @@ class InstagramMessengerService
             $attempts[] = [
                 'auth_mode' => 'instagram_login',
                 'path' => $messageId,
-                'query' => ['fields' => 'attachments'],
+                'query' => ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
+            ];
+            $attempts[] = [
+                'auth_mode' => 'instagram_login',
+                'path' => "{$messageId}/attachments",
+                'parse' => 'items',
             ];
         }
+
+        $attempts[] = [
+            'auth_mode' => $authMode,
+            'path' => $messageId,
+            'query' => ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
+        ];
+        $attempts[] = [
+            'auth_mode' => $authMode,
+            'path' => "{$messageId}/attachments",
+            'parse' => 'items',
+        ];
 
         return $attempts;
     }
@@ -1150,12 +1153,15 @@ class InstagramMessengerService
 
         $storagePath = (string) ($attachment['storage_path'] ?? '');
         if ($storagePath !== '') {
-            $fullPath = storage_path('app/'.$storagePath);
-            if (is_file($fullPath)) {
+            $fullPath = $this->metaAttachments->resolveLocalStoragePath($storagePath);
+            if ($fullPath !== null) {
                 return [
                     'type' => 'local',
                     'path' => $fullPath,
-                    'mime_type' => $attachment['mime_type'] ?? null,
+                    'mime_type' => $this->metaAttachments->mimeTypeForPath(
+                        $fullPath,
+                        $attachment['mime_type'] ?? null,
+                    ),
                 ];
             }
         }
@@ -1213,7 +1219,7 @@ class InstagramMessengerService
                 ? (string) $payload['mime_type']
                 : (isset($item['mime_type']) ? (string) $item['mime_type'] : null);
 
-            if ($url === '' && ! $this->looksLikeAudioAttachment($item, $mimeType, null)) {
+            if ($url === '' && ! $this->looksLikeAudioAttachment($item, $mimeType, null) && ! in_array(strtolower($type), ['audio', 'file'], true)) {
                 continue;
             }
 

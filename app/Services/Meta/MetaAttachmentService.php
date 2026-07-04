@@ -27,11 +27,20 @@ class MetaAttachmentService
         ?string $uploadEntityId = null,
         bool $instagramPlatform = false,
     ): array {
+        if ($instagramPlatform || $authMode === 'instagram_login') {
+            [$filePath, $originalName, $mimeType] = $this->prepareInstagramAudio(
+                $filePath,
+                $originalName,
+                $mimeType,
+            );
+        }
+
         if ($authMode === 'instagram_login') {
             return $this->sendInstagramLoginAudioByUrl(
                 $integration,
                 $filePath,
                 $originalName,
+                $mimeType,
                 $recipientId,
                 $messagesEntityId,
             );
@@ -64,14 +73,85 @@ class MetaAttachmentService
     /**
      * @return array{message_id: string, public_url: string}
      */
+    /**
+     * @return array{0: string, 1: string, 2: ?string}
+     */
+    public function prepareInstagramAudio(string $filePath, string $originalName, ?string $mimeType): array
+    {
+        if ($this->isInstagramSupportedAudio($originalName, $mimeType)) {
+            return [$filePath, $originalName, $mimeType];
+        }
+
+        if ($this->canTranscodeWithFfmpeg()) {
+            return $this->transcodeToM4a($filePath);
+        }
+
+        throw new \RuntimeException(
+            __('Instagram принимает только M4A, MP4, WAV или AAC. Используйте Safari/Edge или установите ffmpeg на сервере.'),
+        );
+    }
+
+    protected function isInstagramSupportedAudio(string $originalName, ?string $mimeType): bool
+    {
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        $supportedExtensions = ['m4a', 'mp4', 'aac', 'wav'];
+        $mimeType = strtolower((string) $mimeType);
+
+        if (in_array($extension, $supportedExtensions, true)) {
+            return true;
+        }
+
+        return str_contains($mimeType, 'mp4')
+            || str_contains($mimeType, 'aac')
+            || str_contains($mimeType, 'wav')
+            || str_contains($mimeType, 'm4a');
+    }
+
+    protected function canTranscodeWithFfmpeg(): bool
+    {
+        if (! function_exists('exec')) {
+            return false;
+        }
+
+        $output = [];
+        $code = 1;
+        @exec('ffmpeg -version 2>&1', $output, $code);
+
+        return $code === 0;
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: string}
+     */
+    protected function transcodeToM4a(string $filePath): array
+    {
+        $outputPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.uniqid('voice_', true).'.m4a';
+        $command = sprintf(
+            'ffmpeg -y -i %s -c:a aac -b:a 128k %s 2>&1',
+            escapeshellarg($filePath),
+            escapeshellarg($outputPath),
+        );
+
+        $output = [];
+        $code = 1;
+        exec($command, $output, $code);
+
+        if ($code !== 0 || ! is_file($outputPath)) {
+            throw new \RuntimeException(__('Не удалось конвертировать аудио для Instagram.'));
+        }
+
+        return [$outputPath, 'voice.m4a', 'audio/mp4'];
+    }
+
     protected function sendInstagramLoginAudioByUrl(
         CompanyIntegration $integration,
         string $filePath,
         string $originalName,
+        ?string $mimeType,
         string $recipientId,
         string $igUserId,
     ): array {
-        $publicUrl = $this->publishTemporaryAudio($filePath, $originalName);
+        $publicUrl = $this->publishTemporaryAudio($filePath, $originalName, $mimeType);
         $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
 
         $url = 'https://graph.instagram.com/'.MetaMessagingSupport::graphVersion()."/{$igUserId}/messages";
@@ -97,7 +177,7 @@ class MetaAttachmentService
         ];
     }
 
-    protected function publishTemporaryAudio(string $filePath, string $originalName): string
+    protected function publishTemporaryAudio(string $filePath, string $originalName, ?string $mimeType = null): string
     {
         $filename = uniqid('voice_', true).'_'.preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
 
@@ -108,6 +188,57 @@ class MetaAttachmentService
         );
 
         return Storage::disk('public')->url('messenger/outbound/'.$filename);
+    }
+
+    public function storeSentAudioCopy(int $companyId, string $filePath, string $originalName): string
+    {
+        $filename = uniqid('voice_', true).'_'.preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
+
+        Storage::disk('public')->putFileAs(
+            'messenger/sent/'.$companyId,
+            new File($filePath),
+            $filename,
+        );
+
+        return 'public/messenger/sent/'.$companyId.'/'.$filename;
+    }
+
+    public function resolveLocalStoragePath(string $storagePath): ?string
+    {
+        if (str_starts_with($storagePath, 'public/')) {
+            $path = storage_path('app/public/'.substr($storagePath, 7));
+
+            return is_file($path) ? $path : null;
+        }
+
+        foreach ([
+            storage_path('app/'.$storagePath),
+            storage_path('app/public/'.$storagePath),
+        ] as $path) {
+            if (is_file($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    public function mimeTypeForPath(string $path, ?string $fallback = null): ?string
+    {
+        if ($fallback) {
+            return $fallback;
+        }
+
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+        return match ($extension) {
+            'webm' => 'audio/webm',
+            'ogg' => 'audio/ogg',
+            'wav' => 'audio/wav',
+            'aac' => 'audio/aac',
+            'm4a', 'mp4' => 'audio/mp4',
+            default => 'audio/mp4',
+        };
     }
 
     protected function uploadAudioToPage(

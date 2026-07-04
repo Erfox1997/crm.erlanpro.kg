@@ -127,6 +127,7 @@ class MessengerController extends Controller
             return response()->file($source['path'], [
                 'Content-Type' => $source['mime_type'] ?? 'audio/mp4',
                 'Cache-Control' => 'private, max-age=3600',
+                'Accept-Ranges' => 'bytes',
             ]);
         }
 
