@@ -107,6 +107,26 @@ function participantLabel(conversation) {
     );
 }
 
+function attachmentLabel(type) {
+    switch (type) {
+    case 'audio':
+        return 'Голосовое сообщение';
+    case 'image':
+        return 'Фото';
+    case 'video':
+        return 'Видео';
+    case 'file':
+        return 'Файл';
+    default:
+        return 'Вложение';
+    }
+}
+
+function messageHasContent(message) {
+    return Boolean(message.body?.trim())
+        || (Array.isArray(message.attachments) && message.attachments.length > 0);
+}
+
 function scrollToBottom() {
     nextTick(() => {
         messagesEnd.value?.scrollIntoView({ behavior: 'smooth' });
@@ -277,9 +297,69 @@ watch(
                                             ? 'bg-pink-600 text-white'
                                             : 'bg-gray-100 text-gray-900'"
                                     >
-                                        <p class="whitespace-pre-wrap break-words">
-                                            {{ message.body || '—' }}
+                                        <p
+                                            v-if="message.body?.trim()"
+                                            class="whitespace-pre-wrap break-words"
+                                        >
+                                            {{ message.body }}
                                         </p>
+
+                                        <div
+                                            v-if="message.attachments?.length"
+                                            class="space-y-2"
+                                            :class="{ 'mt-2': message.body?.trim() }"
+                                        >
+                                            <div
+                                                v-for="(attachment, index) in message.attachments"
+                                                :key="`${message.id}-${index}`"
+                                            >
+                                                <audio
+                                                    v-if="attachment.type === 'audio'"
+                                                    controls
+                                                    preload="metadata"
+                                                    class="max-w-full min-w-[14rem]"
+                                                    :src="attachment.url"
+                                                >
+                                                    {{ attachmentLabel(attachment.type) }}
+                                                </audio>
+
+                                                <img
+                                                    v-else-if="attachment.type === 'image'"
+                                                    :src="attachment.url"
+                                                    :alt="attachment.name || attachmentLabel(attachment.type)"
+                                                    class="max-h-64 max-w-full rounded-lg object-contain"
+                                                >
+
+                                                <video
+                                                    v-else-if="attachment.type === 'video'"
+                                                    controls
+                                                    preload="metadata"
+                                                    class="max-h-64 max-w-full rounded-lg"
+                                                    :src="attachment.url"
+                                                />
+
+                                                <a
+                                                    v-else
+                                                    :href="attachment.url"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    class="inline-flex items-center gap-1 underline"
+                                                    :class="message.direction === 'outbound'
+                                                        ? 'text-white'
+                                                        : 'text-pink-700'"
+                                                >
+                                                    {{ attachment.name || attachmentLabel(attachment.type) }}
+                                                </a>
+                                            </div>
+                                        </div>
+
+                                        <p
+                                            v-if="!messageHasContent(message)"
+                                            class="opacity-70"
+                                        >
+                                            —
+                                        </p>
+
                                         <p
                                             class="mt-1 text-[11px] opacity-70"
                                         >

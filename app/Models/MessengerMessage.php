@@ -13,6 +13,7 @@ class MessengerMessage extends Model
         'direction',
         'external_id',
         'body',
+        'attachments',
         'status',
         'sent_at',
     ];
@@ -21,7 +22,39 @@ class MessengerMessage extends Model
     {
         return [
             'sent_at' => 'datetime',
+            'attachments' => 'array',
         ];
+    }
+
+    /**
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
+     */
+    public function normalizedAttachments(): array
+    {
+        $attachments = $this->attachments ?? [];
+
+        return is_array($attachments) ? $attachments : [];
+    }
+
+    public function previewLabel(): string
+    {
+        $body = trim((string) ($this->body ?? ''));
+        if ($body !== '') {
+            return $body;
+        }
+
+        $first = $this->normalizedAttachments()[0] ?? null;
+        if (! is_array($first)) {
+            return '';
+        }
+
+        return match ($first['type'] ?? '') {
+            'audio' => __('Голосовое сообщение'),
+            'image' => __('Фото'),
+            'video' => __('Видео'),
+            'file' => __('Файл'),
+            default => __('Вложение'),
+        };
     }
 
     public function company(): BelongsTo

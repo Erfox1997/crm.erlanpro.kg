@@ -28,16 +28,21 @@ class MessengerController extends Controller
             ->where('channel', IntegrationProvider::Instagram->value)
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
+            ->with(['messages' => fn ($q) => $q->orderByDesc('sent_at')->orderByDesc('id')->limit(1)])
             ->get()
-            ->map(fn (MessengerConversation $c) => [
-                'id' => $c->id,
-                'channel' => $c->channel,
-                'participant_id' => $c->participant_id,
-                'participant_name' => $c->participant_name,
-                'participant_username' => $c->participant_username,
-                'last_message_at' => $c->last_message_at?->toIso8601String(),
-                'preview' => $c->messages()->orderByDesc('sent_at')->orderByDesc('id')->value('body'),
-            ]);
+            ->map(function (MessengerConversation $c) {
+                $lastMessage = $c->messages->first();
+
+                return [
+                    'id' => $c->id,
+                    'channel' => $c->channel,
+                    'participant_id' => $c->participant_id,
+                    'participant_name' => $c->participant_name,
+                    'participant_username' => $c->participant_username,
+                    'last_message_at' => $c->last_message_at?->toIso8601String(),
+                    'preview' => $lastMessage?->previewLabel(),
+                ];
+            });
 
         $selectedId = $request->query('conversation');
         $selectedConversation = null;
@@ -65,6 +70,7 @@ class MessengerController extends Controller
                         'id' => $m->id,
                         'direction' => $m->direction,
                         'body' => $m->body,
+                        'attachments' => $m->normalizedAttachments(),
                         'status' => $m->status,
                         'sent_at' => $m->sent_at?->toIso8601String(),
                     ]);

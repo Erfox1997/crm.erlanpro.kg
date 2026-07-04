@@ -6,6 +6,7 @@ use App\Enums\IntegrationProvider;
 use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -531,12 +532,12 @@ class InstagramMessengerService
         if ($authMode === 'instagram_login') {
             $messagesResponse = $this->client($integration->api_token, $authMode)->get(
                 $this->url($externalId, $authMode),
-                ['fields' => 'messages{id,created_time,from,to,message}'],
+                ['fields' => 'messages{id,created_time,from,to,message,attachments}'],
             );
         } else {
             $messagesResponse = $this->client($integration->api_token, $authMode)->get(
                 $this->url($externalId, $authMode),
-                ['fields' => 'messages{message,from,created_time,id}'],
+                ['fields' => 'messages{message,from,created_time,id,attachments}'],
             );
         }
 
@@ -586,12 +587,30 @@ class InstagramMessengerService
         array $messageData,
     ): ?MessengerMessage {
         $externalId = isset($messageData['id']) ? (string) $messageData['id'] : null;
+        $attachments = $this->normalizeAttachmentsFromApi($messageData);
+        $body = (string) ($messageData['message'] ?? '');
+
         if ($externalId) {
-            $exists = MessengerMessage::query()
+            $existing = MessengerMessage::query()
                 ->where('messenger_conversation_id', $conversation->id)
                 ->where('external_id', $externalId)
-                ->exists();
-            if ($exists) {
+                ->first();
+
+            if ($existing) {
+                $updates = [];
+
+                if ($body !== '' && trim((string) $existing->body) === '') {
+                    $updates['body'] = $body;
+                }
+
+                if ($attachments !== [] && empty($existing->attachments)) {
+                    $updates['attachments'] = $attachments;
+                }
+
+                if ($updates !== []) {
+                    $existing->update($updates);
+                }
+
                 return null;
             }
         }
@@ -611,7 +630,8 @@ class InstagramMessengerService
             'messenger_conversation_id' => $conversation->id,
             'direction' => $direction,
             'external_id' => $externalId,
-            'body' => $messageData['message'] ?? '',
+            'body' => $body,
+            'attachments' => $attachments !== [] ? $attachments : null,
             'status' => $direction === 'outbound' ? 'sent' : 'received',
             'sent_at' => $sentAt,
         ]);
@@ -755,7 +775,10 @@ class InstagramMessengerService
             'messenger_conversation_id' => $conversation->id,
             'direction' => $direction,
             'external_id' => $externalId,
-            'body' => $message['text'] ?? '',
+            'body' => (string) ($message['text'] ?? ''),
+            'attachments' => ($attachments = $this->normalizeAttachmentsFromWebhook($message)) !== []
+                ? $attachments
+                : null,
             'status' => $direction === 'outbound' ? 'sent' : 'received',
             'sent_at' => $sentAt,
         ]);
@@ -793,7 +816,7 @@ class InstagramMessengerService
         return $this->oauthProvider() === 'instagram' ? 'instagram_login' : 'facebook_login';
     }
 
-    protected function client(string $accessToken, ?string $authMode = null): \Illuminate\Http\Client\PendingRequest
+    protected function client(string $accessToken, ?string $authMode = null): PendingRequest
     {
         $accessToken = self::normalizeAccessToken($accessToken);
 
@@ -821,5 +844,142 @@ class InstagramMessengerService
         $message = $body['error']['message'] ?? $e->getMessage();
 
         return (string) $message;
+    }
+
+    /**
+     * @param  array<string, mixed>  $messageData
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
+     */
+    public function normalizeAttachmentsFromApi(array $messageData): array
+    {
+        $items = $messageData['attachments']['data'] ?? [];
+        if (! is_array($items)) {
+            return [];
+        }
+
+        $attachments = [];
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $parsed = $this->parseGraphAttachment($item);
+            if ($parsed !== null) {
+                $attachments[] = $parsed;
+            }
+        }
+
+        return $attachments;
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
+     */
+    public function normalizeAttachmentsFromWebhook(array $message): array
+    {
+        $items = $message['attachments'] ?? [];
+        if (! is_array($items)) {
+            return [];
+        }
+
+        $attachments = [];
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $type = (string) ($item['type'] ?? 'file');
+            $url = (string) ($item['payload']['url'] ?? $item['payload']['story_media_url'] ?? '');
+
+            if ($url === '') {
+                continue;
+            }
+
+            $attachments[] = [
+                'type' => $this->normalizeAttachmentType($type, null),
+                'url' => $url,
+                'name' => isset($item['title']) ? (string) $item['title'] : null,
+                'mime_type' => null,
+            ];
+        }
+
+        return $attachments;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array{type: string, url: string, name: ?string, mime_type: ?string}|null
+     */
+    protected function parseGraphAttachment(array $item): ?array
+    {
+        $mimeType = isset($item['mime_type']) ? (string) $item['mime_type'] : null;
+        $name = isset($item['name']) ? (string) $item['name'] : null;
+
+        if (isset($item['image_data']) && is_array($item['image_data'])) {
+            $url = (string) ($item['image_data']['url'] ?? $item['image_data']['preview_url'] ?? '');
+
+            if ($url !== '') {
+                return [
+                    'type' => 'image',
+                    'url' => $url,
+                    'name' => $name,
+                    'mime_type' => $mimeType,
+                ];
+            }
+        }
+
+        if (isset($item['video_data']) && is_array($item['video_data'])) {
+            $url = (string) ($item['video_data']['url'] ?? $item['video_data']['preview_url'] ?? '');
+
+            if ($url !== '') {
+                return [
+                    'type' => 'video',
+                    'url' => $url,
+                    'name' => $name,
+                    'mime_type' => $mimeType,
+                ];
+            }
+        }
+
+        $fileUrl = (string) ($item['file_url'] ?? '');
+
+        if ($fileUrl === '') {
+            return null;
+        }
+
+        return [
+            'type' => $this->normalizeAttachmentType('', $mimeType),
+            'url' => $fileUrl,
+            'name' => $name,
+            'mime_type' => $mimeType,
+        ];
+    }
+
+    protected function normalizeAttachmentType(string $type, ?string $mimeType): string
+    {
+        $type = strtolower(trim($type));
+
+        if (in_array($type, ['audio', 'image', 'video', 'file'], true)) {
+            return $type;
+        }
+
+        $mimeType = strtolower((string) $mimeType);
+
+        if (str_starts_with($mimeType, 'audio/')) {
+            return 'audio';
+        }
+
+        if (str_starts_with($mimeType, 'image/')) {
+            return 'image';
+        }
+
+        if (str_starts_with($mimeType, 'video/')) {
+            return 'video';
+        }
+
+        return 'file';
     }
 }
