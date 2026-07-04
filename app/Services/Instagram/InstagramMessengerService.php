@@ -37,6 +37,13 @@ class InstagramMessengerService
         return route('integrations.instagram.callback', absolute: true);
     }
 
+    public function oauthProvider(): string
+    {
+        $provider = (string) config('services.meta.oauth_provider', 'facebook');
+
+        return $provider === 'instagram' ? 'instagram' : 'facebook';
+    }
+
     public function oauthAuthorizationUrl(string $state): string
     {
         $appId = self::normalizeAppId((string) config('services.instagram.app_id'));
@@ -56,10 +63,40 @@ class InstagramMessengerService
             'state' => $state,
         ]);
 
-        return 'https://www.instagram.com/oauth/authorize?'.$query;
+        if ($this->oauthProvider() === 'instagram') {
+            return 'https://www.instagram.com/oauth/authorize?'.$query;
+        }
+
+        return 'https://www.facebook.com/'.$this->graphVersion().'/dialog/oauth?'.$query;
     }
 
     public function exchangeCodeForLongLivedUserToken(string $code): string
+    {
+        if ($this->oauthProvider() === 'instagram') {
+            return $this->exchangeInstagramCodeForLongLivedUserToken($code);
+        }
+
+        return $this->exchangeFacebookCodeForLongLivedUserToken($code);
+    }
+
+    public function exchangeFacebookCodeForLongLivedUserToken(string $code): string
+    {
+        $shortLivedToken = $this->requestFacebookAccessToken([
+            'client_id' => config('services.instagram.app_id'),
+            'client_secret' => config('services.instagram.app_secret'),
+            'redirect_uri' => $this->oauthRedirectUri(),
+            'code' => $code,
+        ]);
+
+        return $this->requestFacebookAccessToken([
+            'grant_type' => 'fb_exchange_token',
+            'client_id' => config('services.instagram.app_id'),
+            'client_secret' => config('services.instagram.app_secret'),
+            'fb_exchange_token' => $shortLivedToken,
+        ]);
+    }
+
+    public function exchangeInstagramCodeForLongLivedUserToken(string $code): string
     {
         $code = preg_replace('/#_.*$/', '', $code) ?? $code;
 
@@ -101,6 +138,108 @@ class InstagramMessengerService
         }
 
         return $token;
+    }
+
+    /**
+     * @return array{api_token: string, metadata: array<string, mixed>}
+     */
+    public function connectAccountFromManualToken(string $accessToken): array
+    {
+        $accessToken = self::normalizeAccessToken($accessToken);
+
+        if (str_starts_with($accessToken, 'EAA')) {
+            try {
+                $response = $this->client($accessToken, 'facebook_login')->get(
+                    $this->url('me', 'facebook_login'),
+                    ['fields' => 'id,name,instagram_business_account{id,username,name}'],
+                );
+                $response->throw();
+                $data = $response->json();
+                $igAccount = $data['instagram_business_account'] ?? [];
+
+                if (is_array($igAccount) && ($igAccount['id'] ?? null)) {
+                    return [
+                        'api_token' => $accessToken,
+                        'metadata' => [
+                            'instagram_user_id' => (string) $igAccount['id'],
+                            'username' => $igAccount['username'] ?? null,
+                            'name' => $igAccount['name'] ?? null,
+                            'page_id' => (string) ($data['id'] ?? ''),
+                            'page_name' => $data['name'] ?? null,
+                            'auth_mode' => 'facebook_login',
+                            'connected_via' => 'manual',
+                        ],
+                    ];
+                }
+            } catch (\Throwable) {
+                // Fall through to user-token resolution below.
+            }
+
+            try {
+                $account = $this->resolveInstagramPageAccount($accessToken);
+
+                return [
+                    'api_token' => $account['access_token'],
+                    'metadata' => [
+                        'instagram_user_id' => $account['instagram_user_id'],
+                        'username' => $account['username'],
+                        'name' => $account['name'],
+                        'page_id' => $account['page_id'],
+                        'page_name' => $account['page_name'],
+                        'auth_mode' => 'facebook_login',
+                        'connected_via' => 'manual',
+                    ],
+                ];
+            } catch (\Throwable) {
+                // Fall through to Instagram Login token validation.
+            }
+        }
+
+        $profile = $this->fetchProfile($accessToken);
+
+        return [
+            'api_token' => $accessToken,
+            'metadata' => [
+                'instagram_user_id' => $profile['id'],
+                'username' => $profile['username'],
+                'name' => $profile['name'],
+                'auth_mode' => 'instagram_login',
+                'connected_via' => 'manual',
+            ],
+        ];
+    }
+
+    public function connectAccountFromOAuth(string $userAccessToken): array
+    {
+        if ($this->oauthProvider() === 'instagram') {
+            $account = $this->resolveInstagramLoginAccount($userAccessToken);
+
+            return [
+                'api_token' => $account['access_token'],
+                'metadata' => [
+                    'instagram_user_id' => $account['instagram_user_id'],
+                    'username' => $account['username'],
+                    'name' => $account['name'],
+                    'auth_mode' => 'instagram_login',
+                    'connected_via' => 'oauth',
+                ],
+            ];
+        }
+
+        $account = $this->resolveInstagramPageAccount($userAccessToken);
+
+        return [
+            'api_token' => $account['access_token'],
+            'metadata' => [
+                'instagram_user_id' => $account['instagram_user_id'],
+                'username' => $account['username'],
+                'name' => $account['name'],
+                'page_id' => $account['page_id'],
+                'page_name' => $account['page_name'],
+                'auth_mode' => 'facebook_login',
+                'connected_via' => 'oauth',
+            ],
+        ];
     }
 
     /**
@@ -268,12 +407,30 @@ class InstagramMessengerService
 
     public function refreshIntegrationMetadata(CompanyIntegration $integration): CompanyIntegration
     {
-        $profile = $this->fetchProfile((string) $integration->api_token);
+        $authMode = $this->authMode($integration);
 
-        $metadata = $integration->metadata ?? [];
-        $metadata['instagram_user_id'] = $profile['id'];
-        $metadata['username'] = $profile['username'];
-        $metadata['name'] = $profile['name'];
+        if ($authMode === 'facebook_login') {
+            $response = $this->client((string) $integration->api_token, 'facebook_login')->get(
+                $this->url('me', 'facebook_login'),
+                ['fields' => 'id,name,instagram_business_account{id,username,name}'],
+            );
+            $response->throw();
+            $data = $response->json();
+            $igAccount = $data['instagram_business_account'] ?? [];
+
+            $metadata = $integration->metadata ?? [];
+            $metadata['page_id'] = (string) ($data['id'] ?? $metadata['page_id'] ?? '');
+            $metadata['page_name'] = $data['name'] ?? $metadata['page_name'] ?? null;
+            $metadata['instagram_user_id'] = (string) ($igAccount['id'] ?? $metadata['instagram_user_id'] ?? '');
+            $metadata['username'] = $igAccount['username'] ?? $metadata['username'] ?? null;
+            $metadata['name'] = $igAccount['name'] ?? $metadata['name'] ?? null;
+        } else {
+            $profile = $this->fetchProfile((string) $integration->api_token);
+            $metadata = $integration->metadata ?? [];
+            $metadata['instagram_user_id'] = $profile['id'];
+            $metadata['username'] = $profile['username'];
+            $metadata['name'] = $profile['name'];
+        }
 
         $integration->update(['metadata' => $metadata]);
 
@@ -299,16 +456,22 @@ class InstagramMessengerService
 
         try {
             $authMode = $this->authMode($integration);
-            $query = [
-                'fields' => 'id,updated_time,participants',
-            ];
+            $query = ['fields' => 'id,updated_time,participants'];
 
             if ($authMode === 'facebook_login') {
+                $pageId = (string) ($integration->metadata['page_id'] ?? '');
+                if ($pageId === '') {
+                    return ['synced' => 0, 'errors' => [__('Не задан page_id Facebook для Instagram.')]];
+                }
+
                 $query['platform'] = 'instagram';
+                $conversationsPath = "{$pageId}/conversations";
+            } else {
+                $conversationsPath = "{$igUserId}/conversations";
             }
 
             $response = $this->client($integration->api_token, $authMode)->get(
-                $this->url("{$igUserId}/conversations", $authMode),
+                $this->url($conversationsPath, $authMode),
                 $query,
             );
 
@@ -371,16 +534,14 @@ class InstagramMessengerService
             );
         } else {
             $messagesResponse = $this->client($integration->api_token, $authMode)->get(
-                $this->url("{$externalId}/messages", $authMode),
-                ['fields' => 'id,created_time,from,to,message'],
+                $this->url($externalId, $authMode),
+                ['fields' => 'messages{message,from,created_time,id}'],
             );
         }
 
         $messagesResponse->throw();
 
-        $messageItems = $authMode === 'instagram_login'
-            ? $messagesResponse->json('messages.data', [])
-            : $messagesResponse->json('data', []);
+        $messageItems = $messagesResponse->json('messages.data', []);
 
         foreach ($messageItems as $messageData) {
             $this->storeMessageFromApi($integration, $conversation, $igUserId, $messageData);
@@ -435,7 +596,11 @@ class InstagramMessengerService
         }
 
         $fromId = (string) ($messageData['from']['id'] ?? '');
-        $direction = $fromId === $igUserId ? 'outbound' : 'inbound';
+        $fromUsername = (string) ($messageData['from']['username'] ?? '');
+        $ownUsername = (string) ($integration->metadata['username'] ?? '');
+        $isOutbound = $fromId === $igUserId
+            || ($ownUsername !== '' && strcasecmp($fromUsername, $ownUsername) === 0);
+        $direction = $isOutbound ? 'outbound' : 'inbound';
         $sentAt = isset($messageData['created_time'])
             ? Carbon::parse($messageData['created_time'])
             : now();
@@ -473,9 +638,20 @@ class InstagramMessengerService
         }
 
         $authMode = $this->authMode($integration);
+        $pageId = (string) ($integration->metadata['page_id'] ?? '');
+
+        if ($authMode === 'facebook_login') {
+            if ($pageId === '') {
+                throw new \RuntimeException(__('Instagram не настроен: нет page_id Facebook.'));
+            }
+
+            $messagesPath = "{$pageId}/messages";
+        } else {
+            $messagesPath = "{$igUserId}/messages";
+        }
 
         $response = $this->client($integration->api_token, $authMode)->post(
-            $this->url("{$igUserId}/messages", $authMode),
+            $this->url($messagesPath, $authMode),
             [
                 'recipient' => ['id' => $conversation->participant_id],
                 'message' => ['text' => $text],
@@ -603,9 +779,17 @@ class InstagramMessengerService
 
     protected function authMode(?CompanyIntegration $integration): string
     {
-        $mode = (string) ($integration?->metadata['auth_mode'] ?? 'instagram_login');
+        $mode = (string) ($integration?->metadata['auth_mode'] ?? '');
 
-        return $mode === 'facebook_login' ? 'facebook_login' : 'instagram_login';
+        if ($mode === 'instagram_login') {
+            return 'instagram_login';
+        }
+
+        if ($mode === 'facebook_login') {
+            return 'facebook_login';
+        }
+
+        return $this->oauthProvider() === 'instagram' ? 'instagram_login' : 'facebook_login';
     }
 
     protected function client(string $accessToken, ?string $authMode = null): \Illuminate\Http\Client\PendingRequest

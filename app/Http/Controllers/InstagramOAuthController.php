@@ -73,8 +73,9 @@ class InstagramOAuthController extends Controller
         }
 
         try {
-            $userToken = $this->instagram->exchangeCodeForLongLivedUserToken($code);
-            $account = $this->instagram->resolveInstagramLoginAccount($userToken);
+            $connection = $this->instagram->connectAccountFromOAuth(
+                $this->instagram->exchangeCodeForLongLivedUserToken($code),
+            );
 
             CompanyIntegration::query()->updateOrCreate(
                 [
@@ -82,14 +83,8 @@ class InstagramOAuthController extends Controller
                     'provider' => IntegrationProvider::Instagram->value,
                 ],
                 [
-                    'api_token' => $account['access_token'],
-                    'metadata' => [
-                        'instagram_user_id' => $account['instagram_user_id'],
-                        'username' => $account['username'],
-                        'name' => $account['name'],
-                        'auth_mode' => 'instagram_login',
-                        'connected_via' => 'oauth',
-                    ],
+                    'api_token' => $connection['api_token'],
+                    'metadata' => $connection['metadata'],
                 ],
             );
         } catch (\Throwable $e) {

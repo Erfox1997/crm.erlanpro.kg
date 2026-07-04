@@ -66,12 +66,13 @@ class IntegrationController extends Controller
         ]);
 
         $apiToken = $validated['api_token'];
+        $attributes = ['api_token' => $apiToken];
 
         if ($integrationProvider === IntegrationProvider::Instagram) {
             $apiToken = InstagramMessengerService::normalizeAccessToken($apiToken);
 
             try {
-                $profile = app(InstagramMessengerService::class)->fetchProfile($apiToken);
+                $connection = app(InstagramMessengerService::class)->connectAccountFromManualToken($apiToken);
             } catch (\Throwable $e) {
                 return back()->withErrors([
                     'api_token' => __('Instagram API отклонил маркер: :msg', [
@@ -79,17 +80,10 @@ class IntegrationController extends Controller
                     ]),
                 ]);
             }
-        }
 
-        $attributes = ['api_token' => $apiToken];
-
-        if ($integrationProvider === IntegrationProvider::Instagram) {
-            $attributes['metadata'] = [
-                'instagram_user_id' => $profile['id'],
-                'username' => $profile['username'],
-                'name' => $profile['name'],
-                'auth_mode' => 'instagram_login',
-                'connected_via' => 'manual',
+            $attributes = [
+                'api_token' => $connection['api_token'],
+                'metadata' => $connection['metadata'],
             ];
         }
 
