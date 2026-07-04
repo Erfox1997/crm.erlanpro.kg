@@ -8,6 +8,7 @@ composer install --no-dev --optimize-autoloader --no-interaction
 
 php artisan migrate --force
 php artisan config:clear
+php artisan route:clear
 php artisan view:clear
 
 npm ci
