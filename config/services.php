@@ -46,7 +46,7 @@ return [
         'oauth_provider' => env('META_OAUTH_PROVIDER', 'facebook'),
         'oauth_scopes' => env(
             'META_OAUTH_SCOPES',
-            'pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_manage_messages,business_management',
+            'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_manage_messages',
         ),
         'oauth_redirect_uri' => env('META_OAUTH_REDIRECT_URI'),
     ],

@@ -22,8 +22,13 @@ npm run build
 #    Подписка: messages (instagram)
 # 3. Facebook Login → Settings → Valid OAuth Redirect URIs (тот же URL):
 #    https://crm.erlanpro.kg/integrations/instagram/oauth/callback
-# 4. Шаг 4 Instagram Login — тот же redirect URI (если включён)
-# 5. .env на сервере:
+# 4. Настройки приложения → Основное:
+#    - Добавить платформу «Веб-сайт», Site URL: https://crm.erlanpro.kg
+#    - Домены приложений: crm.erlanpro.kg
+#    - Заполнить URL политики конфиденциальности (обязательно для OAuth)
+# 5. Роли приложения → добавить ваш Facebook-аккаунт как Администратор/Разработчик
+#    (Instagram Tester недостаточно для Facebook Login)
+# 6. .env на сервере — App ID из «Основное» (должен совпадать с CRM → Интеграции):
 #    APP_URL=https://crm.erlanpro.kg
 #    INSTAGRAM_APP_ID=...
 #    INSTAGRAM_APP_SECRET=...
