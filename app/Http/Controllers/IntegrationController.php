@@ -7,6 +7,7 @@ use App\Models\CompanyIntegration;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Meta\MetaMessagingSupport;
+use App\Services\Meta\MetaOAuthService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -63,9 +64,12 @@ class IntegrationController extends Controller
             return $item;
         })->values();
 
+        $metaOAuthDiagnostics = app(MetaOAuthService::class)->appDiagnostics();
+
         return Inertia::render('Integrations/Index', [
             'integrations' => $integrations,
             'pageTitle' => 'Интеграции',
+            'metaOAuthDiagnostics' => $metaOAuthDiagnostics,
         ]);
     }
 

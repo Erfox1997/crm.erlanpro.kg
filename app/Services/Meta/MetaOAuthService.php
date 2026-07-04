@@ -23,8 +23,11 @@ class MetaOAuthService
         return route($callbackRouteName, absolute: true);
     }
 
-    public function oauthAuthorizationUrl(string $state, string $callbackRouteName): string
-    {
+    public function oauthAuthorizationUrl(
+        string $state,
+        string $callbackRouteName,
+        IntegrationProvider $provider,
+    ): string {
         $appId = MetaMessagingSupport::normalizeAppId((string) config('services.instagram.app_id'));
         if ($appId === '') {
             throw new \RuntimeException(__('INSTAGRAM_APP_ID не задан в .env'));
@@ -37,12 +40,152 @@ class MetaOAuthService
         $query = http_build_query([
             'client_id' => $appId,
             'redirect_uri' => $this->oauthRedirectUri($callbackRouteName),
-            'scope' => (string) config('services.meta.oauth_scopes'),
+            'scope' => $this->oauthScopes($provider),
             'response_type' => 'code',
             'state' => $state,
         ]);
 
         return 'https://www.facebook.com/dialog/oauth?'.$query;
+    }
+
+    public function oauthScopes(IntegrationProvider $provider): string
+    {
+        return match ($provider) {
+            IntegrationProvider::Facebook => (string) config(
+                'services.meta.oauth_scopes_facebook',
+                'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging',
+            ),
+            IntegrationProvider::Instagram => (string) config(
+                'services.meta.oauth_scopes_instagram',
+                config('services.meta.oauth_scopes'),
+            ),
+            default => (string) config('services.meta.oauth_scopes'),
+        };
+    }
+
+    /**
+     * @return array{
+     *     ok: bool,
+     *     issues: list<string>,
+     *     app: ?array<string, mixed>,
+     *     redirect_uris: list<string>
+     * }
+     */
+    public function appDiagnostics(): array
+    {
+        $issues = [];
+        $redirectUris = [
+            route('integrations.instagram.callback', absolute: true),
+            route('integrations.facebook.callback', absolute: true),
+        ];
+
+        $appId = MetaMessagingSupport::normalizeAppId((string) config('services.instagram.app_id'));
+        $appSecret = trim((string) config('services.instagram.app_secret'));
+
+        if ($appId === '') {
+            $issues[] = __('INSTAGRAM_APP_ID не задан в .env на сервере.');
+        }
+
+        if ($appSecret === '') {
+            $issues[] = __('INSTAGRAM_APP_SECRET не задан в .env на сервере.');
+        }
+
+        $appUrl = rtrim((string) config('app.url'), '/');
+        if (! str_starts_with($appUrl, 'https://')) {
+            $issues[] = __('APP_URL должен быть https://crm.erlanpro.kg (сейчас: :url).', ['url' => $appUrl ?: '—']);
+        }
+
+        $issues[] = __('В Meta → Facebook Login добавьте оба Redirect URI (см. ниже на карточках интеграций).');
+        $issues[] = __('В Meta → Роли приложения ваш Facebook-аккаунт должен быть Администратор или Разработчик (не только Instagram Tester).');
+        $issues[] = __('Входите в OAuth тем же Facebook-аккаунтом, который админ приложения Meta и страницы ErlanPro.');
+
+        if ($appId === '' || $appSecret === '') {
+            return [
+                'ok' => false,
+                'issues' => $issues,
+                'app' => null,
+                'redirect_uris' => $redirectUris,
+            ];
+        }
+
+        $app = null;
+
+        try {
+            $tokenResponse = Http::acceptJson()
+                ->timeout(15)
+                ->get(MetaMessagingSupport::graphUrl('oauth/access_token'), [
+                    'client_id' => $appId,
+                    'client_secret' => $appSecret,
+                    'grant_type' => 'client_credentials',
+                ]);
+
+            $tokenResponse->throw();
+            $appToken = (string) ($tokenResponse->json('access_token') ?? '');
+
+            if ($appToken === '') {
+                $issues[] = __('Meta не выдала app access token — проверьте INSTAGRAM_APP_ID и INSTAGRAM_APP_SECRET.');
+            } else {
+                $appResponse = Http::acceptJson()
+                    ->timeout(15)
+                    ->get(MetaMessagingSupport::graphUrl($appId), [
+                        'fields' => 'id,name,app_domains,website,privacy_policy_url,restrictions',
+                        'access_token' => $appToken,
+                    ]);
+
+                $appResponse->throw();
+                $app = $appResponse->json();
+
+                if (! is_string($app['privacy_policy_url'] ?? null) || trim($app['privacy_policy_url']) === '') {
+                    $issues[] = __('В Meta → Настройки → Основное не указан URL политики конфиденциальности — из‑за этого Facebook часто показывает «Этот контент сейчас недоступен».');
+                }
+
+                $host = parse_url($appUrl, PHP_URL_HOST);
+                $domains = is_array($app['app_domains'] ?? null) ? $app['app_domains'] : [];
+
+                if (is_string($host) && $host !== '' && ! in_array($host, $domains, true)) {
+                    $issues[] = __('Домен :host не найден в Meta → Основное → Домены приложений.', ['host' => $host]);
+                }
+
+                $restrictions = $app['restrictions'] ?? null;
+                if (is_array($restrictions) && $restrictions !== []) {
+                    $issues[] = __('Meta ограничила приложение: :details', [
+                        'details' => json_encode($restrictions, JSON_UNESCAPED_UNICODE),
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            $issues[] = __('Не удалось проверить приложение Meta: :msg', ['msg' => $e->getMessage()]);
+        }
+
+        $criticalPatterns = [
+            'INSTAGRAM_APP_ID',
+            'INSTAGRAM_APP_SECRET',
+            'APP_URL',
+            'политики конфиденциальности',
+            'Домен',
+            'ограничила',
+            'не выдала app access token',
+        ];
+
+        $criticalIssues = array_values(array_filter(
+            $issues,
+            fn (string $issue) => collect($criticalPatterns)->contains(
+                fn (string $pattern) => str_contains($issue, $pattern),
+            ),
+        ));
+
+        return [
+            'ok' => $criticalIssues === [],
+            'issues' => $issues,
+            'app' => is_array($app) ? [
+                'id' => $app['id'] ?? null,
+                'name' => $app['name'] ?? null,
+                'website' => $app['website'] ?? null,
+                'privacy_policy_url' => $app['privacy_policy_url'] ?? null,
+                'app_domains' => $app['app_domains'] ?? [],
+            ] : null,
+            'redirect_uris' => $redirectUris,
+        ];
     }
 
     public function exchangeFacebookCodeForLongLivedUserToken(string $code, string $callbackRouteName): string

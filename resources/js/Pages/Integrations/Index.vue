@@ -18,6 +18,10 @@ const props = defineProps({
         type: String,
         default: 'Интеграции',
     },
+    metaOAuthDiagnostics: {
+        type: Object,
+        default: null,
+    },
 });
 
 const page = usePage();
@@ -124,6 +128,39 @@ function metaHelpText(provider) {
                     class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
                 >
                     {{ page.props.flash.success }}
+                </div>
+
+                <div
+                    v-if="metaOAuthDiagnostics && !metaOAuthDiagnostics.ok"
+                    class="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950"
+                >
+                    <p class="font-semibold">
+                        OAuth Meta может не работать — проверьте настройки
+                    </p>
+                    <p class="mt-2 text-xs text-amber-900">
+                        Ошибка Facebook «Этот контент сейчас недоступен» почти всегда связана с настройками приложения Meta, а не с кодом CRM.
+                    </p>
+                    <ul class="mt-3 list-disc space-y-1 pl-5 text-xs">
+                        <li
+                            v-for="(issue, index) in metaOAuthDiagnostics.issues"
+                            :key="index"
+                        >
+                            {{ issue }}
+                        </li>
+                    </ul>
+                    <div
+                        v-if="metaOAuthDiagnostics.redirect_uris?.length"
+                        class="mt-3 text-xs"
+                    >
+                        <p class="font-medium">Redirect URI для Meta → Facebook Login:</p>
+                        <p
+                            v-for="uri in metaOAuthDiagnostics.redirect_uris"
+                            :key="uri"
+                            class="mt-1"
+                        >
+                            <code class="break-all rounded bg-white px-1 py-0.5">{{ uri }}</code>
+                        </p>
+                    </div>
                 </div>
 
                 <div class="grid gap-6">

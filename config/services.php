@@ -48,6 +48,14 @@ return [
             'META_OAUTH_SCOPES',
             'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_manage_messages',
         ),
+        'oauth_scopes_instagram' => env(
+            'META_OAUTH_SCOPES_INSTAGRAM',
+            'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_manage_messages',
+        ),
+        'oauth_scopes_facebook' => env(
+            'META_OAUTH_SCOPES_FACEBOOK',
+            'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging',
+        ),
         'oauth_redirect_uri' => env('META_OAUTH_REDIRECT_URI'),
     ],
 

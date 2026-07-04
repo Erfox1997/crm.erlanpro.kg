@@ -33,6 +33,7 @@ class MetaOAuthController extends Controller
             $oauthUrl = $this->oauth->oauthAuthorizationUrl(
                 $state = Str::random(40),
                 $this->callbackRoute($integrationProvider),
+                $integrationProvider,
             );
         } catch (\Throwable $e) {
             return redirect()
