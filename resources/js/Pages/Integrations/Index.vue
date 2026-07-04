@@ -32,11 +32,24 @@ const tokenInputs = reactive(
     ),
 );
 
+const profileIdInputs = reactive(
+    Object.fromEntries(
+        props.integrations.map((item) => [
+            item.provider,
+            item.provider === 'wappi' ? (item.profile_id ?? '') : '',
+        ]),
+    ),
+);
+
 const forms = reactive(
     Object.fromEntries(
         props.integrations.map((item) => [
             item.provider,
-            useForm({ api_token: '' }),
+            useForm(
+                item.provider === 'wappi'
+                    ? { api_token: '', profile_id: '' }
+                    : { api_token: '' },
+            ),
         ]),
     ),
 );
@@ -55,6 +68,19 @@ function saveToken(provider) {
         preserveScroll: true,
         onSuccess: () => {
             tokenInputs[provider] = '';
+            form.reset('api_token');
+        },
+    });
+}
+
+function saveWappi() {
+    const form = forms.wappi;
+    form.api_token = tokenInputs.wappi;
+    form.profile_id = profileIdInputs.wappi;
+    form.put(route('integrations.update', 'wappi'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            tokenInputs.wappi = '';
             form.reset('api_token');
         },
     });
@@ -82,11 +108,31 @@ function accountLabel(item) {
         return item.account.page_name;
     }
 
+    if (item.account.profile_id) {
+        return item.account.name
+            ? `${item.account.name} · ${item.account.profile_id}`
+            : item.account.profile_id;
+    }
+
     return item.account.name;
 }
 
 function isMetaProvider(provider) {
     return provider === 'instagram' || provider === 'facebook';
+}
+
+function isWappiProvider(provider) {
+    return provider === 'wappi';
+}
+
+function wappiCanSave() {
+    const form = forms.wappi;
+
+    return (
+        !form.processing &&
+        tokenInputs.wappi?.trim() &&
+        profileIdInputs.wappi?.trim()
+    );
 }
 </script>
 
@@ -146,7 +192,7 @@ function isMetaProvider(provider) {
                                     {{ item.description }}
                                 </p>
                                 <p
-                                    v-if="isMetaProvider(item.provider) && item.has_token && accountLabel(item)"
+                                    v-if="item.has_token && accountLabel(item)"
                                     class="mt-2 text-sm font-medium text-slate-800"
                                 >
                                     {{ accountLabel(item) }}
@@ -222,6 +268,70 @@ function isMetaProvider(provider) {
                                 </PrimaryButton>
                             </form>
                         </div>
+
+                        <form
+                            v-else-if="isWappiProvider(item.provider)"
+                            class="mt-5 space-y-4"
+                            @submit.prevent="saveWappi()"
+                        >
+                            <div>
+                                <InputLabel
+                                    for="wappi_api_token"
+                                    value="Токен API"
+                                />
+                                <TextInput
+                                    id="wappi_api_token"
+                                    v-model="tokenInputs.wappi"
+                                    type="password"
+                                    class="mt-1 block w-full font-mono text-sm"
+                                    :placeholder="
+                                        item.has_token
+                                            ? 'Новый токен API'
+                                            : 'Токен API из личного кабинета Wappi'
+                                    "
+                                    autocomplete="off"
+                                />
+                                <InputError
+                                    class="mt-2"
+                                    :message="forms.wappi.errors.api_token"
+                                />
+                            </div>
+
+                            <div>
+                                <InputLabel
+                                    for="wappi_profile_id"
+                                    value="ID профиля"
+                                />
+                                <TextInput
+                                    id="wappi_profile_id"
+                                    v-model="profileIdInputs.wappi"
+                                    type="text"
+                                    class="mt-1 block w-full font-mono text-sm"
+                                    placeholder="497962cd-95e5"
+                                    autocomplete="off"
+                                />
+                                <InputError
+                                    class="mt-2"
+                                    :message="forms.wappi.errors.profile_id"
+                                />
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                <PrimaryButton
+                                    type="submit"
+                                    :disabled="!wappiCanSave()"
+                                >
+                                    Сохранить
+                                </PrimaryButton>
+                                <SecondaryButton
+                                    v-if="item.has_token"
+                                    type="button"
+                                    @click="disconnect(item.provider)"
+                                >
+                                    Отключить
+                                </SecondaryButton>
+                            </div>
+                        </form>
 
                         <form
                             v-else-if="!isMetaProvider(item.provider)"

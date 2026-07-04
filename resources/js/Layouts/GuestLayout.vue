@@ -37,7 +37,7 @@ const branding = page.props.branding ?? {};
                 </p>
                 <p class="mt-4 max-w-sm text-sm leading-relaxed text-slate-300">
                     Воронки продаж, карточки сделок, база клиентов и командная
-                    работа — для компаний в Кыргызстане и за её пределами.
+                    работа — для компаний любого масштаба.
                 </p>
             </div>
 

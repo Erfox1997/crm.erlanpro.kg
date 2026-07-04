@@ -25,7 +25,12 @@ class IntegrationController extends Controller
 
         $integrations = collect(IntegrationProvider::cases())->map(function (IntegrationProvider $provider) use ($stored) {
             $record = $stored->get($provider->value);
-            $hasToken = $record !== null && $record->api_token !== null && $record->api_token !== '';
+            $hasToken = match ($provider) {
+                IntegrationProvider::Wappi => $record !== null
+                    && filled($record->api_token)
+                    && filled($record->metadata['profile_id'] ?? null),
+                default => $record !== null && filled($record->api_token),
+            };
 
             $item = [
                 'provider' => $provider->value,
@@ -55,6 +60,17 @@ class IntegrationController extends Controller
                 ];
             }
 
+            if ($provider === IntegrationProvider::Wappi) {
+                $item['profile_id'] = $record?->metadata['profile_id'] ?? null;
+
+                if ($hasToken) {
+                    $item['account'] = [
+                        'name' => $record->metadata['profile_name'] ?? null,
+                        'profile_id' => $record->metadata['profile_id'] ?? null,
+                    ];
+                }
+            }
+
             return $item;
         })->values();
 
@@ -71,12 +87,30 @@ class IntegrationController extends Controller
 
         $companyId = (int) $request->user()->company_id;
 
-        $validated = $request->validate([
+        $rules = [
             'api_token' => 'required|string|max:2000',
-        ]);
+        ];
+
+        if ($integrationProvider === IntegrationProvider::Wappi) {
+            $rules['profile_id'] = 'required|string|max:255';
+        }
+
+        $validated = $request->validate($rules);
 
         $apiToken = $validated['api_token'];
         $attributes = ['api_token' => $apiToken];
+
+        if ($integrationProvider === IntegrationProvider::Wappi) {
+            $existing = CompanyIntegration::query()
+                ->where('company_id', $companyId)
+                ->where('provider', $integrationProvider->value)
+                ->first();
+
+            $metadata = $existing?->metadata ?? [];
+            $metadata['profile_id'] = trim($validated['profile_id']);
+
+            $attributes['metadata'] = $metadata;
+        }
 
         if ($integrationProvider === IntegrationProvider::Instagram) {
             $apiToken = InstagramMessengerService::normalizeAccessToken($apiToken);
@@ -124,9 +158,11 @@ class IntegrationController extends Controller
             $attributes,
         );
 
-        return back()->with('success', __('Токен :name сохранён.', [
-            'name' => $integrationProvider->label(),
-        ]));
+        $message = $integrationProvider === IntegrationProvider::Wappi
+            ? __('Интеграция :name сохранена.', ['name' => $integrationProvider->label()])
+            : __('Токен :name сохранён.', ['name' => $integrationProvider->label()]);
+
+        return back()->with('success', $message);
     }
 
     public function destroy(Request $request, string $provider): RedirectResponse

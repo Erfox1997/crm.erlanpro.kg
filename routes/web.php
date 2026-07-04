@@ -1,5 +1,9 @@
 <?php
 
+use App\Http\Controllers\Admin\CompanyController as AdminCompanyController;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\PaymentRequisiteController as AdminPaymentRequisiteController;
+use App\Http\Controllers\Admin\TariffController as AdminTariffController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DealController;
@@ -12,6 +16,7 @@ use App\Http\Controllers\PipelineController;
 use App\Http\Controllers\PipelineTunnelController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StageController;
+use App\Http\Controllers\TariffController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -41,7 +46,20 @@ Route::get('/terms', function () {
     ]);
 })->name('terms');
 
-Route::middleware(['auth', 'verified', 'company'])->group(function () {
+Route::middleware(['auth', 'verified', 'platform.admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        Route::get('/', AdminDashboardController::class)->name('dashboard');
+        Route::resource('tariffs', AdminTariffController::class)->except(['show']);
+        Route::get('companies', [AdminCompanyController::class, 'index'])->name('companies.index');
+        Route::get('companies/{company}', [AdminCompanyController::class, 'show'])->name('companies.show');
+        Route::put('companies/{company}', [AdminCompanyController::class, 'update'])->name('companies.update');
+        Route::get('payment-requisites', [AdminPaymentRequisiteController::class, 'edit'])->name('payment-requisites.edit');
+        Route::post('payment-requisites', [AdminPaymentRequisiteController::class, 'update'])->name('payment-requisites.update');
+    });
+
+Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
     Route::resource('clients', ClientController::class)->except(['show']);
@@ -72,7 +90,7 @@ Route::middleware(['auth', 'verified', 'company'])->group(function () {
     Route::post('/integrations/meta/oauth/{provider}/select-page', [MetaOAuthController::class, 'storeSelectedPage'])->name('integrations.meta.oauth.select-page.store');
     Route::put('/integrations/{provider}', [IntegrationController::class, 'update'])->name('integrations.update');
     Route::delete('/integrations/{provider}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
-    Route::get('/tariffs', fn () => Inertia::render('Placeholder', ['title' => 'Тарифы']))->name('tariffs.index');
+    Route::get('/tariffs', [TariffController::class, 'index'])->name('tariffs.index');
 
     Route::get('/deals', function (Request $request) {
         return redirect()->route('funnels.index', $request->query());

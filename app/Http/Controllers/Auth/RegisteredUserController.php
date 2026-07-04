@@ -39,6 +39,7 @@ class RegisteredUserController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'terms_accepted' => 'accepted',
         ]);
 
         $user = DB::transaction(function () use ($validated) {
@@ -47,6 +48,8 @@ class RegisteredUserController extends Controller
             $company = Company::query()->create([
                 'name' => $validated['company_name'],
                 'tariff_id' => $tariff->id,
+                'subscription_ends_at' => now()->addDays($tariff->duration_days),
+                'is_active' => true,
                 'settings' => [],
             ]);
 

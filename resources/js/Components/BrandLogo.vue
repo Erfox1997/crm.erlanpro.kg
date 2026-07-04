@@ -1,4 +1,9 @@
 <script setup>
+import { usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+
+const page = usePage();
+
 defineProps({
     showDomain: {
         type: Boolean,
@@ -21,14 +26,18 @@ defineProps({
         default: false,
     },
 });
+
+const logoUrl = computed(
+    () => page.props.branding?.logoUrl ?? '/images/logo.jpeg',
+);
 </script>
 
 <template>
     <span class="inline-flex min-w-0 items-center gap-3">
         <img
-            src="/images/erlanpro-logo.svg"
+            :src="logoUrl"
             :alt="name"
-            class="shrink-0 rounded-xl"
+            class="shrink-0 rounded-xl object-cover"
             :class="iconClass"
         />
         <span v-if="showDomain" class="min-w-0 truncate leading-tight">

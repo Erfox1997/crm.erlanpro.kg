@@ -39,3 +39,9 @@ npm run build
 #    META_WEBHOOK_VERIFY_TOKEN=crm-ulan-meta-webhook
 # 6. В CRM: Интеграции → Отключить → Подключить через Meta
 #    (OAuth через Facebook, токен страницы + Page API)
+
+
+php artisan migrate --force
+php artisan db:seed --class=TariffSeeder --force
+php artisan db:seed --class=PlatformAdminSeeder --force
+npm run build

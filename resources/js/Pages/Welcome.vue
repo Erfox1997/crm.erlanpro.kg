@@ -77,18 +77,18 @@ const branding = page.props.branding ?? {};
                     <p
                         class="inline-flex rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-200"
                     >
-                        crm.erlanpro.kg
+                        Запуск за несколько минут · бесплатная регистрация
                     </p>
                     <h1
                         class="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl sm:leading-tight"
                     >
-                        CRM для продаж и переписки в одном окне
+                        Управляйте клиентами и сделками в одном месте
                     </h1>
                     <p
                         class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-400"
                     >
-                        Воронки, клиенты, Instagram и Facebook Messenger —
-                        для команды ErlanPro. Данные каждой компании изолированы.
+                        Воронки продаж, карточки сделок, база клиентов и
+                        командная работа — для компаний любого масштаба.
                     </p>
 
                     <div
@@ -194,7 +194,7 @@ const branding = page.props.branding ?? {};
                             Instagram
                         </h2>
                         <p class="mt-2 text-sm leading-relaxed text-slate-400">
-                            Direct-сообщения @erlanpro.kg в CRM.
+                            Входящие Direct-сообщения в одном окне.
                         </p>
                     </div>
 
@@ -222,7 +222,7 @@ const branding = page.props.branding ?? {};
                             Facebook
                         </h2>
                         <p class="mt-2 text-sm leading-relaxed text-slate-400">
-                            Messenger страницы ErlanPro.
+                            Диалоги Messenger без переключения вкладок.
                         </p>
                     </div>
                 </div>

@@ -8,6 +8,39 @@ import { computed, onMounted, ref, watch } from 'vue';
 
 const page = usePage();
 const branding = page.props.branding ?? {};
+const subscription = computed(() => page.props.subscription ?? null);
+
+const subscriptionLine = computed(() => {
+    if (!subscription.value?.tariff_name) {
+        return '';
+    }
+
+    if (!subscription.value.ends_at) {
+        return subscription.value.tariff_name;
+    }
+
+    if (subscription.value.is_expired) {
+        return `${subscription.value.tariff_name} · истекла ${subscription.value.ends_at}`;
+    }
+
+    return `${subscription.value.tariff_name} · до ${subscription.value.ends_at}`;
+});
+
+const subscriptionTextClass = computed(() => {
+    if (!subscription.value) {
+        return 'text-slate-600';
+    }
+
+    if (subscription.value.is_expired) {
+        return 'text-red-700';
+    }
+
+    if (subscription.value.expires_soon) {
+        return 'text-amber-800';
+    }
+
+    return 'text-slate-600';
+});
 
 const NAV_MODE_KEY = 'crm-sidebar-mode';
 
@@ -48,10 +81,21 @@ function closeMobileDrawer() {
 function toggleMobileDrawer() {
     mobileDrawerOpen.value = !mobileDrawerOpen.value;
 }
+
+const userInitials = computed(() => {
+    const name = page.props.auth.user?.name ?? '';
+
+    return name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() ?? '')
+        .join('');
+});
 </script>
 
 <template>
-    <div class="min-h-screen bg-gray-100 md:flex">
+    <div class="min-h-screen bg-[#eef2f8] md:flex">
         <!-- Мобильная подложка -->
         <div
             v-show="mobileDrawerOpen"
@@ -86,7 +130,7 @@ function toggleMobileDrawer() {
 
         <aside
             :class="[
-                'shrink-0 flex-col border-slate-800 bg-slate-900 text-slate-100',
+                'relative shrink-0 flex-col overflow-hidden border-white/10 bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 text-slate-100',
                 'fixed inset-y-0 left-0 z-50 flex h-full w-[min(18rem,calc(100vw-3rem))] max-w-[18rem] border-e transition-transform duration-200 ease-out',
                 'md:static md:z-0 md:h-auto md:max-w-none md:translate-x-0',
                 mobileDrawerOpen ? 'translate-x-0' : '-translate-x-full',
@@ -96,7 +140,14 @@ function toggleMobileDrawer() {
             ]"
         >
             <div
-                class="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-3"
+                class="pointer-events-none absolute -right-16 top-24 h-48 w-48 rounded-full bg-indigo-500/20 blur-3xl"
+            />
+            <div
+                class="pointer-events-none absolute -left-10 bottom-20 h-40 w-40 rounded-full bg-teal-500/10 blur-3xl"
+            />
+
+            <div
+                class="relative flex items-center justify-between gap-2 border-b border-white/10 px-3 py-3"
             >
                 <Link
                     :href="route('dashboard')"
@@ -199,8 +250,15 @@ function toggleMobileDrawer() {
             </div>
 
             <nav
-                class="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-3"
+                class="relative flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-3"
             >
+                <p
+                    v-if="!collapseLabels"
+                    class="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"
+                >
+                    Рабочая зона
+                </p>
+
                 <CrmSidebarLink
                     :href="route('dashboard')"
                     title="Дашборд"
@@ -416,62 +474,120 @@ function toggleMobileDrawer() {
             </nav>
 
             <div
-                class="mt-auto border-t border-slate-800 px-3 py-4 text-xs text-slate-400"
+                class="relative mt-auto border-t border-white/10 p-3"
                 :class="collapseLabels ? 'md:px-2' : ''"
             >
-                <p
+                <div
                     v-if="page.props.company"
-                    class="truncate font-medium text-slate-200"
-                    :class="collapseLabels ? 'md:sr-only' : ''"
+                    class="rounded-xl bg-white/5 px-3 py-3 backdrop-blur-sm"
+                    :class="collapseLabels ? 'md:p-2 md:text-center' : ''"
                 >
-                    {{ page.props.company.name }}
-                </p>
-                <p
-                    v-if="page.props.company?.tariff"
-                    :class="collapseLabels ? 'md:sr-only' : ''"
-                >
-                    Тариф: {{ page.props.company.tariff.name }}
-                </p>
+                    <p
+                        class="truncate text-sm font-medium text-white"
+                        :class="collapseLabels ? 'md:sr-only' : ''"
+                    >
+                        {{ page.props.company.name }}
+                    </p>
+                    <p
+                        v-if="page.props.company?.tariff"
+                        class="mt-1 text-xs text-slate-400"
+                        :class="collapseLabels ? 'md:sr-only' : ''"
+                    >
+                        {{ page.props.company.tariff.name }}
+                    </p>
+                </div>
             </div>
         </aside>
 
         <div class="flex min-h-screen min-w-0 flex-1 flex-col md:min-h-0">
             <header
-                class="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-3 py-3 sm:px-4"
+                class="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-200/70 bg-white/85 px-3 py-2.5 shadow-sm backdrop-blur-md sm:px-5"
             >
-                <button
-                    type="button"
-                    class="inline-flex rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"
-                    aria-label="Открыть меню"
-                    @click="toggleMobileDrawer"
-                >
-                    <svg
-                        class="h-6 w-6"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke-width="1.5"
-                        stroke="currentColor"
+                <div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+                    <button
+                        type="button"
+                        class="inline-flex shrink-0 rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+                        aria-label="Открыть меню"
+                        @click="toggleMobileDrawer"
                     >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
+                        <svg
+                            class="h-6 w-6"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
+                            />
+                        </svg>
+                    </button>
+
+                    <div
+                        v-if="subscriptionLine"
+                        class="hidden min-w-0 items-center gap-2 rounded-full border px-3 py-1 text-xs sm:inline-flex"
+                        :class="
+                            subscription?.is_expired
+                                ? 'border-red-200 bg-red-50 text-red-800'
+                                : subscription?.expires_soon
+                                  ? 'border-amber-200 bg-amber-50 text-amber-900'
+                                  : 'border-teal-200/80 bg-teal-50/90 text-teal-900'
+                        "
+                    >
+                        <span
+                            class="h-1.5 w-1.5 shrink-0 rounded-full"
+                            :class="
+                                subscription?.is_expired
+                                    ? 'bg-red-500'
+                                    : subscription?.expires_soon
+                                      ? 'bg-amber-500'
+                                      : 'bg-teal-500'
+                            "
                         />
-                    </svg>
-                </button>
-                <div class="hidden md:block" />
+                        <span class="truncate">{{ subscriptionLine }}</span>
+                    </div>
+
+                    <p
+                        v-if="subscriptionLine"
+                        class="min-w-0 truncate text-xs sm:hidden"
+                        :class="subscriptionTextClass"
+                    >
+                        {{ subscriptionLine }}
+                    </p>
+
+                    <Link
+                        v-if="subscription?.tariff_name"
+                        :href="route('tariffs.index')"
+                        class="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white transition hover:bg-slate-800"
+                    >
+                        {{
+                            subscription?.is_expired || subscription?.expires_soon
+                                ? 'Продлить'
+                                : 'Тарифы'
+                        }}
+                    </Link>
+                </div>
 
                 <Dropdown align="right" width="48">
                     <template #trigger>
-                        <span class="inline-flex rounded-md">
+                        <span class="inline-flex rounded-full">
                             <button
                                 type="button"
-                                class="inline-flex items-center rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium text-gray-600 transition hover:text-gray-800 focus:outline-none"
+                                class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:shadow"
                             >
-                                {{ $page.props.auth.user.name }}
+                                <span
+                                    class="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-teal-500 text-xs font-bold text-white"
+                                >
+                                    {{ userInitials || 'U' }}
+                                </span>
+                                <span class="hidden max-w-[10rem] truncate sm:inline">
+                                    {{ $page.props.auth.user.name }}
+                                </span>
                                 <svg
-                                    class="-me-0.5 ms-2 h-4 w-4"
+                                    class="h-4 w-4 text-slate-400"
                                     xmlns="http://www.w3.org/2000/svg"
                                     viewBox="0 0 20 20"
                                     fill="currentColor"
@@ -509,14 +625,14 @@ function toggleMobileDrawer() {
 
             <header
                 v-if="$slots.header"
-                class="border-b border-gray-200 bg-white shadow-sm"
+                class="border-b border-slate-200/60 bg-white/50"
             >
-                <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+                <div class="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
                     <slot name="header" />
                 </div>
             </header>
 
-            <main class="flex-1">
+            <main class="flex-1 pb-8">
                 <slot />
             </main>
         </div>

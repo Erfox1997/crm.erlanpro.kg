@@ -39,9 +39,10 @@ class HandleInertiaRequests extends Middleware
                 'appName' => config('app.name'),
                 'name' => 'ErlanPro',
                 'domain' => parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'crm.erlanpro.kg',
-                'logoUrl' => '/images/erlanpro-logo.svg',
+                'logoUrl' => '/images/logo.jpeg',
             ],
             'company' => fn () => $this->sharedCompany($request),
+            'subscription' => fn () => $this->sharedSubscription($request),
             'flash' => [
                 'success' => $request->session()->get('success'),
             ],
@@ -59,5 +60,31 @@ class HandleInertiaRequests extends Middleware
         }
 
         return Company::query()->with('tariff')->find($user->company_id);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function sharedSubscription(Request $request): ?array
+    {
+        $company = $this->sharedCompany($request);
+
+        if ($company === null) {
+            return null;
+        }
+
+        $endsAt = $company->effectiveSubscriptionEndsAt();
+        $isActive = $company->subscriptionIsActive();
+        $expiresSoon = $endsAt !== null
+            && $endsAt->isFuture()
+            && $endsAt->lte(now()->addDays(7));
+
+        return [
+            'tariff_name' => $company->tariff?->name,
+            'ends_at' => $endsAt?->format('d.m.Y'),
+            'is_active' => $isActive,
+            'expires_soon' => $expiresSoon,
+            'is_expired' => ! $isActive && $endsAt !== null,
+        ];
     }
 }

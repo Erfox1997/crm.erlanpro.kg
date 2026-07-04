@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'company' => \App\Http\Middleware\EnsureUserHasCompany::class,
+            'tenant' => \App\Http\Middleware\EnsureTenantAccess::class,
+            'platform.admin' => \App\Http\Middleware\EnsurePlatformAdmin::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [

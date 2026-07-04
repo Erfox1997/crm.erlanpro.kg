@@ -28,10 +28,11 @@ class DashboardController extends Controller
         $openDealsQuery = Deal::query()->where('company_id', $companyId)->whereNull('closed_at');
 
         $stats = [
+            'clients_count' => Client::query()->where('company_id', $companyId)->count(),
+            'deals_count' => Deal::query()->where('company_id', $companyId)->count(),
             'open_deals_count' => (clone $openDealsQuery)->count(),
             'pipeline_value' => (float) (clone $openDealsQuery)->sum('amount'),
-            'clients_count' => Client::query()->where('company_id', $companyId)->count(),
-            'revenue_won' => (float) Deal::query()
+            'revenue' => (float) Deal::query()
                 ->where('company_id', $companyId)
                 ->whereHas('stage', fn ($q) => $q->where('outcome', 'won'))
                 ->sum('amount'),

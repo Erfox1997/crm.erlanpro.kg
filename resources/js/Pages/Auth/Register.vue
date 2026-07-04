@@ -11,6 +11,7 @@ const form = useForm({
     email: '',
     password: '',
     password_confirmation: '',
+    terms_accepted: false,
 });
 
 const submit = () => {
@@ -117,11 +118,45 @@ const submit = () => {
                 />
             </div>
 
+            <div class="mt-6">
+                <label class="flex items-start gap-3">
+                    <input
+                        id="terms_accepted"
+                        v-model="form.terms_accepted"
+                        type="checkbox"
+                        class="mt-1 rounded border-slate-300 text-indigo-600 shadow-sm focus:ring-indigo-500"
+                        required
+                    />
+                    <span class="text-sm leading-relaxed text-slate-600">
+                        Я принимаю
+                        <Link
+                            :href="route('terms')"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-500"
+                        >
+                            Пользовательское соглашение
+                        </Link>
+                        и
+                        <Link
+                            :href="route('privacy')"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-500"
+                        >
+                            Политику конфиденциальности
+                        </Link>
+                    </span>
+                </label>
+
+                <InputError class="mt-2" :message="form.errors.terms_accepted" />
+            </div>
+
             <div class="mt-8 flex flex-col gap-4">
                 <button
                     type="submit"
                     class="inline-flex w-full items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-25"
-                    :disabled="form.processing"
+                    :disabled="form.processing || !form.terms_accepted"
                 >
                     Зарегистрироваться
                 </button>
