@@ -734,28 +734,26 @@ watch(
                             <button
                                 v-else
                                 type="button"
-                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#54656f] transition hover:bg-[#e9edef] disabled:opacity-40"
-                                :class="isRecording ? 'bg-red-50 text-red-600' : ''"
+                                class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40"
+                                :class="isRecording
+                                    ? 'bg-[#00a884] text-white shadow-md'
+                                    : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'"
                                 :disabled="sendForm.processing"
                                 title="Голосовое сообщение"
                                 @click="isRecording ? stopRecording() : startRecording()"
                             >
+                                <span
+                                    v-if="isRecording"
+                                    class="absolute inset-0 animate-ping rounded-full bg-[#00a884]/30"
+                                />
                                 <svg
-                                    class="h-5 w-5"
-                                    fill="none"
+                                    class="relative h-[22px] w-[22px]"
                                     viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    stroke-width="1.8"
+                                    fill="currentColor"
+                                    aria-hidden="true"
                                 >
                                     <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M12 18.75a4.5 4.5 0 004.5-4.5V9a4.5 4.5 00-9 0v5.25a4.5 4.5 004.5 4.5z"
-                                    />
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M8.25 18.75v1.125c0 .621.504 1.125 1.125 1.125h5.25c.621 0 1.125-.504 1.125-1.125V18.75"
+                                        d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.3 6-6.72h-1.7z"
                                     />
                                 </svg>
                             </button>

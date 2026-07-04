@@ -303,20 +303,16 @@ class FacebookMessengerService
             throw new \RuntimeException(__('Facebook не настроен: нет page_id.'));
         }
 
-        $attachmentId = $this->metaAttachments->uploadAudio(
+        $attachmentId = $this->metaAttachments->sendAudio(
             $integration,
             $filePath,
             $originalName,
+            $mimeType,
             'facebook_login',
-            $pageId,
-        );
-
-        $result = $this->metaAttachments->sendAudioAttachment(
-            $integration,
             $conversation->participant_id,
-            $attachmentId,
-            'facebook_login',
             $pageId,
+            $pageId,
+            false,
         );
 
         $storedPath = $this->attachments->storeLocalAudioCopy($integration->company_id, $filePath, $originalName);
@@ -325,7 +321,7 @@ class FacebookMessengerService
             'company_id' => $integration->company_id,
             'messenger_conversation_id' => $conversation->id,
             'direction' => 'outbound',
-            'external_id' => $result['message_id'] !== '' ? $result['message_id'] : null,
+            'external_id' => $attachmentId['message_id'] !== '' ? $attachmentId['message_id'] : null,
             'body' => '',
             'attachments' => [[
                 'type' => 'audio',

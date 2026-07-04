@@ -724,27 +724,25 @@ class InstagramMessengerService
                 throw new \RuntimeException(__('Instagram не настроен: нет page_id Facebook.'));
             }
 
-            $uploadEntityId = $pageId;
             $messagesEntityId = $pageId;
+            $uploadEntityId = $pageId;
+            $instagramPlatform = true;
         } else {
-            $uploadEntityId = $igUserId;
             $messagesEntityId = $igUserId;
+            $uploadEntityId = null;
+            $instagramPlatform = false;
         }
 
-        $attachmentId = $this->metaAttachments->uploadAudio(
+        $result = $this->metaAttachments->sendAudio(
             $integration,
             $filePath,
             $originalName,
+            $mimeType,
             $authMode,
-            $uploadEntityId,
-        );
-
-        $result = $this->metaAttachments->sendAudioAttachment(
-            $integration,
             $conversation->participant_id,
-            $attachmentId,
-            $authMode,
             $messagesEntityId,
+            $uploadEntityId,
+            $instagramPlatform,
         );
 
         $storedPath = $this->storeLocalAudioCopy($integration->company_id, $filePath, $originalName);
@@ -989,32 +987,79 @@ class InstagramMessengerService
     protected function fetchMessageAttachmentsFromApi(CompanyIntegration $integration, string $messageId): array
     {
         $authMode = $this->authMode($integration);
+        $attempts = $this->attachmentFetchAttempts($integration, $authMode, $messageId);
 
-        try {
-            $response = $this->client($integration->api_token, $authMode)->get(
-                $this->url("{$messageId}/attachments", $authMode),
-            );
-            $response->throw();
+        foreach ($attempts as $attempt) {
+            try {
+                $response = $this->client($integration->api_token, $attempt['auth_mode'])->get(
+                    $this->url($attempt['path'], $attempt['auth_mode']),
+                    $attempt['query'] ?? [],
+                );
+                $response->throw();
 
-            $items = $response->json('data', []);
-            if (is_array($items) && $items !== []) {
-                return $this->normalizeAttachmentItems($items);
+                if (($attempt['parse'] ?? 'items') === 'items') {
+                    $items = $response->json('data', []);
+                    if (is_array($items) && $items !== []) {
+                        $parsed = $this->normalizeAttachmentItems($items);
+                        if ($parsed !== []) {
+                            return $parsed;
+                        }
+                    }
+
+                    continue;
+                }
+
+                $parsed = $this->normalizeAttachmentsFromApi($response->json());
+                if ($parsed !== []) {
+                    return $parsed;
+                }
+            } catch (\Throwable) {
+                continue;
             }
-        } catch (\Throwable) {
-            // Fall through to message fields request.
         }
 
-        try {
-            $response = $this->client($integration->api_token, $authMode)->get(
-                $this->url($messageId, $authMode),
-                ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
-            );
-            $response->throw();
+        return [];
+    }
 
-            return $this->normalizeAttachmentsFromApi($response->json());
-        } catch (\Throwable) {
-            return [];
+    /**
+     * @return list<array{auth_mode: string, path: string, query?: array<string, mixed>, parse?: string}>
+     */
+    protected function attachmentFetchAttempts(
+        CompanyIntegration $integration,
+        string $authMode,
+        string $messageId,
+    ): array {
+        $attempts = [
+            [
+                'auth_mode' => $authMode,
+                'path' => "{$messageId}/attachments",
+                'parse' => 'items',
+            ],
+            [
+                'auth_mode' => $authMode,
+                'path' => $messageId,
+                'query' => ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
+            ],
+        ];
+
+        $pageId = (string) ($integration->metadata['page_id'] ?? '');
+        if ($pageId !== '' && $authMode === 'facebook_login') {
+            $attempts[] = [
+                'auth_mode' => 'facebook_login',
+                'path' => $messageId,
+                'query' => ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
+            ];
         }
+
+        if ($authMode === 'instagram_login') {
+            $attempts[] = [
+                'auth_mode' => 'instagram_login',
+                'path' => $messageId,
+                'query' => ['fields' => 'attachments'],
+            ];
+        }
+
+        return $attempts;
     }
 
     /**
@@ -1156,15 +1201,30 @@ class InstagramMessengerService
             }
 
             $type = (string) ($item['type'] ?? 'file');
+            $payload = is_array($item['payload'] ?? null) ? $item['payload'] : [];
             $url = (string) (
-                $item['payload']['url']
-                ?? $item['payload']['story_media_url']
-                ?? $item['payload']['src']
+                $payload['url']
+                ?? $payload['story_media_url']
+                ?? $payload['src']
+                ?? $item['url']
                 ?? ''
             );
-            $mimeType = isset($item['payload']['mime_type']) ? (string) $item['payload']['mime_type'] : null;
+            $mimeType = isset($payload['mime_type'])
+                ? (string) $payload['mime_type']
+                : (isset($item['mime_type']) ? (string) $item['mime_type'] : null);
+
+            if ($url === '' && ! $this->looksLikeAudioAttachment($item, $mimeType, null)) {
+                continue;
+            }
 
             if ($url === '') {
+                $attachments[] = [
+                    'type' => $this->normalizeAttachmentType($type, $mimeType),
+                    'url' => '',
+                    'name' => isset($item['title']) ? (string) $item['title'] : null,
+                    'mime_type' => $mimeType,
+                ];
+
                 continue;
             }
 
