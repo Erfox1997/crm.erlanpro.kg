@@ -10,6 +10,8 @@ use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Messenger\MessengerSyncService;
 use App\Services\Meta\MetaAttachmentService;
+use App\Services\Meta\MetaMessagingSupport;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -245,6 +247,10 @@ class MessengerController extends Controller
             return redirect()
                 ->route('messenger.index', ['conversation' => $conversation->id])
                 ->with('success', __('Сообщение отправлено.'));
+        } catch (RequestException $e) {
+            return back()->withErrors([
+                'body' => MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage()),
+            ]);
         } catch (\Throwable $e) {
             return back()->withErrors(['body' => $e->getMessage()]);
         }

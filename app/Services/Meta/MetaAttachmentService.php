@@ -6,7 +6,6 @@ use App\Models\CompanyIntegration;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\File;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MetaAttachmentService
@@ -14,7 +13,7 @@ class MetaAttachmentService
     public const ATTACHMENT_FIELDS = 'attachments{mime_type,name,file_url,image_data,video_data,audio_data}';
 
     /**
-     * @return array{message_id: string, public_url: ?string}
+     * @return array{message_id: string, public_url: ?string, prepared_path: string, prepared_name: string, prepared_mime: ?string}
      */
     public function sendAudio(
         CompanyIntegration $integration,
@@ -27,16 +26,14 @@ class MetaAttachmentService
         ?string $uploadEntityId = null,
         bool $instagramPlatform = false,
     ): array {
-        if ($instagramPlatform || $authMode === 'instagram_login') {
-            [$filePath, $originalName, $mimeType] = $this->prepareInstagramAudio(
-                $filePath,
-                $originalName,
-                $mimeType,
-            );
-        }
+        [$filePath, $originalName, $mimeType] = $this->prepareMetaAudio(
+            $filePath,
+            $originalName,
+            $mimeType,
+        );
 
         if ($authMode === 'instagram_login') {
-            return $this->sendInstagramLoginAudioByUrl(
+            $result = $this->sendInstagramLoginAudioByUrl(
                 $integration,
                 $filePath,
                 $originalName,
@@ -44,42 +41,42 @@ class MetaAttachmentService
                 $recipientId,
                 $messagesEntityId,
             );
+
+            return array_merge($result, [
+                'prepared_path' => $filePath,
+                'prepared_name' => $originalName,
+                'prepared_mime' => $mimeType,
+            ]);
         }
 
         $uploadEntityId = $uploadEntityId ?: $messagesEntityId;
 
-        $attachmentId = $this->uploadAudioToPage(
+        $messageId = $this->sendPageAudioDirectUpload(
             $integration,
             $filePath,
             $originalName,
-            $uploadEntityId,
-            $instagramPlatform,
-        );
-
-        $messageId = $this->sendPageAudioByAttachmentId(
-            $integration,
+            $mimeType,
             $recipientId,
-            $attachmentId,
-            $messagesEntityId,
+            $uploadEntityId,
             $instagramPlatform,
         );
 
         return [
             'message_id' => $messageId,
             'public_url' => null,
+            'prepared_path' => $filePath,
+            'prepared_name' => $originalName,
+            'prepared_mime' => $mimeType,
         ];
     }
 
     /**
-     * @return array{message_id: string, public_url: string}
-     */
-    /**
      * @return array{0: string, 1: string, 2: ?string}
      */
-    public function prepareInstagramAudio(string $filePath, string $originalName, ?string $mimeType): array
+    public function prepareMetaAudio(string $filePath, string $originalName, ?string $mimeType): array
     {
-        if ($this->isInstagramSupportedAudio($originalName, $mimeType)) {
-            return [$filePath, $originalName, $mimeType];
+        if ($this->isMetaSupportedAudio($originalName, $mimeType)) {
+            return [$filePath, $this->normalizeAudioFilename($originalName, $mimeType), $mimeType];
         }
 
         if ($this->canTranscodeWithFfmpeg()) {
@@ -87,14 +84,14 @@ class MetaAttachmentService
         }
 
         throw new \RuntimeException(
-            __('Instagram принимает только M4A, MP4, WAV или AAC. Используйте Safari/Edge или установите ffmpeg на сервере.'),
+            __('Meta принимает M4A, MP4, WAV или AAC. Установите ffmpeg на сервере или запишите голос в Safari/Edge.'),
         );
     }
 
-    protected function isInstagramSupportedAudio(string $originalName, ?string $mimeType): bool
+    protected function isMetaSupportedAudio(string $originalName, ?string $mimeType): bool
     {
         $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-        $supportedExtensions = ['m4a', 'mp4', 'aac', 'wav'];
+        $supportedExtensions = ['m4a', 'mp4', 'aac', 'wav', 'mp3'];
         $mimeType = strtolower((string) $mimeType);
 
         if (in_array($extension, $supportedExtensions, true)) {
@@ -104,7 +101,25 @@ class MetaAttachmentService
         return str_contains($mimeType, 'mp4')
             || str_contains($mimeType, 'aac')
             || str_contains($mimeType, 'wav')
-            || str_contains($mimeType, 'm4a');
+            || str_contains($mimeType, 'm4a')
+            || str_contains($mimeType, 'mpeg');
+    }
+
+    protected function normalizeAudioFilename(string $originalName, ?string $mimeType): string
+    {
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+        if (in_array($extension, ['m4a', 'mp4', 'aac', 'wav', 'mp3'], true)) {
+            return $originalName;
+        }
+
+        $mimeType = strtolower((string) $mimeType);
+
+        if (str_contains($mimeType, 'wav')) {
+            return 'voice.wav';
+        }
+
+        return 'voice.m4a';
     }
 
     protected function canTranscodeWithFfmpeg(): bool
@@ -137,12 +152,15 @@ class MetaAttachmentService
         exec($command, $output, $code);
 
         if ($code !== 0 || ! is_file($outputPath)) {
-            throw new \RuntimeException(__('Не удалось конвертировать аудио для Instagram.'));
+            throw new \RuntimeException(__('Не удалось конвертировать аудио для Meta.'));
         }
 
         return [$outputPath, 'voice.m4a', 'audio/mp4'];
     }
 
+    /**
+     * @return array{message_id: string, public_url: string}
+     */
     protected function sendInstagramLoginAudioByUrl(
         CompanyIntegration $integration,
         string $filePath,
@@ -151,7 +169,7 @@ class MetaAttachmentService
         string $recipientId,
         string $igUserId,
     ): array {
-        $publicUrl = $this->publishTemporaryAudio($filePath, $originalName, $mimeType);
+        $publicUrl = $this->publishTemporaryAudio($filePath, $originalName);
         $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
 
         $url = 'https://graph.instagram.com/'.MetaMessagingSupport::graphVersion()."/{$igUserId}/messages";
@@ -177,7 +195,46 @@ class MetaAttachmentService
         ];
     }
 
-    protected function publishTemporaryAudio(string $filePath, string $originalName, ?string $mimeType = null): string
+    protected function sendPageAudioDirectUpload(
+        CompanyIntegration $integration,
+        string $filePath,
+        string $originalName,
+        ?string $mimeType,
+        string $recipientId,
+        string $pageId,
+        bool $instagramPlatform,
+    ): string {
+        $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
+        $url = MetaMessagingSupport::graphUrl("{$pageId}/messages", $instagramPlatform ? 'instagram' : null);
+
+        $message = json_encode([
+            'attachment' => [
+                'type' => 'audio',
+                'payload' => (object) [],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $response = Http::acceptJson()
+            ->timeout(120)
+            ->attach(
+                'filedata',
+                fopen($filePath, 'r'),
+                $originalName,
+                ['Content-Type' => $mimeType ?: 'audio/mp4'],
+            )
+            ->post($url, [
+                'recipient' => json_encode(['id' => $recipientId], JSON_THROW_ON_ERROR),
+                'message' => $message,
+                'messaging_type' => 'RESPONSE',
+                'access_token' => $token,
+            ]);
+
+        $response->throw();
+
+        return (string) ($response->json('message_id') ?? $response->json('id') ?? '');
+    }
+
+    protected function publishTemporaryAudio(string $filePath, string $originalName): string
     {
         $filename = uniqid('voice_', true).'_'.preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
 
@@ -236,83 +293,10 @@ class MetaAttachmentService
             'ogg' => 'audio/ogg',
             'wav' => 'audio/wav',
             'aac' => 'audio/aac',
+            'mp3' => 'audio/mpeg',
             'm4a', 'mp4' => 'audio/mp4',
             default => 'audio/mp4',
         };
-    }
-
-    protected function uploadAudioToPage(
-        CompanyIntegration $integration,
-        string $filePath,
-        string $originalName,
-        string $pageId,
-        bool $instagramPlatform,
-    ): string {
-        $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
-        $message = json_encode([
-            'attachment' => [
-                'type' => 'audio',
-                'payload' => [
-                    'is_reusable' => true,
-                ],
-            ],
-        ], JSON_THROW_ON_ERROR);
-
-        $query = $instagramPlatform ? '?platform=instagram' : '';
-
-        $response = Http::acceptJson()
-            ->timeout(120)
-            ->attach('filedata', fopen($filePath, 'r'), $originalName)
-            ->post(
-                MetaMessagingSupport::graphUrl("{$pageId}/message_attachments").$query,
-                [
-                    'message' => $message,
-                    'access_token' => $token,
-                ],
-            );
-
-        $response->throw();
-
-        $attachmentId = (string) ($response->json('attachment_id') ?? '');
-        if ($attachmentId === '') {
-            throw new \RuntimeException(__('Meta не вернула attachment_id для аудио.'));
-        }
-
-        return $attachmentId;
-    }
-
-    protected function sendPageAudioByAttachmentId(
-        CompanyIntegration $integration,
-        string $recipientId,
-        string $attachmentId,
-        string $pageId,
-        bool $instagramPlatform,
-    ): string {
-        $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
-
-        $payload = [
-            'recipient' => ['id' => $recipientId],
-            'message' => [
-                'attachment' => [
-                    'type' => 'audio',
-                    'payload' => [
-                        'attachment_id' => $attachmentId,
-                    ],
-                ],
-            ],
-            'messaging_type' => 'RESPONSE',
-        ];
-
-        $query = $instagramPlatform ? '?platform=instagram' : '';
-
-        $response = MetaMessagingSupport::client($token)->post(
-            MetaMessagingSupport::graphUrl("{$pageId}/messages").$query,
-            $payload,
-        );
-
-        $response->throw();
-
-        return (string) ($response->json('message_id') ?? $response->json('id') ?? '');
     }
 
     public function streamRemoteUrl(CompanyIntegration $integration, string $url): StreamedResponse

@@ -7,6 +7,7 @@ use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Services\Meta\MetaAttachmentService;
+use App\Services\Meta\MetaMessagingSupport;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
@@ -677,18 +678,23 @@ class InstagramMessengerService
                 throw new \RuntimeException(__('Instagram не настроен: нет page_id Facebook.'));
             }
 
-            $messagesPath = "{$pageId}/messages";
+            $response = MetaMessagingSupport::client($integration->api_token)->post(
+                MetaMessagingSupport::graphUrl("{$pageId}/messages", 'instagram'),
+                [
+                    'recipient' => ['id' => $conversation->participant_id],
+                    'message' => ['text' => $text],
+                    'messaging_type' => 'RESPONSE',
+                ],
+            );
         } else {
-            $messagesPath = "{$igUserId}/messages";
+            $response = $this->client($integration->api_token, $authMode)->post(
+                $this->url("{$igUserId}/messages", $authMode),
+                [
+                    'recipient' => ['id' => $conversation->participant_id],
+                    'message' => ['text' => $text],
+                ],
+            );
         }
-
-        $response = $this->client($integration->api_token, $authMode)->post(
-            $this->url($messagesPath, $authMode),
-            [
-                'recipient' => ['id' => $conversation->participant_id],
-                'message' => ['text' => $text],
-            ],
-        );
 
         $response->throw();
 
@@ -751,7 +757,11 @@ class InstagramMessengerService
             $instagramPlatform,
         );
 
-        $storedPath = $this->metaAttachments->storeSentAudioCopy($integration->company_id, $filePath, $originalName);
+        $storedPath = $this->metaAttachments->storeSentAudioCopy(
+            $integration->company_id,
+            $result['prepared_path'],
+            $result['prepared_name'],
+        );
 
         return MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
@@ -762,8 +772,8 @@ class InstagramMessengerService
             'attachments' => [[
                 'type' => 'audio',
                 'url' => '',
-                'name' => $originalName,
-                'mime_type' => $mimeType,
+                'name' => $result['prepared_name'],
+                'mime_type' => $result['prepared_mime'],
                 'storage_path' => $storedPath,
             ]],
             'status' => 'sent',
@@ -795,7 +805,7 @@ class InstagramMessengerService
             }
 
             foreach ($entry['messaging'] ?? [] as $event) {
-                if ($this->processMessagingEvent($integration, $igAccountId, $event)) {
+                if ($this->processInstagramMessagingEvent($integration, $igAccountId, $event)) {
                     $processed++;
                 }
             }
@@ -807,7 +817,7 @@ class InstagramMessengerService
     /**
      * @param  array<string, mixed>  $event
      */
-    protected function processMessagingEvent(
+    public function processInstagramMessagingEvent(
         CompanyIntegration $integration,
         string $igAccountId,
         array $event,
@@ -880,7 +890,12 @@ class InstagramMessengerService
             ->where('provider', IntegrationProvider::Instagram->value)
             ->whereNotNull('api_token')
             ->get()
-            ->first(fn (CompanyIntegration $i) => (string) ($i->metadata['instagram_user_id'] ?? '') === $instagramAccountId);
+            ->first(function (CompanyIntegration $integration) use ($instagramAccountId) {
+                $metadata = $integration->metadata ?? [];
+
+                return (string) ($metadata['instagram_user_id'] ?? '') === $instagramAccountId
+                    || (string) ($metadata['page_id'] ?? '') === $instagramAccountId;
+            });
     }
 
     protected function authMode(?CompanyIntegration $integration): string
@@ -922,10 +937,10 @@ class InstagramMessengerService
 
     protected function formatApiError(RequestException $e): string
     {
-        $body = $e->response?->json();
-        $message = $body['error']['message'] ?? $e->getMessage();
-
-        return (string) $message;
+        return MetaMessagingSupport::formatGraphError(
+            $e->response?->json(),
+            $e->getMessage(),
+        );
     }
 
     /**

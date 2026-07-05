@@ -321,7 +321,11 @@ class FacebookMessengerService
             false,
         );
 
-        $storedPath = $this->attachments->storeLocalAudioCopy($integration->company_id, $filePath, $originalName);
+        $storedPath = $this->attachments->storeLocalAudioCopy(
+            $integration->company_id,
+            $attachmentId['prepared_path'],
+            $attachmentId['prepared_name'],
+        );
 
         return MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
@@ -332,8 +336,8 @@ class FacebookMessengerService
             'attachments' => [[
                 'type' => 'audio',
                 'url' => '',
-                'name' => $originalName,
-                'mime_type' => $mimeType,
+                'name' => $attachmentId['prepared_name'],
+                'mime_type' => $attachmentId['prepared_mime'],
                 'storage_path' => $storedPath,
             ]],
             'status' => 'sent',
@@ -377,6 +381,24 @@ class FacebookMessengerService
         string $pageId,
         array $event,
     ): bool {
+        if (($event['messaging_product'] ?? '') === 'instagram') {
+            $instagramIntegration = CompanyIntegration::query()
+                ->where('company_id', $integration->company_id)
+                ->where('provider', IntegrationProvider::Instagram->value)
+                ->whereNotNull('api_token')
+                ->first();
+
+            if ($instagramIntegration) {
+                $igAccountId = (string) ($instagramIntegration->metadata['instagram_user_id'] ?? '');
+
+                return $this->attachments->processInstagramMessagingEvent(
+                    $instagramIntegration,
+                    $igAccountId,
+                    $event,
+                );
+            }
+        }
+
         $message = $event['message'] ?? null;
         if (! is_array($message) || ! isset($message['mid'])) {
             return false;
@@ -450,9 +472,9 @@ class FacebookMessengerService
 
     protected function formatApiError(RequestException $e): string
     {
-        $body = $e->response?->json();
-        $message = $body['error']['message'] ?? $e->getMessage();
-
-        return (string) $message;
+        return MetaMessagingSupport::formatGraphError(
+            $e->response?->json(),
+            $e->getMessage(),
+        );
     }
 }

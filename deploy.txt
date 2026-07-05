@@ -15,33 +15,7 @@ php artisan view:clear
 npm ci
 npm run build
 
-# --- Meta for Developers (https://developers.facebook.com/) ---
-# 1. Приложение → Instagram → добавить аккаунт erlanpro.kg
-# 2. Шаг 3 Webhooks:
-#    URL: https://crm.erlanpro.kg/webhooks/meta
-#    Verify Token: значение META_WEBHOOK_VERIFY_TOKEN из .env
-#    Подписка: messages (instagram)
-# 3. Facebook Login → Settings → Valid OAuth Redirect URIs (оба URL):
-#    https://crm.erlanpro.kg/integrations/instagram/oauth/callback
-#    https://crm.erlanpro.kg/integrations/facebook/oauth/callback
-# 4. Настройки приложения → Основное:
-#    - Добавить платформу «Веб-сайт», Site URL: https://crm.erlanpro.kg
-#    - Домены приложений: crm.erlanpro.kg
-#    - URL политики конфиденциальности: https://crm.erlanpro.kg/privacy
-#    - URL пользовательского соглашения: https://crm.erlanpro.kg/terms
-#    - URL удаления данных: https://crm.erlanpro.kg/privacy#data-deletion
-# 5. Роли приложения → ваш Facebook-аккаунт как Администратор/Разработчик
-#    (Instagram Tester недостаточно; входите в OAuth тем же Facebook-аккаунтом)
-# 6. .env на сервере — App ID из «Основное» (должен совпадать с CRM → Интеграции):
-#    APP_URL=https://crm.erlanpro.kg
-#    INSTAGRAM_APP_ID=...
-#    INSTAGRAM_APP_SECRET=...
-#    META_OAUTH_PROVIDER=facebook
-#    META_WEBHOOK_VERIFY_TOKEN=crm-ulan-meta-webhook
-# 6. В CRM: Интеграции → Отключить → Подключить через Meta
-#    (OAuth через Facebook, токен страницы + Page API)
-
-
+Создание пользователей
 php artisan migrate --force
 php artisan db:seed --class=TariffSeeder --force
 php artisan db:seed --class=PlatformAdminSeeder --force
@@ -57,5 +31,25 @@ npm run build
 # Авто-синхронизация каждые 10 мин (cron):
 #   */10 * * * * cd /var/www/web/sites/crm.erlanpro.kg && php artisan messenger:sync --all >> storage/logs/messenger-sync.log 2>&1
 
+только один раз
 php artisan storage:link
 npm run build
+
+
+1. Команда для терминала (без таймаута браузера):
+
+cd /var/www/web/sites/crm.erlanpro.kg
+# одна компания (ID покажет команда без параметров)
+php artisan messenger:sync --company=1
+# все компании с Instagram/Facebook
+php artisan messenger:sync --all
+Список компаний:
+php artisan messenger:sync
+
+2. Кнопка «Обновить» в CRM на сервере (Linux) теперь запускает синхронизацию в фоне — страница сразу ответит, 504 не будет. Лог:
+
+
+tail -f storage/logs/messenger-sync.log
+3. Авто-синхронизация по cron (каждые 10 мин):
+
+*/10 * * * * cd /var/www/web/sites/crm.erlanpro.kg && php artisan messenger:sync --all >> storage/logs/messenger-sync.log 2>&1
