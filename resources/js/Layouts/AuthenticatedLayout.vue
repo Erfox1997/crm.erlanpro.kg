@@ -288,7 +288,7 @@ const userInitials = computed(() => {
                 <CrmSidebarLink
                     :href="route('messenger.index')"
                     title="Месенджер"
-                    :active="!!route().current('messenger.*')"
+                    :active="!!route().current('messenger.index')"
                     :badge="$page.props.messengerUnread"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -310,6 +310,32 @@ const userInitials = computed(() => {
                         </svg>
                     </template>
                     Месенджер
+                </CrmSidebarLink>
+
+                <CrmSidebarLink
+                    :href="route('messenger.quick-replies.index')"
+                    title="Быстрые ответы"
+                    :active="!!route().current('messenger.quick-replies.*')"
+                    :collapsed="collapseLabels"
+                    @navigate="closeMobileDrawer"
+                >
+                    <template #icon>
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke-width="1.5"
+                            stroke="currentColor"
+                            class="h-5 w-5"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM8.625 12h7.5M8.625 15h4.125M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                        </svg>
+                    </template>
+                    Быстрые ответы
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
