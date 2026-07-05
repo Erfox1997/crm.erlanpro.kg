@@ -8,6 +8,7 @@ use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
+use App\Services\Messenger\MessengerSyncService;
 use App\Services\Meta\MetaAttachmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,6 +24,7 @@ class MessengerController extends Controller
         private InstagramMessengerService $instagram,
         private FacebookMessengerService $facebook,
         private MetaAttachmentService $metaAttachments,
+        private MessengerSyncService $messengerSync,
     ) {}
 
     public function index(Request $request): Response
@@ -137,6 +139,7 @@ class MessengerController extends Controller
     public function sync(Request $request): RedirectResponse
     {
         $companyId = (int) $request->user()->company_id;
+
         $instagramIntegration = $this->instagram->integrationForCompany($companyId);
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
 
@@ -146,43 +149,56 @@ class MessengerController extends Controller
                 ->withErrors(['sync' => __('Подключите Instagram или Facebook в разделе «Интеграции».')]);
         }
 
-        $errors = [];
-        $synced = 0;
+        if ($this->dispatchBackgroundSync($companyId)) {
+            return back()->with(
+                'success',
+                __('Синхронизация запущена в фоне. Подождите 1–2 минуты и обновите страницу (F5).'),
+            );
+        }
 
         try {
-            if ($instagramIntegration) {
-                if (! ($instagramIntegration->metadata['instagram_user_id'] ?? null)) {
-                    $instagramIntegration = $this->instagram->refreshIntegrationMetadata($instagramIntegration);
-                }
+            $result = $this->messengerSync->syncForCompany($companyId);
 
-                $result = $this->instagram->syncConversations($instagramIntegration);
-                $synced += $result['synced'];
-                $errors = array_merge($errors, $result['errors']);
-            }
-
-            if ($facebookIntegration) {
-                if (! ($facebookIntegration->metadata['page_id'] ?? null)) {
-                    $facebookIntegration = $this->facebook->refreshIntegrationMetadata($facebookIntegration);
-                }
-
-                $result = $this->facebook->syncConversations($facebookIntegration);
-                $synced += $result['synced'];
-                $errors = array_merge($errors, $result['errors']);
-            }
-
-            if ($errors !== []) {
+            if ($result['errors'] !== []) {
                 return back()->withErrors([
-                    'sync' => implode(' ', $errors),
+                    'sync' => implode(' ', $result['errors']),
                 ]);
             }
 
             return back()->with(
                 'success',
-                __('Диалоги обновлены: :count', ['count' => $synced]),
+                __('Диалоги обновлены: :count', ['count' => $result['synced']]),
             );
         } catch (\Throwable $e) {
             return back()->withErrors(['sync' => $e->getMessage()]);
         }
+    }
+
+    protected function dispatchBackgroundSync(int $companyId): bool
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            return false;
+        }
+
+        if (! function_exists('exec')) {
+            return false;
+        }
+
+        $logFile = storage_path('logs/messenger-sync.log');
+        $php = PHP_BINARY;
+        $artisan = base_path('artisan');
+
+        $command = sprintf(
+            '%s %s messenger:sync --company=%d >> %s 2>&1 &',
+            escapeshellarg($php),
+            escapeshellarg($artisan),
+            $companyId,
+            escapeshellarg($logFile),
+        );
+
+        exec($command);
+
+        return true;
     }
 
     public function send(Request $request, MessengerConversation $conversation): RedirectResponse

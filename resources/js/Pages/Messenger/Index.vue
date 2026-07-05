@@ -377,6 +377,13 @@ watch(
         </div>
 
         <div
+            v-if="$page.props.flash?.success"
+            class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800"
+        >
+            {{ $page.props.flash.success }}
+        </div>
+
+        <div
             class="flex h-[calc(100dvh-4.25rem)] min-h-[32rem] overflow-hidden rounded-xl border border-[#d1d7db] bg-white shadow-sm"
         >
             <!-- Список чатов -->

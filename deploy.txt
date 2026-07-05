@@ -47,5 +47,15 @@ php artisan db:seed --class=TariffSeeder --force
 php artisan db:seed --class=PlatformAdminSeeder --force
 npm run build
 
+# --- Синхронизация мессенджера (без 504 timeout) ---
+# Вручную для одной компании:
+#   php artisan messenger:sync --company=1
+# Для всех компаний:
+#   php artisan messenger:sync --all
+# Лог фоновой синхронизации (кнопка «Обновить» в CRM):
+#   tail -f storage/logs/messenger-sync.log
+# Авто-синхронизация каждые 10 мин (cron):
+#   */10 * * * * cd /var/www/web/sites/crm.erlanpro.kg && php artisan messenger:sync --all >> storage/logs/messenger-sync.log 2>&1
+
 php artisan storage:link
 npm run build
