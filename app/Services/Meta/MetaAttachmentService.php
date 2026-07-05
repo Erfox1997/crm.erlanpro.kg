@@ -298,6 +298,166 @@ class MetaAttachmentService
         return (string) ($response->json('message_id') ?? $response->json('id') ?? '');
     }
 
+    /**
+     * @return array{message_id: string, public_url: ?string, prepared_path: string, prepared_name: string, prepared_mime: ?string}
+     */
+    public function sendImage(
+        CompanyIntegration $integration,
+        string $filePath,
+        string $originalName,
+        ?string $mimeType,
+        string $authMode,
+        string $recipientId,
+        string $messagesEntityId,
+        ?string $uploadEntityId = null,
+        bool $instagramPlatform = false,
+    ): array {
+        if ($authMode === 'instagram_login') {
+            $publicUrl = $this->publishTemporaryImage($filePath, $originalName);
+            $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
+            $url = 'https://graph.instagram.com/'.MetaMessagingSupport::graphVersion()."/{$messagesEntityId}/messages";
+
+            $response = MetaMessagingSupport::client($token)->post($url, [
+                'recipient' => ['id' => $recipientId],
+                'messaging_type' => 'RESPONSE',
+                'message' => [
+                    'attachment' => [
+                        'type' => 'image',
+                        'payload' => [
+                            'url' => $publicUrl,
+                            'is_reusable' => false,
+                        ],
+                    ],
+                ],
+            ]);
+
+            $response->throw();
+
+            return [
+                'message_id' => (string) ($response->json('message_id') ?? $response->json('id') ?? ''),
+                'public_url' => $publicUrl,
+                'prepared_path' => $filePath,
+                'prepared_name' => $originalName,
+                'prepared_mime' => $mimeType,
+            ];
+        }
+
+        $uploadEntityId = $uploadEntityId ?: $messagesEntityId;
+
+        $attachmentId = $this->uploadReusableImageAttachment(
+            $integration,
+            $filePath,
+            $originalName,
+            $mimeType,
+            $uploadEntityId,
+            $instagramPlatform,
+        );
+
+        $messageId = $this->sendMessageWithImageAttachmentId(
+            $integration,
+            $recipientId,
+            $messagesEntityId,
+            $attachmentId,
+            $instagramPlatform,
+        );
+
+        return [
+            'message_id' => $messageId,
+            'public_url' => null,
+            'prepared_path' => $filePath,
+            'prepared_name' => $originalName,
+            'prepared_mime' => $mimeType,
+        ];
+    }
+
+    protected function uploadReusableImageAttachment(
+        CompanyIntegration $integration,
+        string $filePath,
+        string $originalName,
+        ?string $mimeType,
+        string $pageId,
+        bool $instagramPlatform,
+    ): string {
+        $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
+        $url = MetaMessagingSupport::graphUrl("{$pageId}/message_attachments", $instagramPlatform ? 'instagram' : null);
+        $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName) ?: 'image.jpg';
+        $contentType = $mimeType ?: 'image/jpeg';
+
+        $message = json_encode([
+            'attachment' => [
+                'type' => 'image',
+                'payload' => [
+                    'is_reusable' => true,
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $response = Http::acceptJson()
+            ->timeout(120)
+            ->attach(
+                'filedata',
+                fopen($filePath, 'r'),
+                $safeName,
+                ['Content-Type' => $contentType],
+            )
+            ->post($url, [
+                'message' => $message,
+                'access_token' => $token,
+            ]);
+
+        $response->throw();
+
+        $attachmentId = (string) ($response->json('attachment_id') ?? '');
+
+        if ($attachmentId === '') {
+            throw new \RuntimeException(__('Meta не вернула attachment_id для изображения.'));
+        }
+
+        return $attachmentId;
+    }
+
+    protected function sendMessageWithImageAttachmentId(
+        CompanyIntegration $integration,
+        string $recipientId,
+        string $pageId,
+        string $attachmentId,
+        bool $instagramPlatform,
+    ): string {
+        $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
+        $url = MetaMessagingSupport::graphUrl("{$pageId}/messages", $instagramPlatform ? 'instagram' : null);
+
+        $response = MetaMessagingSupport::client($token)->post($url, [
+            'recipient' => ['id' => $recipientId],
+            'messaging_type' => 'RESPONSE',
+            'message' => [
+                'attachment' => [
+                    'type' => 'image',
+                    'payload' => [
+                        'attachment_id' => $attachmentId,
+                    ],
+                ],
+            ],
+        ]);
+
+        $response->throw();
+
+        return (string) ($response->json('message_id') ?? $response->json('id') ?? '');
+    }
+
+    protected function publishTemporaryImage(string $filePath, string $originalName): string
+    {
+        $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName) ?: 'image.jpg';
+        $filename = uniqid('image_', true).'_'.$safeName;
+
+        Storage::disk('public')->putFileAs(
+            'messenger/outbound',
+            new File($filePath),
+            $filename,
+        );
+
+        return Storage::disk('public')->url('messenger/outbound/'.$filename);
+    }
+
     protected function publishTemporaryAudio(string $filePath, string $originalName): string
     {
         $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName) ?: 'voice.m4a';

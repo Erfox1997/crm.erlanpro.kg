@@ -17,6 +17,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -71,7 +72,16 @@ class MessengerController extends Controller
             ->where('company_id', $companyId)
             ->orderBy('sort_order')
             ->orderBy('id')
-            ->get(['id', 'title', 'body']);
+            ->get()
+            ->map(fn (MessengerQuickReply $item) => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'type' => $item->type,
+                'body' => $item->body,
+                'attachment_url' => $item->attachment_path
+                    ? route('messenger.quick-replies.attachment', $item)
+                    : null,
+            ]);
 
         $selectedId = $request->query('conversation');
         $selectedConversation = null;
@@ -240,6 +250,46 @@ class MessengerController extends Controller
         }
     }
 
+    public function sendQuickReply(
+        Request $request,
+        MessengerConversation $conversation,
+        MessengerQuickReply $quickReply,
+    ): RedirectResponse {
+        $companyId = (int) $request->user()->company_id;
+        abort_unless($conversation->company_id === $companyId, 403);
+        abort_unless($quickReply->company_id === $companyId, 403);
+
+        try {
+            if ($conversation->channel === IntegrationProvider::Facebook->value) {
+                $integration = $this->facebook->integrationForCompany($companyId);
+                if (! $integration) {
+                    return back()->withErrors(['body' => __('Facebook не подключён.')]);
+                }
+
+                $this->dispatchQuickReply($this->facebook, $integration, $conversation, $quickReply);
+            } else {
+                $integration = $this->instagram->integrationForCompany($companyId);
+                if (! $integration) {
+                    return back()->withErrors(['body' => __('Instagram не подключён.')]);
+                }
+
+                $this->dispatchQuickReply($this->instagram, $integration, $conversation, $quickReply);
+            }
+
+            $conversation->update(['last_message_at' => now()]);
+
+            return redirect()
+                ->route('messenger.index', ['conversation' => $conversation->id])
+                ->with('success', __('Сообщение отправлено.'));
+        } catch (RequestException $e) {
+            return back()->withErrors([
+                'body' => MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage()),
+            ]);
+        } catch (\Throwable $e) {
+            return back()->withErrors(['body' => $e->getMessage()]);
+        }
+    }
+
     /**
      * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
      */
@@ -313,6 +363,49 @@ class MessengerController extends Controller
             $path,
             $audio->getClientOriginalName() ?: 'voice.webm',
             $audio->getMimeType(),
+        );
+    }
+
+    protected function dispatchQuickReply(
+        FacebookMessengerService|InstagramMessengerService $service,
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        MessengerQuickReply $quickReply,
+    ): void {
+        if ($quickReply->type === 'text') {
+            $service->sendMessage($integration, $conversation, (string) $quickReply->body);
+
+            return;
+        }
+
+        if (! $quickReply->attachment_path) {
+            throw new \RuntimeException(__('Файл шаблона не найден.'));
+        }
+
+        $path = Storage::disk('local')->path($quickReply->attachment_path);
+        if (! is_file($path)) {
+            throw new \RuntimeException(__('Файл шаблона не найден.'));
+        }
+
+        if ($quickReply->type === 'audio') {
+            $service->sendAudioMessage(
+                $integration,
+                $conversation,
+                $path,
+                $quickReply->attachment_name ?: 'voice.m4a',
+                $quickReply->attachment_mime,
+            );
+
+            return;
+        }
+
+        $service->sendImageMessage(
+            $integration,
+            $conversation,
+            $path,
+            $quickReply->attachment_name ?: 'image.jpg',
+            $quickReply->attachment_mime,
+            $quickReply->body,
         );
     }
 }

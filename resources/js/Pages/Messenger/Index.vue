@@ -46,7 +46,8 @@ const props = defineProps({
 const messagesEnd = ref(null);
 const syncing = ref(false);
 const searchQuery = ref('');
-const quickRepliesOpen = ref(false);
+const slashActiveIndex = ref(0);
+const messageInput = ref(null);
 
 const sendForm = useForm({
     body: '',
@@ -84,6 +85,32 @@ const filteredConversations = computed(() => {
     });
 });
 
+const slashQuickReplyQuery = computed(() => {
+    const match = sendForm.body.match(/^\/(\S*)$/);
+
+    return match ? match[1].toLowerCase() : null;
+});
+
+const slashQuickRepliesOpen = computed(() => (
+    slashQuickReplyQuery.value !== null && props.quickReplies.length > 0
+));
+
+const filteredSlashQuickReplies = computed(() => {
+    if (slashQuickReplyQuery.value === null) {
+        return [];
+    }
+
+    const query = slashQuickReplyQuery.value;
+
+    return props.quickReplies
+        .filter((reply) => query === '' || reply.title.toLowerCase().includes(query))
+        .slice(0, 8);
+});
+
+watch(filteredSlashQuickReplies, () => {
+    slashActiveIndex.value = 0;
+});
+
 function channelBadgeClass(channel) {
     return channel === 'facebook'
         ? 'bg-[#1877f2] text-white'
@@ -117,13 +144,65 @@ function syncConversations() {
     });
 }
 
-function applyQuickReply(body) {
-    sendForm.body = body;
-    quickRepliesOpen.value = false;
+function applyQuickReply(reply) {
+    if (!props.selectedConversation) {
+        return;
+    }
+
+    if (reply.type === 'text') {
+        sendForm.body = reply.body || '';
+        nextTick(() => messageInput.value?.focus());
+
+        return;
+    }
+
+    router.post(
+        route('messenger.send-quick-reply', [props.selectedConversation.id, reply.id]),
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                sendForm.reset('body');
+                scrollToBottom();
+            },
+        },
+    );
+}
+
+function quickReplyPreview(reply) {
+    if (reply.type === 'text') {
+        return reply.body;
+    }
+
+    if (reply.type === 'audio') {
+        return reply.body || '🎤 Голосовое сообщение';
+    }
+
+    return reply.body || '🖼 Изображение';
+}
+
+function onMessageInputKeydown(event) {
+    if (!slashQuickRepliesOpen.value || filteredSlashQuickReplies.value.length === 0) {
+        return;
+    }
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        slashActiveIndex.value = (slashActiveIndex.value + 1) % filteredSlashQuickReplies.value.length;
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        slashActiveIndex.value = (slashActiveIndex.value - 1 + filteredSlashQuickReplies.value.length)
+            % filteredSlashQuickReplies.value.length;
+    } else if (event.key === 'Enter') {
+        event.preventDefault();
+        applyQuickReply(filteredSlashQuickReplies.value[slashActiveIndex.value]);
+    } else if (event.key === 'Escape') {
+        sendForm.body = '';
+    }
 }
 
 function sendMessage() {
-    if (!props.selectedConversation || !sendForm.body.trim()) {
+    if (!props.selectedConversation || !sendForm.body.trim() || slashQuickRepliesOpen.value) {
         return;
     }
 
@@ -790,65 +869,44 @@ watch(
                             </button>
                         </div>
 
-                        <div class="flex items-end gap-2">
-                            <div
-                                v-if="quickReplies.length > 0"
-                                class="relative shrink-0"
-                            >
-                                <button
-                                    type="button"
-                                    class="flex h-11 w-11 items-center justify-center rounded-full text-[#54656f] transition hover:bg-[#e9edef]"
-                                    title="Быстрые ответы"
-                                    @click="quickRepliesOpen = !quickRepliesOpen"
-                                >
-                                    <svg
-                                        class="h-5 w-5"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                        stroke-width="1.8"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM8.625 12h7.5M8.625 15h4.125M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                        />
-                                    </svg>
-                                </button>
+                        <div class="relative flex items-end gap-2">
+                            <div class="relative min-w-0 flex-1">
                                 <div
-                                    v-if="quickRepliesOpen"
-                                    class="absolute bottom-12 left-0 z-20 max-h-56 w-64 overflow-y-auto rounded-lg border border-[#d1d7db] bg-white py-1 shadow-lg"
+                                    v-if="slashQuickRepliesOpen && filteredSlashQuickReplies.length > 0"
+                                    class="absolute bottom-full left-0 right-0 z-30 mb-2 max-h-64 overflow-y-auto rounded-lg border border-[#d1d7db] bg-white py-1 shadow-lg"
                                 >
                                     <button
-                                        v-for="reply in quickReplies"
+                                        v-for="(reply, index) in filteredSlashQuickReplies"
                                         :key="reply.id"
                                         type="button"
-                                        class="block w-full px-3 py-2 text-left hover:bg-[#f0f2f5]"
-                                        @click="applyQuickReply(reply.body)"
+                                        class="block w-full px-3 py-2.5 text-left transition"
+                                        :class="index === slashActiveIndex
+                                            ? 'bg-[#f0f2f5]'
+                                            : 'hover:bg-[#f0f2f5]'"
+                                        @click="applyQuickReply(reply)"
                                     >
-                                        <span class="block text-sm font-medium text-[#111b21]">{{ reply.title }}</span>
-                                        <span class="mt-0.5 block truncate text-xs text-[#667781]">{{ reply.body }}</span>
+                                        <span class="block text-sm font-semibold text-[#111b21]">
+                                            /{{ reply.title }}
+                                        </span>
+                                        <span class="mt-1 block max-h-24 overflow-hidden whitespace-pre-wrap text-xs leading-relaxed text-[#667781]">
+                                            {{ quickReplyPreview(reply) }}
+                                        </span>
                                     </button>
-                                    <Link
-                                        :href="route('messenger.quick-replies.index')"
-                                        class="block border-t border-[#e9edef] px-3 py-2 text-xs text-[#00a884] hover:bg-[#f0f2f5]"
-                                        @click="quickRepliesOpen = false"
-                                    >
-                                        Настроить шаблоны →
-                                    </Link>
                                 </div>
+
+                                <input
+                                    ref="messageInput"
+                                    v-model="sendForm.body"
+                                    type="text"
+                                    placeholder="Введите сообщение или / для шаблона"
+                                    class="w-full rounded-lg border-0 bg-white px-4 py-2.5 text-sm text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30"
+                                    :disabled="sendForm.processing || isRecording"
+                                    @keydown="onMessageInputKeydown"
+                                >
                             </div>
 
-                            <input
-                                v-model="sendForm.body"
-                                type="text"
-                                placeholder="Введите сообщение"
-                                class="flex-1 rounded-lg border-0 bg-white px-4 py-2.5 text-sm text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30"
-                                :disabled="sendForm.processing || isRecording"
-                            />
-
                             <button
-                                v-if="sendForm.body.trim()"
+                                v-if="sendForm.body.trim() && !slashQuickRepliesOpen"
                                 type="submit"
                                 class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#008f6f] disabled:opacity-40"
                                 :disabled="sendForm.processing || isRecording"

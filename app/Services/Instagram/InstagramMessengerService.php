@@ -889,6 +889,70 @@ class InstagramMessengerService
         ]);
     }
 
+    public function sendImageMessage(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        string $filePath,
+        string $originalName,
+        ?string $mimeType = null,
+        ?string $caption = null,
+    ): MessengerMessage {
+        $igUserId = (string) ($integration->metadata['instagram_user_id'] ?? '');
+        if ($igUserId === '') {
+            $integration = $this->refreshIntegrationMetadata($integration);
+            $igUserId = (string) ($integration->metadata['instagram_user_id'] ?? '');
+        }
+
+        if ($igUserId === '') {
+            throw new \RuntimeException(__('Instagram не настроен: нет ID аккаунта.'));
+        }
+
+        $authMode = $this->authMode($integration);
+        $pageId = (string) ($integration->metadata['page_id'] ?? '');
+
+        if ($authMode === 'facebook_login') {
+            if ($pageId === '') {
+                throw new \RuntimeException(__('Instagram не настроен: нет page_id Facebook.'));
+            }
+
+            $messagesEntityId = $pageId;
+            $uploadEntityId = $pageId;
+            $instagramPlatform = true;
+        } else {
+            $messagesEntityId = $igUserId;
+            $uploadEntityId = null;
+            $instagramPlatform = false;
+        }
+
+        $result = $this->metaAttachments->sendImage(
+            $integration,
+            $filePath,
+            $originalName,
+            $mimeType,
+            $authMode,
+            $conversation->participant_id,
+            $messagesEntityId,
+            $uploadEntityId,
+            $instagramPlatform,
+        );
+
+        return MessengerMessage::query()->create([
+            'company_id' => $integration->company_id,
+            'messenger_conversation_id' => $conversation->id,
+            'direction' => 'outbound',
+            'external_id' => $result['message_id'] !== '' ? $result['message_id'] : null,
+            'body' => $caption ?? '',
+            'attachments' => [[
+                'type' => 'image',
+                'url' => $result['public_url'] ?? '',
+                'name' => $result['prepared_name'],
+                'mime_type' => $result['prepared_mime'],
+            ]],
+            'status' => 'sent',
+            'sent_at' => now(),
+        ]);
+    }
+
     public function storeLocalAudioCopy(int $companyId, string $filePath, string $originalName): string
     {
         return $this->metaAttachments->storeSentAudioCopy($companyId, $filePath, $originalName);

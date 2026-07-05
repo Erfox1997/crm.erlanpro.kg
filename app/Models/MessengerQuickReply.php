@@ -10,7 +10,11 @@ class MessengerQuickReply extends Model
     protected $fillable = [
         'company_id',
         'title',
+        'type',
         'body',
+        'attachment_path',
+        'attachment_mime',
+        'attachment_name',
         'sort_order',
     ];
 

@@ -373,6 +373,53 @@ class FacebookMessengerService
         ]);
     }
 
+    public function sendImageMessage(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        string $filePath,
+        string $originalName,
+        ?string $mimeType = null,
+        ?string $caption = null,
+    ): MessengerMessage {
+        $pageId = (string) ($integration->metadata['page_id'] ?? '');
+        if ($pageId === '') {
+            $integration = $this->refreshIntegrationMetadata($integration);
+            $pageId = (string) ($integration->metadata['page_id'] ?? '');
+        }
+
+        if ($pageId === '') {
+            throw new \RuntimeException(__('Facebook не настроен: нет page_id.'));
+        }
+
+        $result = $this->metaAttachments->sendImage(
+            $integration,
+            $filePath,
+            $originalName,
+            $mimeType,
+            'facebook_login',
+            $conversation->participant_id,
+            $pageId,
+            $pageId,
+            false,
+        );
+
+        return MessengerMessage::query()->create([
+            'company_id' => $integration->company_id,
+            'messenger_conversation_id' => $conversation->id,
+            'direction' => 'outbound',
+            'external_id' => $result['message_id'] !== '' ? $result['message_id'] : null,
+            'body' => $caption ?? '',
+            'attachments' => [[
+                'type' => 'image',
+                'url' => $result['public_url'] ?? '',
+                'name' => $result['prepared_name'],
+                'mime_type' => $result['prepared_mime'],
+            ]],
+            'status' => 'sent',
+            'sent_at' => now(),
+        ]);
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      */

@@ -69,9 +69,13 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
     Route::get('/messenger/quick-replies', [MessengerQuickReplyController::class, 'index'])->name('messenger.quick-replies.index');
     Route::post('/messenger/quick-replies', [MessengerQuickReplyController::class, 'store'])->name('messenger.quick-replies.store');
+    Route::post('/messenger/quick-replies/import', [MessengerQuickReplyController::class, 'import'])->name('messenger.quick-replies.import');
+    Route::get('/messenger/quick-replies/sample', [MessengerQuickReplyController::class, 'sample'])->name('messenger.quick-replies.sample');
+    Route::get('/messenger/quick-replies/{quickReply}/attachment', [MessengerQuickReplyController::class, 'attachment'])->name('messenger.quick-replies.attachment');
     Route::put('/messenger/quick-replies/{quickReply}', [MessengerQuickReplyController::class, 'update'])->name('messenger.quick-replies.update');
     Route::delete('/messenger/quick-replies/{quickReply}', [MessengerQuickReplyController::class, 'destroy'])->name('messenger.quick-replies.destroy');
     Route::post('/messenger/conversations/{conversation}/messages', [MessengerController::class, 'send'])->name('messenger.send');
+    Route::post('/messenger/conversations/{conversation}/quick-replies/{quickReply}', [MessengerController::class, 'sendQuickReply'])->name('messenger.send-quick-reply');
     Route::get('/messenger/messages/{message}/attachments/{index}', [MessengerController::class, 'attachment'])
         ->whereNumber('index')
         ->name('messenger.attachment');
