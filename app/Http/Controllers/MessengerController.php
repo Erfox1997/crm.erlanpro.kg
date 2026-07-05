@@ -159,7 +159,7 @@ class MessengerController extends Controller
         }
 
         try {
-            $result = $this->messengerSync->syncForCompany($companyId);
+            $result = $this->messengerSync->syncForCompany($companyId, 1);
 
             if ($result['errors'] !== []) {
                 return back()->withErrors([
@@ -191,7 +191,7 @@ class MessengerController extends Controller
         $artisan = base_path('artisan');
 
         $command = sprintf(
-            '%s %s messenger:sync --company=%d >> %s 2>&1 &',
+            '%s %s messenger:sync --company=%d --days=1 >> %s 2>&1 &',
             escapeshellarg($php),
             escapeshellarg($artisan),
             $companyId,

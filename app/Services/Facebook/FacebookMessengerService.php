@@ -77,7 +77,7 @@ class FacebookMessengerService
     /**
      * @return array{synced: int, errors: list<string>}
      */
-    public function syncConversations(CompanyIntegration $integration): array
+    public function syncConversations(CompanyIntegration $integration, int $days = 1): array
     {
         if (! ($integration->metadata['page_id'] ?? null)) {
             $integration = $this->refreshIntegrationMetadata($integration);
@@ -88,6 +88,7 @@ class FacebookMessengerService
             return ['synced' => 0, 'errors' => [__('Не задан page_id Facebook.')]];
         }
 
+        $since = $this->attachments->syncSinceFromDays($days);
         $errors = [];
         $synced = 0;
 
@@ -97,14 +98,19 @@ class FacebookMessengerService
                 [
                     'platform' => 'messenger',
                     'fields' => 'id,updated_time,participants',
+                    'since' => $since->timestamp,
                 ],
             );
 
             $response->throw();
 
             foreach ($response->json('data', []) as $item) {
+                if (! $this->attachments->isConversationWithinSyncWindow($item, $since)) {
+                    continue;
+                }
+
                 try {
-                    $this->syncConversation($integration, $pageId, $item);
+                    $this->syncConversation($integration, $pageId, $item, $since);
                     $synced++;
                 } catch (\Throwable $e) {
                     $errors[] = $e->getMessage();
@@ -124,6 +130,7 @@ class FacebookMessengerService
         CompanyIntegration $integration,
         string $pageId,
         array $conversationData,
+        ?Carbon $since = null,
     ): void {
         $participant = $this->resolveParticipant($conversationData, $pageId);
         if (! $participant) {
@@ -150,12 +157,16 @@ class FacebookMessengerService
 
         $messagesResponse = MetaMessagingSupport::client((string) $integration->api_token)->get(
             MetaMessagingSupport::graphUrl($externalId),
-            ['fields' => 'messages{message,from,created_time,id,'.MetaAttachmentService::ATTACHMENT_FIELDS.'}'],
+            ['fields' => $this->attachments->recentMessagesFields()],
         );
 
         $messagesResponse->throw();
 
         foreach ($messagesResponse->json('messages.data', []) as $messageData) {
+            if ($since && ! $this->attachments->isMessageWithinSyncWindow($messageData, $since)) {
+                continue;
+            }
+
             $this->storeMessageFromApi($integration, $conversation, $pageId, $messageData);
         }
 

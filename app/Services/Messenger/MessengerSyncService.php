@@ -18,7 +18,7 @@ class MessengerSyncService
     /**
      * @return array{synced: int, errors: list<string>, company_id: int, company_name: ?string}
      */
-    public function syncForCompany(int $companyId): array
+    public function syncForCompany(int $companyId, int $days = 1): array
     {
         $company = Company::query()->find($companyId);
         $instagramIntegration = $this->instagram->integrationForCompany($companyId);
@@ -41,7 +41,7 @@ class MessengerSyncService
                 $instagramIntegration = $this->instagram->refreshIntegrationMetadata($instagramIntegration);
             }
 
-            $result = $this->instagram->syncConversations($instagramIntegration);
+            $result = $this->instagram->syncConversations($instagramIntegration, $days);
             $synced += $result['synced'];
             $errors = array_merge($errors, $result['errors']);
         }
@@ -51,7 +51,7 @@ class MessengerSyncService
                 $facebookIntegration = $this->facebook->refreshIntegrationMetadata($facebookIntegration);
             }
 
-            $result = $this->facebook->syncConversations($facebookIntegration);
+            $result = $this->facebook->syncConversations($facebookIntegration, $days);
             $synced += $result['synced'];
             $errors = array_merge($errors, $result['errors']);
         }

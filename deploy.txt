@@ -22,14 +22,14 @@ php artisan db:seed --class=PlatformAdminSeeder --force
 npm run build
 
 # --- Синхронизация мессенджера (без 504 timeout) ---
-# Вручную для одной компании:
-#   php artisan messenger:sync --company=1
+# Вручную для одной компании (по умолчанию — только последние сутки):
+#   php artisan messenger:sync --company=1 --days=1
 # Для всех компаний:
-#   php artisan messenger:sync --all
+#   php artisan messenger:sync --all --days=1
 # Лог фоновой синхронизации (кнопка «Обновить» в CRM):
 #   tail -f storage/logs/messenger-sync.log
 # Авто-синхронизация каждые 10 мин (cron):
-#   */10 * * * * cd /var/www/web/sites/crm.erlanpro.kg && php artisan messenger:sync --all >> storage/logs/messenger-sync.log 2>&1
+#   */10 * * * * cd /var/www/web/sites/crm.erlanpro.kg && php artisan messenger:sync --all --days=1 >> storage/logs/messenger-sync.log 2>&1
 
 только один раз
 php artisan storage:link
@@ -39,10 +39,10 @@ npm run build
 1. Команда для терминала (без таймаута браузера):
 
 cd /var/www/web/sites/crm.erlanpro.kg
-# одна компания (ID покажет команда без параметров)
-php artisan messenger:sync --company=1
+# одна компания (ID покажет команда без параметров), по умолчанию за 1 день
+php artisan messenger:sync --company=1 --days=1
 # все компании с Instagram/Facebook
-php artisan messenger:sync --all
+php artisan messenger:sync --all --days=1
 Список компаний:
 php artisan messenger:sync
 
@@ -52,4 +52,4 @@ php artisan messenger:sync
 tail -f storage/logs/messenger-sync.log
 3. Авто-синхронизация по cron (каждые 10 мин):
 
-*/10 * * * * cd /var/www/web/sites/crm.erlanpro.kg && php artisan messenger:sync --all >> storage/logs/messenger-sync.log 2>&1
+*/10 * * * * cd /var/www/web/sites/crm.erlanpro.kg && php artisan messenger:sync --all --days=1 >> storage/logs/messenger-sync.log 2>&1

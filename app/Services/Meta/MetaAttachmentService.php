@@ -6,6 +6,7 @@ use App\Models\CompanyIntegration;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MetaAttachmentService

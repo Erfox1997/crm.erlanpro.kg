@@ -448,7 +448,7 @@ class InstagramMessengerService
     /**
      * @return array{synced: int, errors: list<string>}
      */
-    public function syncConversations(CompanyIntegration $integration): array
+    public function syncConversations(CompanyIntegration $integration, int $days = 1): array
     {
         if (! ($integration->metadata['instagram_user_id'] ?? null)) {
             $integration = $this->refreshIntegrationMetadata($integration);
@@ -459,12 +459,16 @@ class InstagramMessengerService
             return ['synced' => 0, 'errors' => [__('Не удалось определить ID аккаунта Instagram.')]];
         }
 
+        $since = $this->syncSinceFromDays($days);
         $errors = [];
         $synced = 0;
 
         try {
             $authMode = $this->authMode($integration);
-            $query = ['fields' => 'id,updated_time,participants'];
+            $query = [
+                'fields' => 'id,updated_time,participants',
+                'since' => $since->timestamp,
+            ];
 
             if ($authMode === 'facebook_login') {
                 $pageId = (string) ($integration->metadata['page_id'] ?? '');
@@ -488,8 +492,12 @@ class InstagramMessengerService
             $conversations = $response->json('data', []);
 
             foreach ($conversations as $item) {
+                if (! $this->isConversationWithinSyncWindow($item, $since)) {
+                    continue;
+                }
+
                 try {
-                    $this->syncConversation($integration, $igUserId, $item);
+                    $this->syncConversation($integration, $igUserId, $item, $since);
                     $synced++;
                 } catch (\Throwable $e) {
                     $errors[] = $e->getMessage();
@@ -502,6 +510,40 @@ class InstagramMessengerService
         return ['synced' => $synced, 'errors' => $errors];
     }
 
+    public function syncSinceFromDays(int $days): Carbon
+    {
+        return Carbon::now()->subDays(max(1, $days));
+    }
+
+    /**
+     * @param  array<string, mixed>  $conversationData
+     */
+    public function isConversationWithinSyncWindow(array $conversationData, Carbon $since): bool
+    {
+        if (! isset($conversationData['updated_time'])) {
+            return true;
+        }
+
+        return Carbon::parse($conversationData['updated_time'])->greaterThanOrEqualTo($since);
+    }
+
+    /**
+     * @param  array<string, mixed>  $messageData
+     */
+    public function isMessageWithinSyncWindow(array $messageData, Carbon $since): bool
+    {
+        if (! isset($messageData['created_time'])) {
+            return true;
+        }
+
+        return Carbon::parse($messageData['created_time'])->greaterThanOrEqualTo($since);
+    }
+
+    public function recentMessagesFields(): string
+    {
+        return 'messages.limit(30){message,from,created_time,id,'.MetaAttachmentService::ATTACHMENT_FIELDS.'}';
+    }
+
     /**
      * @param  array<string, mixed>  $conversationData
      */
@@ -509,6 +551,7 @@ class InstagramMessengerService
         CompanyIntegration $integration,
         string $igUserId,
         array $conversationData,
+        ?Carbon $since = null,
     ): void {
         $participant = $this->resolveParticipant($conversationData, $igUserId);
         if (! $participant) {
@@ -534,24 +577,24 @@ class InstagramMessengerService
         }
 
         $authMode = $this->authMode($integration);
+        $messageFields = $authMode === 'instagram_login'
+            ? 'messages.limit(30){id,created_time,from,to,message,'.MetaAttachmentService::ATTACHMENT_FIELDS.'}'
+            : $this->recentMessagesFields();
 
-        if ($authMode === 'instagram_login') {
-            $messagesResponse = $this->client($integration->api_token, $authMode)->get(
-                $this->url($externalId, $authMode),
-                ['fields' => 'messages{id,created_time,from,to,message,'.MetaAttachmentService::ATTACHMENT_FIELDS.'}'],
-            );
-        } else {
-            $messagesResponse = $this->client($integration->api_token, $authMode)->get(
-                $this->url($externalId, $authMode),
-                ['fields' => 'messages{message,from,created_time,id,'.MetaAttachmentService::ATTACHMENT_FIELDS.'}'],
-            );
-        }
+        $messagesResponse = $this->client($integration->api_token, $authMode)->get(
+            $this->url($externalId, $authMode),
+            ['fields' => $messageFields],
+        );
 
         $messagesResponse->throw();
 
         $messageItems = $messagesResponse->json('messages.data', []);
 
         foreach ($messageItems as $messageData) {
+            if ($since && ! $this->isMessageWithinSyncWindow($messageData, $since)) {
+                continue;
+            }
+
             $this->storeMessageFromApi($integration, $conversation, $igUserId, $messageData);
         }
 
