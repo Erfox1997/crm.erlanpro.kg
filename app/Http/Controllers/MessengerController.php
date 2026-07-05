@@ -261,15 +261,29 @@ class MessengerController extends Controller
      */
     protected function mapAttachmentsForFrontend(MessengerMessage $message): array
     {
-        return collect($message->normalizedAttachments())
-            ->values()
+        $attachments = collect($message->normalizedAttachments())->values();
+
+        if ($attachments->isEmpty() && $message->external_id && trim((string) $message->body) === '') {
+            $attachments = collect([[
+                'type' => 'audio',
+                'url' => '',
+                'name' => null,
+                'mime_type' => 'audio/mp4',
+            ]]);
+        }
+
+        return $attachments
             ->map(function (array $attachment, int $index) use ($message) {
-                $hasSource = ($attachment['url'] ?? '') !== ''
-                    || ($attachment['storage_path'] ?? '') !== '';
+                $hasRemoteUrl = ($attachment['url'] ?? '') !== '';
+                $hasLocalFile = ($attachment['storage_path'] ?? '') !== '';
+                $canLazyLoad = ! $hasRemoteUrl
+                    && ! $hasLocalFile
+                    && ($attachment['type'] ?? '') === 'audio'
+                    && $message->external_id;
 
                 return [
                     'type' => $attachment['type'] ?? 'file',
-                    'url' => $hasSource
+                    'url' => ($hasRemoteUrl || $hasLocalFile || $canLazyLoad)
                         ? route('messenger.attachment', ['message' => $message->id, 'index' => $index])
                         : '',
                     'name' => $attachment['name'] ?? null,

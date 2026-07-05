@@ -92,7 +92,7 @@ class MetaAttachmentService
     protected function isMetaSupportedAudio(string $originalName, ?string $mimeType): bool
     {
         $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-        $supportedExtensions = ['m4a', 'mp4', 'aac', 'wav', 'mp3'];
+        $supportedExtensions = ['m4a', 'mp4', 'aac', 'wav'];
         $mimeType = strtolower((string) $mimeType);
 
         if (in_array($extension, $supportedExtensions, true)) {
@@ -102,8 +102,7 @@ class MetaAttachmentService
         return str_contains($mimeType, 'mp4')
             || str_contains($mimeType, 'aac')
             || str_contains($mimeType, 'wav')
-            || str_contains($mimeType, 'm4a')
-            || str_contains($mimeType, 'mpeg');
+            || str_contains($mimeType, 'm4a');
     }
 
     protected function normalizeAudioFilename(string $originalName, ?string $mimeType): string
@@ -143,7 +142,7 @@ class MetaAttachmentService
     {
         $outputPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.uniqid('voice_', true).'.m4a';
         $command = sprintf(
-            'ffmpeg -y -i %s -c:a aac -b:a 128k %s 2>&1',
+            'ffmpeg -y -i %s -vn -acodec aac -b:a 64k -ac 1 -ar 44100 -movflags +faststart -f ipod %s 2>&1',
             escapeshellarg($filePath),
             escapeshellarg($outputPath),
         );
@@ -177,6 +176,7 @@ class MetaAttachmentService
 
         $response = MetaMessagingSupport::client($token)->post($url, [
             'recipient' => ['id' => $recipientId],
+            'messaging_type' => 'RESPONSE',
             'message' => [
                 'attachment' => [
                     'type' => 'audio',
@@ -205,13 +205,41 @@ class MetaAttachmentService
         string $pageId,
         bool $instagramPlatform,
     ): string {
+        $attachmentId = $this->uploadReusableAudioAttachment(
+            $integration,
+            $filePath,
+            $originalName,
+            $mimeType,
+            $pageId,
+            $instagramPlatform,
+        );
+
+        return $this->sendMessageWithAudioAttachmentId(
+            $integration,
+            $recipientId,
+            $pageId,
+            $attachmentId,
+            $instagramPlatform,
+        );
+    }
+
+    protected function uploadReusableAudioAttachment(
+        CompanyIntegration $integration,
+        string $filePath,
+        string $originalName,
+        ?string $mimeType,
+        string $pageId,
+        bool $instagramPlatform,
+    ): string {
         $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
-        $url = MetaMessagingSupport::graphUrl("{$pageId}/messages", $instagramPlatform ? 'instagram' : null);
+        $url = MetaMessagingSupport::graphUrl("{$pageId}/message_attachments", $instagramPlatform ? 'instagram' : null);
 
         $message = json_encode([
             'attachment' => [
                 'type' => 'audio',
-                'payload' => (object) [],
+                'payload' => [
+                    'is_reusable' => true,
+                ],
             ],
         ], JSON_THROW_ON_ERROR);
 
@@ -224,11 +252,43 @@ class MetaAttachmentService
                 ['Content-Type' => $mimeType ?: 'audio/mp4'],
             )
             ->post($url, [
-                'recipient' => json_encode(['id' => $recipientId], JSON_THROW_ON_ERROR),
                 'message' => $message,
-                'messaging_type' => 'RESPONSE',
                 'access_token' => $token,
             ]);
+
+        $response->throw();
+
+        $attachmentId = (string) ($response->json('attachment_id') ?? '');
+
+        if ($attachmentId === '') {
+            throw new \RuntimeException(__('Meta не вернула attachment_id для голосового сообщения.'));
+        }
+
+        return $attachmentId;
+    }
+
+    protected function sendMessageWithAudioAttachmentId(
+        CompanyIntegration $integration,
+        string $recipientId,
+        string $pageId,
+        string $attachmentId,
+        bool $instagramPlatform,
+    ): string {
+        $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
+        $url = MetaMessagingSupport::graphUrl("{$pageId}/messages", $instagramPlatform ? 'instagram' : null);
+
+        $response = MetaMessagingSupport::client($token)->post($url, [
+            'recipient' => ['id' => $recipientId],
+            'messaging_type' => 'RESPONSE',
+            'message' => [
+                'attachment' => [
+                    'type' => 'audio',
+                    'payload' => [
+                        'attachment_id' => $attachmentId,
+                    ],
+                ],
+            ],
+        ]);
 
         $response->throw();
 
@@ -237,7 +297,12 @@ class MetaAttachmentService
 
     protected function publishTemporaryAudio(string $filePath, string $originalName): string
     {
-        $filename = uniqid('voice_', true).'_'.preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
+        $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName) ?: 'voice.m4a';
+        if (! str_ends_with(strtolower($safeName), '.m4a')) {
+            $safeName = pathinfo($safeName, PATHINFO_FILENAME).'.m4a';
+        }
+
+        $filename = uniqid('voice_', true).'_'.$safeName;
 
         Storage::disk('public')->putFileAs(
             'messenger/outbound',

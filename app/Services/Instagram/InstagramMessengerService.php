@@ -636,7 +636,7 @@ class InstagramMessengerService
         array $messageData,
     ): ?MessengerMessage {
         $externalId = isset($messageData['id']) ? (string) $messageData['id'] : null;
-        $attachments = $this->resolveAttachmentsForMessage($integration, $messageData);
+        $attachments = $this->resolveAttachmentsForMessage($integration, $messageData, true);
         $body = (string) ($messageData['message'] ?? '');
 
         if ($externalId) {
@@ -655,7 +655,7 @@ class InstagramMessengerService
                 if (! $this->attachmentsHavePlayableMedia($existing->normalizedAttachments())) {
                     $resolved = $this->attachmentsHavePlayableMedia($attachments)
                         ? $attachments
-                        : ($externalId ? $this->fetchMessageAttachmentsFromApi($integration, $externalId) : []);
+                        : ($externalId ? $this->fetchMessageAttachmentsFromApi($integration, $externalId, true) : []);
 
                     if ($resolved !== []) {
                         $updates['attachments'] = $resolved;
@@ -891,12 +891,19 @@ class InstagramMessengerService
         );
 
         $externalId = (string) $message['mid'];
-        if (
-            MessengerMessage::query()
-                ->where('messenger_conversation_id', $conversation->id)
-                ->where('external_id', $externalId)
-                ->exists()
-        ) {
+        $existing = MessengerMessage::query()
+            ->where('messenger_conversation_id', $conversation->id)
+            ->where('external_id', $externalId)
+            ->first();
+
+        if ($existing) {
+            if (! $this->attachmentsHavePlayableMedia($existing->normalizedAttachments())) {
+                $attachments = $this->resolveWebhookAttachments($integration, $message, true);
+                if ($this->attachmentsHavePlayableMedia($attachments)) {
+                    $existing->update(['attachments' => $attachments]);
+                }
+            }
+
             return false;
         }
 
@@ -905,7 +912,7 @@ class InstagramMessengerService
             ? Carbon::createFromTimestampMs((int) $event['timestamp'])
             : now();
 
-        $attachments = $this->resolveWebhookAttachments($integration, $message);
+        $attachments = $this->resolveWebhookAttachments($integration, $message, true);
 
         MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
@@ -990,8 +997,11 @@ class InstagramMessengerService
      * @param  array<string, mixed>  $messageData
      * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
      */
-    public function resolveAttachmentsForMessage(CompanyIntegration $integration, array $messageData): array
-    {
+    public function resolveAttachmentsForMessage(
+        CompanyIntegration $integration,
+        array $messageData,
+        bool $instagramPlatform = false,
+    ): array {
         $attachments = $this->normalizeAttachmentsFromApi($messageData);
 
         if ($attachments !== [] && $this->attachmentsHavePlayableMedia($attachments)) {
@@ -1003,7 +1013,7 @@ class InstagramMessengerService
             return $attachments;
         }
 
-        $fetched = $this->fetchMessageAttachmentsFromApi($integration, $messageId);
+        $fetched = $this->fetchMessageAttachmentsFromApi($integration, $messageId, $instagramPlatform);
 
         return $fetched !== [] ? $fetched : $attachments;
     }
@@ -1035,10 +1045,13 @@ class InstagramMessengerService
     /**
      * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
      */
-    public function fetchMessageAttachmentsFromApi(CompanyIntegration $integration, string $messageId): array
-    {
+    public function fetchMessageAttachmentsFromApi(
+        CompanyIntegration $integration,
+        string $messageId,
+        bool $instagramPlatform = false,
+    ): array {
         $authMode = $this->authMode($integration);
-        $attempts = $this->attachmentFetchAttempts($integration, $authMode, $messageId);
+        $attempts = $this->attachmentFetchAttempts($integration, $authMode, $messageId, $instagramPlatform);
 
         foreach ($attempts as $attempt) {
             try {
@@ -1079,19 +1092,22 @@ class InstagramMessengerService
         CompanyIntegration $integration,
         string $authMode,
         string $messageId,
+        bool $instagramPlatform = false,
     ): array {
         $attempts = [];
         $pageId = (string) ($integration->metadata['page_id'] ?? '');
+        $platformQuery = $instagramPlatform ? ['platform' => 'instagram'] : [];
 
         if ($pageId !== '' && $authMode === 'facebook_login') {
             $attempts[] = [
                 'auth_mode' => 'facebook_login',
                 'path' => $messageId,
-                'query' => ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
+                'query' => array_merge(['fields' => MetaAttachmentService::ATTACHMENT_FIELDS], $platformQuery),
             ];
             $attempts[] = [
                 'auth_mode' => 'facebook_login',
                 'path' => "{$messageId}/attachments",
+                'query' => $platformQuery,
                 'parse' => 'items',
             ];
         }
@@ -1107,16 +1123,35 @@ class InstagramMessengerService
                 'path' => "{$messageId}/attachments",
                 'parse' => 'items',
             ];
+
+            if ($pageId !== '') {
+                $attempts[] = [
+                    'auth_mode' => 'facebook_login',
+                    'path' => $messageId,
+                    'query' => array_merge(['fields' => MetaAttachmentService::ATTACHMENT_FIELDS], ['platform' => 'instagram']),
+                ];
+                $attempts[] = [
+                    'auth_mode' => 'facebook_login',
+                    'path' => "{$messageId}/attachments",
+                    'query' => ['platform' => 'instagram'],
+                    'parse' => 'items',
+                ];
+            }
+        }
+
+        if ($instagramPlatform && $pageId !== '' && $authMode === 'facebook_login') {
+            return $attempts;
         }
 
         $attempts[] = [
             'auth_mode' => $authMode,
             'path' => $messageId,
-            'query' => ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
+            'query' => array_merge(['fields' => MetaAttachmentService::ATTACHMENT_FIELDS], $platformQuery),
         ];
         $attempts[] = [
             'auth_mode' => $authMode,
             'path' => "{$messageId}/attachments",
+            'query' => $platformQuery,
             'parse' => 'items',
         ];
 
@@ -1176,8 +1211,11 @@ class InstagramMessengerService
      * @param  array<string, mixed>  $message
      * @return list<array{type: string, url: string, name: ?string, mime_type: ?string, storage_path?: string}>
      */
-    public function resolveWebhookAttachments(CompanyIntegration $integration, array $message): array
-    {
+    public function resolveWebhookAttachments(
+        CompanyIntegration $integration,
+        array $message,
+        bool $instagramPlatform = false,
+    ): array {
         $attachments = $this->normalizeAttachmentsFromWebhook($message);
 
         if ($attachments !== [] && $this->attachmentsHavePlayableMedia($attachments)) {
@@ -1189,7 +1227,7 @@ class InstagramMessengerService
             return $attachments;
         }
 
-        $fetched = $this->fetchMessageAttachmentsFromApi($integration, $messageId);
+        $fetched = $this->fetchMessageAttachmentsFromApi($integration, $messageId, $instagramPlatform);
 
         return $fetched !== [] ? $fetched : $attachments;
     }
@@ -1202,8 +1240,25 @@ class InstagramMessengerService
         MessengerMessage $message,
         int $index,
     ): array {
+        $message->loadMissing('conversation');
+        $instagramPlatform = $message->conversation?->channel === IntegrationProvider::Instagram->value;
+
         $attachments = $message->normalizedAttachments();
         $attachment = $attachments[$index] ?? null;
+
+        if (! is_array($attachment) && $message->external_id && $index === 0) {
+            $fetched = $this->fetchMessageAttachmentsFromApi(
+                $integration,
+                (string) $message->external_id,
+                $instagramPlatform,
+            );
+
+            if ($fetched !== []) {
+                $message->update(['attachments' => $fetched]);
+                $attachments = $fetched;
+                $attachment = $attachments[$index] ?? $attachments[0] ?? null;
+            }
+        }
 
         if (! is_array($attachment)) {
             throw new \RuntimeException(__('Вложение не найдено.'));
@@ -1226,7 +1281,11 @@ class InstagramMessengerService
 
         $url = (string) ($attachment['url'] ?? '');
         if ($url === '' && $message->external_id) {
-            $fetched = $this->fetchMessageAttachmentsFromApi($integration, (string) $message->external_id);
+            $fetched = $this->fetchMessageAttachmentsFromApi(
+                $integration,
+                (string) $message->external_id,
+                $instagramPlatform,
+            );
             $fetchedAttachment = $fetched[$index] ?? $fetched[0] ?? null;
             if (is_array($fetchedAttachment) && ($fetchedAttachment['url'] ?? '') !== '') {
                 $url = (string) $fetchedAttachment['url'];
@@ -1277,7 +1336,7 @@ class InstagramMessengerService
                 ? (string) $payload['mime_type']
                 : (isset($item['mime_type']) ? (string) $item['mime_type'] : null);
 
-            if ($url === '' && ! $this->looksLikeAudioAttachment($item, $mimeType, null) && ! in_array(strtolower($type), ['audio', 'file'], true)) {
+            if ($url === '' && ! $this->looksLikeAudioAttachment($item, $mimeType, null) && ! in_array(strtolower($type), ['audio', 'file', 'voice'], true)) {
                 continue;
             }
 
