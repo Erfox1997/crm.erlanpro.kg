@@ -6,9 +6,11 @@ use App\Enums\IntegrationProvider;
 use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
+use App\Models\MessengerQuickReply;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Messenger\MessengerSyncService;
+use App\Services\Messenger\MessengerUnreadService;
 use App\Services\Meta\MetaAttachmentService;
 use App\Services\Meta\MetaMessagingSupport;
 use Illuminate\Http\Client\RequestException;
@@ -27,6 +29,7 @@ class MessengerController extends Controller
         private FacebookMessengerService $facebook,
         private MetaAttachmentService $metaAttachments,
         private MessengerSyncService $messengerSync,
+        private MessengerUnreadService $unread,
     ) {}
 
     public function index(Request $request): Response
@@ -60,8 +63,15 @@ class MessengerController extends Controller
                     'participant_username' => $c->participant_username,
                     'last_message_at' => $c->last_message_at?->toIso8601String(),
                     'preview' => $lastMessage?->previewLabel(),
+                    'unread_count' => $this->unread->unreadCountForConversation($c),
                 ];
             });
+
+        $quickReplies = MessengerQuickReply::query()
+            ->where('company_id', $companyId)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['id', 'title', 'body']);
 
         $selectedId = $request->query('conversation');
         $selectedConversation = null;
@@ -74,6 +84,8 @@ class MessengerController extends Controller
                 ->first();
 
             if ($conversation) {
+                $this->unread->markConversationRead($conversation);
+
                 $selectedConversation = [
                     'id' => $conversation->id,
                     'channel' => $conversation->channel,
@@ -113,6 +125,7 @@ class MessengerController extends Controller
             'conversations' => $conversations,
             'selectedConversation' => $selectedConversation,
             'messages' => $messages,
+            'quickReplies' => $quickReplies,
             'webhookUrl' => url('/webhooks/meta'),
         ]);
     }
@@ -154,15 +167,10 @@ class MessengerController extends Controller
                 ->withErrors(['sync' => __('Подключите Instagram или Facebook в разделе «Интеграции».')]);
         }
 
-        if ($this->dispatchBackgroundSync($companyId)) {
-            return back()->with(
-                'success',
-                __('Синхронизация запущена в фоне. Подождите 1–2 минуты и обновите страницу (F5).'),
-            );
-        }
+        set_time_limit(120);
 
         try {
-            $result = $this->messengerSync->syncForCompany($companyId, 1);
+            $result = $this->messengerSync->syncQuickForCompany($companyId);
 
             if ($result['errors'] !== []) {
                 return back()->withErrors([
@@ -172,38 +180,11 @@ class MessengerController extends Controller
 
             return back()->with(
                 'success',
-                __('Диалоги обновлены: :count', ['count' => $result['synced']]),
+                __('Обновлено: :count диалогов', ['count' => $result['synced']]),
             );
         } catch (\Throwable $e) {
             return back()->withErrors(['sync' => $e->getMessage()]);
         }
-    }
-
-    protected function dispatchBackgroundSync(int $companyId): bool
-    {
-        if (PHP_OS_FAMILY === 'Windows') {
-            return false;
-        }
-
-        if (! function_exists('exec')) {
-            return false;
-        }
-
-        $logFile = storage_path('logs/messenger-sync.log');
-        $php = PHP_BINARY;
-        $artisan = base_path('artisan');
-
-        $command = sprintf(
-            '%s %s messenger:sync --company=%d --days=1 >> %s 2>&1 &',
-            escapeshellarg($php),
-            escapeshellarg($artisan),
-            $companyId,
-            escapeshellarg($logFile),
-        );
-
-        exec($command);
-
-        return true;
     }
 
     public function send(Request $request, MessengerConversation $conversation): RedirectResponse

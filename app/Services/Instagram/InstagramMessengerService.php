@@ -448,8 +448,13 @@ class InstagramMessengerService
     /**
      * @return array{synced: int, errors: list<string>}
      */
-    public function syncConversations(CompanyIntegration $integration, int $days = 1): array
-    {
+    public function syncConversations(
+        CompanyIntegration $integration,
+        int $days = 1,
+        ?int $maxConversations = null,
+        ?int $hours = null,
+        array $priorityExternalIds = [],
+    ): array {
         if (! ($integration->metadata['instagram_user_id'] ?? null)) {
             $integration = $this->refreshIntegrationMetadata($integration);
         }
@@ -459,7 +464,9 @@ class InstagramMessengerService
             return ['synced' => 0, 'errors' => [__('Не удалось определить ID аккаунта Instagram.')]];
         }
 
-        $since = $this->syncSinceFromDays($days);
+        $since = $hours !== null
+            ? $this->syncSinceFromHours($hours)
+            : $this->syncSinceFromDays($days);
         $errors = [];
         $synced = 0;
 
@@ -491,7 +498,15 @@ class InstagramMessengerService
 
             $conversations = $response->json('data', []);
 
+            if ($priorityExternalIds !== []) {
+                $conversations = $this->orderConversationsForSync($conversations, $priorityExternalIds);
+            }
+
             foreach ($conversations as $item) {
+                if ($maxConversations !== null && $synced >= $maxConversations) {
+                    break;
+                }
+
                 if (! $this->isConversationWithinSyncWindow($item, $since)) {
                     continue;
                 }
@@ -513,6 +528,36 @@ class InstagramMessengerService
     public function syncSinceFromDays(int $days): Carbon
     {
         return Carbon::now()->subDays(max(1, $days));
+    }
+
+    public function syncSinceFromHours(int $hours): Carbon
+    {
+        return Carbon::now()->subHours(max(1, $hours));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $conversations
+     * @param  list<string>  $priorityExternalIds
+     * @return list<array<string, mixed>>
+     */
+    public function orderConversationsForSync(array $conversations, array $priorityExternalIds): array
+    {
+        $priority = array_flip($priorityExternalIds);
+
+        usort($conversations, function (array $a, array $b) use ($priority): int {
+            $aId = (string) ($a['id'] ?? '');
+            $bId = (string) ($b['id'] ?? '');
+            $aPriority = isset($priority[$aId]) ? 0 : 1;
+            $bPriority = isset($priority[$bId]) ? 0 : 1;
+
+            if ($aPriority !== $bPriority) {
+                return $aPriority <=> $bPriority;
+            }
+
+            return strcmp((string) ($b['updated_time'] ?? ''), (string) ($a['updated_time'] ?? ''));
+        });
+
+        return $conversations;
     }
 
     /**

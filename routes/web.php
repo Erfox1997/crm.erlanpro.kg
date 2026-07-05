@@ -10,6 +10,7 @@ use App\Http\Controllers\DealController;
 use App\Http\Controllers\FunnelController;
 use App\Http\Controllers\IntegrationController;
 use App\Http\Controllers\MessengerController;
+use App\Http\Controllers\MessengerQuickReplyController;
 use App\Http\Controllers\MetaOAuthController;
 use App\Http\Controllers\MetaWebhookController;
 use App\Http\Controllers\PipelineController;
@@ -66,6 +67,10 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
 
     Route::get('/messenger', [MessengerController::class, 'index'])->name('messenger.index');
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
+    Route::get('/messenger/quick-replies', [MessengerQuickReplyController::class, 'index'])->name('messenger.quick-replies.index');
+    Route::post('/messenger/quick-replies', [MessengerQuickReplyController::class, 'store'])->name('messenger.quick-replies.store');
+    Route::put('/messenger/quick-replies/{quickReply}', [MessengerQuickReplyController::class, 'update'])->name('messenger.quick-replies.update');
+    Route::delete('/messenger/quick-replies/{quickReply}', [MessengerQuickReplyController::class, 'destroy'])->name('messenger.quick-replies.destroy');
     Route::post('/messenger/conversations/{conversation}/messages', [MessengerController::class, 'send'])->name('messenger.send');
     Route::get('/messenger/messages/{message}/attachments/{index}', [MessengerController::class, 'attachment'])
         ->whereNumber('index')

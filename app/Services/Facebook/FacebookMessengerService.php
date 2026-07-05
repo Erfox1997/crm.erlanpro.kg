@@ -77,8 +77,13 @@ class FacebookMessengerService
     /**
      * @return array{synced: int, errors: list<string>}
      */
-    public function syncConversations(CompanyIntegration $integration, int $days = 1): array
-    {
+    public function syncConversations(
+        CompanyIntegration $integration,
+        int $days = 1,
+        ?int $maxConversations = null,
+        ?int $hours = null,
+        array $priorityExternalIds = [],
+    ): array {
         if (! ($integration->metadata['page_id'] ?? null)) {
             $integration = $this->refreshIntegrationMetadata($integration);
         }
@@ -88,7 +93,9 @@ class FacebookMessengerService
             return ['synced' => 0, 'errors' => [__('Не задан page_id Facebook.')]];
         }
 
-        $since = $this->attachments->syncSinceFromDays($days);
+        $since = $hours !== null
+            ? $this->attachments->syncSinceFromHours($hours)
+            : $this->attachments->syncSinceFromDays($days);
         $errors = [];
         $synced = 0;
 
@@ -104,7 +111,17 @@ class FacebookMessengerService
 
             $response->throw();
 
-            foreach ($response->json('data', []) as $item) {
+            $conversations = $response->json('data', []);
+
+            if ($priorityExternalIds !== []) {
+                $conversations = $this->attachments->orderConversationsForSync($conversations, $priorityExternalIds);
+            }
+
+            foreach ($conversations as $item) {
+                if ($maxConversations !== null && $synced >= $maxConversations) {
+                    break;
+                }
+
                 if (! $this->attachments->isConversationWithinSyncWindow($item, $since)) {
                     continue;
                 }

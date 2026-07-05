@@ -289,6 +289,7 @@ const userInitials = computed(() => {
                     :href="route('messenger.index')"
                     title="Месенджер"
                     :active="!!route().current('messenger.*')"
+                    :badge="$page.props.messengerUnread"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
                 >

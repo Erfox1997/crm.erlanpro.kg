@@ -10,7 +10,8 @@ class SyncMessengerCommand extends Command
     protected $signature = 'messenger:sync
                             {--company= : ID компании для синхронизации}
                             {--all : Синхронизировать все компании с Instagram/Facebook}
-                            {--days=1 : Загружать сообщения за последние N дней}';
+                            {--days=1 : Загружать сообщения за последние N дней}
+                            {--quick : Быстрая синхронизация (8 ч, до 12 диалогов, приоритет непрочитанных)}';
 
     protected $description = 'Синхронизировать диалоги мессенджера из Meta (Instagram/Facebook)';
 
@@ -19,6 +20,7 @@ class SyncMessengerCommand extends Command
         set_time_limit(0);
 
         $days = max(1, (int) $this->option('days'));
+        $quick = (bool) $this->option('quick');
 
         if ($this->option('all')) {
             $companyIds = $sync->companyIdsWithMessengerIntegrations();
@@ -34,7 +36,7 @@ class SyncMessengerCommand extends Command
             $failed = false;
 
             foreach ($companyIds as $companyId) {
-                if (! $this->syncCompany($sync, $companyId, $days)) {
+                if (! $this->syncCompany($sync, $companyId, $days, $quick)) {
                     $failed = true;
                 }
             }
@@ -63,18 +65,22 @@ class SyncMessengerCommand extends Command
             return self::FAILURE;
         }
 
-        return $this->syncCompany($sync, (int) $companyOption, $days) ? self::SUCCESS : self::FAILURE;
+        return $this->syncCompany($sync, (int) $companyOption, $days, $quick) ? self::SUCCESS : self::FAILURE;
     }
 
-    protected function syncCompany(MessengerSyncService $sync, int $companyId, int $days = 1): bool
+    protected function syncCompany(MessengerSyncService $sync, int $companyId, int $days = 1, bool $quick = false): bool
     {
         $label = "Компания #{$companyId}";
-        $this->info("{$label}: синхронизация за {$days} дн.…");
+        $this->info($quick
+            ? "{$label}: быстрая синхронизация…"
+            : "{$label}: синхронизация за {$days} дн.…");
 
         $startedAt = microtime(true);
 
         try {
-            $result = $sync->syncForCompany($companyId, $days);
+            $result = $quick
+                ? $sync->syncQuickForCompany($companyId)
+                : $sync->syncForCompany($companyId, $days);
         } catch (\Throwable $e) {
             $this->error("{$label}: {$e->getMessage()}");
 

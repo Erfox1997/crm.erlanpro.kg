@@ -16,12 +16,14 @@ class MessengerConversation extends Model
         'participant_name',
         'participant_username',
         'last_message_at',
+        'last_read_at',
     ];
 
     protected function casts(): array
     {
         return [
             'last_message_at' => 'datetime',
+            'last_read_at' => 'datetime',
         ];
     }
 

@@ -33,6 +33,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    quickReplies: {
+        type: Array,
+        default: () => [],
+    },
     webhookUrl: {
         type: String,
         default: '',
@@ -42,6 +46,7 @@ const props = defineProps({
 const messagesEnd = ref(null);
 const syncing = ref(false);
 const searchQuery = ref('');
+const quickRepliesOpen = ref(false);
 
 const sendForm = useForm({
     body: '',
@@ -103,10 +108,18 @@ function syncConversations() {
     syncing.value = true;
     router.post(route('messenger.sync'), {}, {
         preserveScroll: true,
+        onSuccess: () => {
+            router.reload();
+        },
         onFinish: () => {
             syncing.value = false;
         },
     });
+}
+
+function applyQuickReply(body) {
+    sendForm.body = body;
+    quickRepliesOpen.value = false;
 }
 
 function sendMessage() {
@@ -400,14 +413,35 @@ watch(
                     <h2 class="text-lg font-semibold text-[#111b21]">
                         Чаты
                     </h2>
-                    <button
-                        v-if="messengerConnected"
-                        type="button"
-                        class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
-                        :disabled="syncing"
-                        title="Обновить"
-                        @click="syncConversations"
-                    >
+                    <div class="flex items-center gap-1">
+                        <Link
+                            v-if="messengerConnected"
+                            :href="route('messenger.quick-replies.index')"
+                            class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
+                            title="Быстрые ответы"
+                        >
+                            <svg
+                                class="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                stroke-width="1.8"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM8.625 12h7.5M8.625 15h4.125M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                            </svg>
+                        </Link>
+                        <button
+                            v-if="messengerConnected"
+                            type="button"
+                            class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
+                            :disabled="syncing"
+                            title="Обновить новые сообщения"
+                            @click="syncConversations"
+                        >
                         <svg
                             class="h-5 w-5"
                             :class="{ 'animate-spin': syncing }"
@@ -422,7 +456,8 @@ watch(
                                 d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
                             />
                         </svg>
-                    </button>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="border-b border-[#e9edef] px-3 py-2">
@@ -486,27 +521,37 @@ watch(
                             }"
                             @click="openConversation(conversation.id)"
                         >
-                            <div
-                                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
-                                :class="avatarClass(conversation.channel)"
-                            >
-                                {{ avatarInitials(conversation) }}
+                            <div class="relative shrink-0">
+                                <div
+                                    class="flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold text-white"
+                                    :class="avatarClass(conversation.channel)"
+                                >
+                                    {{ avatarInitials(conversation) }}
+                                </div>
+                                <span
+                                    v-if="conversation.unread_count > 0"
+                                    class="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-white"
+                                >
+                                    {{ conversation.unread_count > 99 ? '99+' : conversation.unread_count }}
+                                </span>
                             </div>
 
                             <div class="min-w-0 flex-1 border-b border-[#f0f2f5] pb-3">
                                 <div class="flex items-start justify-between gap-2">
-                                    <p class="truncate text-[16px] text-[#111b21]">
+                                    <p
+                                        class="truncate text-[16px]"
+                                        :class="conversation.unread_count > 0 ? 'font-semibold text-[#111b21]' : 'text-[#111b21]'"
+                                    >
                                         {{ participantLabel(conversation) }}
                                     </p>
                                     <span
-                                        class="shrink-0 text-xs text-[#667781]"
+                                        class="shrink-0 text-xs"
+                                        :class="conversation.unread_count > 0 ? 'font-semibold text-[#00a884]' : 'text-[#667781]'"
                                     >
                                         {{ formatListTime(conversation.last_message_at) }}
                                     </span>
                                 </div>
-                                <div
-                                    class="mt-0.5 flex items-center gap-2"
-                                >
+                                <div class="mt-0.5 flex items-center gap-2">
                                     <span
                                         class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase"
                                         :class="channelBadgeClass(conversation.channel)"
@@ -515,7 +560,8 @@ watch(
                                     </span>
                                     <p
                                         v-if="conversation.preview"
-                                        class="truncate text-sm text-[#667781]"
+                                        class="truncate text-sm"
+                                        :class="conversation.unread_count > 0 ? 'font-medium text-[#111b21]' : 'text-[#667781]'"
                                     >
                                         {{ conversation.preview }}
                                     </p>
@@ -745,6 +791,54 @@ watch(
                         </div>
 
                         <div class="flex items-end gap-2">
+                            <div
+                                v-if="quickReplies.length > 0"
+                                class="relative shrink-0"
+                            >
+                                <button
+                                    type="button"
+                                    class="flex h-11 w-11 items-center justify-center rounded-full text-[#54656f] transition hover:bg-[#e9edef]"
+                                    title="Быстрые ответы"
+                                    @click="quickRepliesOpen = !quickRepliesOpen"
+                                >
+                                    <svg
+                                        class="h-5 w-5"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        stroke-width="1.8"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM8.625 12h7.5M8.625 15h4.125M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                        />
+                                    </svg>
+                                </button>
+                                <div
+                                    v-if="quickRepliesOpen"
+                                    class="absolute bottom-12 left-0 z-20 max-h-56 w-64 overflow-y-auto rounded-lg border border-[#d1d7db] bg-white py-1 shadow-lg"
+                                >
+                                    <button
+                                        v-for="reply in quickReplies"
+                                        :key="reply.id"
+                                        type="button"
+                                        class="block w-full px-3 py-2 text-left hover:bg-[#f0f2f5]"
+                                        @click="applyQuickReply(reply.body)"
+                                    >
+                                        <span class="block text-sm font-medium text-[#111b21]">{{ reply.title }}</span>
+                                        <span class="mt-0.5 block truncate text-xs text-[#667781]">{{ reply.body }}</span>
+                                    </button>
+                                    <Link
+                                        :href="route('messenger.quick-replies.index')"
+                                        class="block border-t border-[#e9edef] px-3 py-2 text-xs text-[#00a884] hover:bg-[#f0f2f5]"
+                                        @click="quickRepliesOpen = false"
+                                    >
+                                        Настроить шаблоны →
+                                    </Link>
+                                </div>
+                            </div>
+
                             <input
                                 v-model="sendForm.body"
                                 type="text"

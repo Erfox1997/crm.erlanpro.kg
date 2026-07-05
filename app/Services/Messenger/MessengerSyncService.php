@@ -18,8 +18,20 @@ class MessengerSyncService
     /**
      * @return array{synced: int, errors: list<string>, company_id: int, company_name: ?string}
      */
-    public function syncForCompany(int $companyId, int $days = 1): array
+    public function syncQuickForCompany(int $companyId): array
     {
+        return $this->syncForCompany($companyId, hours: 8, maxConversations: 12);
+    }
+
+    /**
+     * @return array{synced: int, errors: list<string>, company_id: int, company_name: ?string}
+     */
+    public function syncForCompany(
+        int $companyId,
+        int $days = 1,
+        ?int $hours = null,
+        ?int $maxConversations = null,
+    ): array {
         $company = Company::query()->find($companyId);
         $instagramIntegration = $this->instagram->integrationForCompany($companyId);
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
@@ -33,6 +45,7 @@ class MessengerSyncService
             ];
         }
 
+        $priorityIds = app(MessengerUnreadService::class)->unreadExternalConversationIds($companyId);
         $errors = [];
         $synced = 0;
 
@@ -41,7 +54,13 @@ class MessengerSyncService
                 $instagramIntegration = $this->instagram->refreshIntegrationMetadata($instagramIntegration);
             }
 
-            $result = $this->instagram->syncConversations($instagramIntegration, $days);
+            $result = $this->instagram->syncConversations(
+                $instagramIntegration,
+                $days,
+                $maxConversations,
+                $hours,
+                $priorityIds,
+            );
             $synced += $result['synced'];
             $errors = array_merge($errors, $result['errors']);
         }
@@ -51,7 +70,13 @@ class MessengerSyncService
                 $facebookIntegration = $this->facebook->refreshIntegrationMetadata($facebookIntegration);
             }
 
-            $result = $this->facebook->syncConversations($facebookIntegration, $days);
+            $result = $this->facebook->syncConversations(
+                $facebookIntegration,
+                $days,
+                $maxConversations,
+                $hours,
+                $priorityIds,
+            );
             $synced += $result['synced'];
             $errors = array_merge($errors, $result['errors']);
         }

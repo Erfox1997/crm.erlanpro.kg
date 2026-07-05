@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Company;
+use App\Services\Messenger\MessengerUnreadService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -43,6 +44,7 @@ class HandleInertiaRequests extends Middleware
             ],
             'company' => fn () => $this->sharedCompany($request),
             'subscription' => fn () => $this->sharedSubscription($request),
+            'messengerUnread' => fn () => $this->sharedMessengerUnread($request),
             'flash' => [
                 'success' => $request->session()->get('success'),
             ],
@@ -86,5 +88,15 @@ class HandleInertiaRequests extends Middleware
             'expires_soon' => $expiresSoon,
             'is_expired' => ! $isActive && $endsAt !== null,
         ];
+    }
+
+    private function sharedMessengerUnread(Request $request): int
+    {
+        $user = $request->user();
+        if (! $user?->company_id) {
+            return 0;
+        }
+
+        return app(MessengerUnreadService::class)->totalUnreadForCompany((int) $user->company_id);
     }
 }
