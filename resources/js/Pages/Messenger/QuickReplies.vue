@@ -21,6 +21,7 @@ const showCreateModal = ref(false);
 const showEditModal = ref(false);
 const selectedItem = ref(null);
 const importInput = ref(null);
+const searchQuery = ref('');
 
 const createForm = useForm({
     type: 'text',
@@ -40,11 +41,60 @@ const importForm = useForm({
     file: null,
 });
 
-const typeLabels = {
-    text: 'Текст',
-    audio: 'Голос',
-    image: 'Картинка',
+const typeMeta = {
+    text: {
+        label: 'Текст',
+        badge: 'bg-violet-100 text-violet-700 ring-violet-200',
+        iconWrap: 'bg-violet-100 text-violet-600',
+        icon: 'M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z',
+        card: 'from-violet-500/10 to-indigo-500/5 border-violet-100',
+        dot: 'bg-violet-500',
+    },
+    audio: {
+        label: 'Голос',
+        badge: 'bg-sky-100 text-sky-700 ring-sky-200',
+        iconWrap: 'bg-sky-100 text-sky-600',
+        icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z',
+        card: 'from-sky-500/10 to-cyan-500/5 border-sky-100',
+        dot: 'bg-sky-500',
+    },
+    image: {
+        label: 'Картинка',
+        badge: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
+        iconWrap: 'bg-emerald-100 text-emerald-600',
+        icon: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z',
+        card: 'from-emerald-500/10 to-teal-500/5 border-emerald-100',
+        dot: 'bg-emerald-500',
+    },
 };
+
+const stats = computed(() => ({
+    total: props.quickReplies.length,
+    text: props.quickReplies.filter((item) => item.type === 'text').length,
+    audio: props.quickReplies.filter((item) => item.type === 'audio').length,
+    image: props.quickReplies.filter((item) => item.type === 'image').length,
+}));
+
+const filteredQuickReplies = computed(() => {
+    const query = searchQuery.value.trim().toLowerCase();
+
+    if (!query) {
+        return props.quickReplies;
+    }
+
+    return props.quickReplies.filter((item) => {
+        const haystack = [
+            item.title,
+            item.body,
+            typeMeta[item.type]?.label,
+        ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+
+        return haystack.includes(query);
+    });
+});
 
 const createAttachmentLabel = computed(() => {
     if (createForm.type === 'audio') {
@@ -69,6 +119,10 @@ const editAttachmentLabel = computed(() => {
 
     return '';
 });
+
+function metaFor(type) {
+    return typeMeta[type] || typeMeta.text;
+}
 
 function openCreateModal() {
     createForm.reset();
@@ -173,7 +227,7 @@ function previewText(item) {
         return item.body || 'Голосовой шаблон';
     }
 
-    return item.body || 'Изображение';
+    return item.body || 'Изображение без подписи';
 }
 </script>
 
@@ -182,128 +236,121 @@ function previewText(item) {
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                    <h2 class="text-xl font-semibold text-gray-800">
+                    <p class="text-sm font-medium text-indigo-600">
+                        Мессенджер
+                    </p>
+                    <h2 class="text-2xl font-bold tracking-tight text-slate-900">
                         Быстрые ответы
                     </h2>
-                    <p class="mt-1 text-sm text-gray-500">
-                        Шаблоны для мессенджера. В чате введите «/» и начните писать название.
+                    <p class="mt-1 max-w-xl text-sm text-slate-500">
+                        Готовые шаблоны для Instagram и Facebook. В чате введите
+                        <span class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">/</span>
+                        и начните писать название.
                     </p>
                 </div>
                 <Link
                     :href="route('messenger.index')"
-                    class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    class="inline-flex items-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 sm:self-auto"
                 >
-                    ← К чатам
+                    <svg
+                        class="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+                        />
+                    </svg>
+                    К чатам
                 </Link>
             </div>
         </template>
 
-        <div class="py-8">
-            <div class="mx-auto max-w-3xl space-y-6 px-4 sm:px-6 lg:px-8">
+        <div class="py-6 sm:py-8">
+            <div class="mx-auto max-w-6xl space-y-6 px-4 sm:px-6 lg:px-8">
                 <div
                     v-if="$page.props.flash?.success"
-                    class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800"
+                    class="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm"
                 >
+                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                        ✓
+                    </span>
                     {{ $page.props.flash.success }}
                 </div>
 
-                <div class="rounded-xl border border-gray-200 bg-white shadow-sm">
-                    <div class="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <h3 class="text-base font-semibold text-gray-800">
-                                Шаблоны ({{ quickReplies.length }})
-                            </h3>
-                            <p class="mt-0.5 text-xs text-gray-500">
-                                Excel: колонка A — название, B — текст (только текстовые шаблоны)
-                            </p>
-                        </div>
-                        <div class="flex flex-wrap gap-2">
-                            <a
-                                :href="route('messenger.quick-replies.sample')"
-                                class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                                Скачать образец
-                            </a>
-                            <SecondaryButton @click="triggerImport">
-                                Импорт Excel
-                            </SecondaryButton>
-                            <input
-                                ref="importInput"
-                                type="file"
-                                accept=".xlsx,.xls,.csv"
-                                class="hidden"
-                                @change="onImportChange"
-                            >
-                            <PrimaryButton @click="openCreateModal">
-                                Создать
-                            </PrimaryButton>
-                        </div>
-                    </div>
-
-                    <InputError
-                        class="px-5 pt-3"
-                        :message="importForm.errors.file"
-                    />
-
-                    <div
-                        v-if="quickReplies.length === 0"
-                        class="px-5 py-12 text-center"
-                    >
-                        <p class="text-sm text-gray-500">
-                            Пока нет шаблонов.
+                <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+                        <p class="text-sm font-medium text-slate-500">
+                            Всего шаблонов
                         </p>
-                        <PrimaryButton
-                            class="mt-4"
-                            @click="openCreateModal"
-                        >
-                            Создать первый шаблон
-                        </PrimaryButton>
+                        <p class="mt-2 text-3xl font-bold tracking-tight text-slate-900">
+                            {{ stats.total }}
+                        </p>
                     </div>
+                    <div class="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-5 shadow-sm">
+                        <p class="text-sm font-medium text-violet-600">
+                            Текстовые
+                        </p>
+                        <p class="mt-2 text-3xl font-bold tracking-tight text-violet-900">
+                            {{ stats.text }}
+                        </p>
+                    </div>
+                    <div class="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50 to-white p-5 shadow-sm">
+                        <p class="text-sm font-medium text-sky-600">
+                            Голосовые
+                        </p>
+                        <p class="mt-2 text-3xl font-bold tracking-tight text-sky-900">
+                            {{ stats.audio }}
+                        </p>
+                    </div>
+                    <div class="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm">
+                        <p class="text-sm font-medium text-emerald-600">
+                            Картинки
+                        </p>
+                        <p class="mt-2 text-3xl font-bold tracking-tight text-emerald-900">
+                            {{ stats.image }}
+                        </p>
+                    </div>
+                </div>
 
-                    <ul
-                        v-else
-                        class="divide-y divide-gray-100"
-                    >
-                        <li
-                            v-for="item in quickReplies"
-                            :key="item.id"
-                        >
-                            <button
-                                type="button"
-                                class="flex w-full items-start gap-4 px-5 py-4 text-left transition hover:bg-gray-50"
-                                @click="openEditModal(item)"
-                            >
-                                <div class="min-w-0 flex-1">
-                                    <div class="flex items-center gap-2">
-                                        <p class="font-medium text-gray-900">
-                                            /{{ item.title }}
-                                        </p>
-                                        <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                                            {{ typeLabels[item.type] || item.type }}
-                                        </span>
-                                    </div>
-                                    <p class="mt-1 line-clamp-2 whitespace-pre-wrap text-sm text-gray-600">
-                                        {{ previewText(item) }}
-                                    </p>
-                                </div>
-                                <div
-                                    v-if="item.type === 'image' && item.attachment_url"
-                                    class="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-200"
+                <div class="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                    <div class="border-b border-slate-100 bg-slate-50/70 px-5 py-5 sm:px-6">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div class="relative min-w-0 flex-1 lg:max-w-md">
+                                <svg
+                                    class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
                                 >
-                                    <img
-                                        :src="item.attachment_url"
-                                        alt=""
-                                        class="h-full w-full object-cover"
-                                    >
-                                </div>
-                                <div
-                                    v-else-if="item.type === 'audio'"
-                                    class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+                                    />
+                                </svg>
+                                <input
+                                    v-model="searchQuery"
+                                    type="search"
+                                    placeholder="Поиск по названию или тексту..."
+                                    class="w-full rounded-xl border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:ring-indigo-400"
+                                >
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-2">
+                                <a
+                                    :href="route('messenger.quick-replies.sample')"
+                                    class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
                                 >
                                     <svg
-                                        class="h-6 w-6"
+                                        class="h-4 w-4 text-slate-500"
                                         fill="none"
                                         viewBox="0 0 24 24"
                                         stroke="currentColor"
@@ -312,13 +359,246 @@ function previewText(item) {
                                         <path
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
-                                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                                            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"
+                                        />
+                                    </svg>
+                                    Образец Excel
+                                </a>
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+                                    :disabled="importForm.processing"
+                                    @click="triggerImport"
+                                >
+                                    <svg
+                                        class="h-4 w-4 text-slate-500"
+                                        :class="{ 'animate-spin': importForm.processing }"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        stroke-width="1.8"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                                        />
+                                    </svg>
+                                    {{ importForm.processing ? 'Импорт...' : 'Импорт Excel' }}
+                                </button>
+                                <input
+                                    ref="importInput"
+                                    type="file"
+                                    accept=".xlsx,.xls,.csv"
+                                    class="hidden"
+                                    @change="onImportChange"
+                                >
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:from-violet-500 hover:to-indigo-500"
+                                    @click="openCreateModal"
+                                >
+                                    <svg
+                                        class="h-4 w-4"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            d="M12 4.5v15m7.5-7.5h-15"
+                                        />
+                                    </svg>
+                                    Создать шаблон
+                                </button>
+                            </div>
+                        </div>
+
+                        <InputError
+                            class="mt-3"
+                            :message="importForm.errors.file"
+                        />
+
+                        <p class="mt-3 text-xs text-slate-500">
+                            Excel: колонка A — название, B — текст. Импорт поддерживает только текстовые шаблоны.
+                        </p>
+                    </div>
+
+                    <div
+                        v-if="quickReplies.length === 0"
+                        class="px-6 py-16 text-center"
+                    >
+                        <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-100 to-indigo-100 text-indigo-600">
+                            <svg
+                                class="h-10 w-10"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM8.625 12h7.5M8.625 15h4.125M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                            </svg>
+                        </div>
+                        <h3 class="mt-6 text-lg font-semibold text-slate-900">
+                            Пока нет шаблонов
+                        </h3>
+                        <p class="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
+                            Создайте первый шаблон или загрузите готовые ответы из Excel. В мессенджере они будут доступны через команду «/».
+                        </p>
+                        <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20"
+                                @click="openCreateModal"
+                            >
+                                Создать шаблон
+                            </button>
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 shadow-sm"
+                                @click="triggerImport"
+                            >
+                                Импорт из Excel
+                            </button>
+                        </div>
+                    </div>
+
+                    <div
+                        v-else-if="filteredQuickReplies.length === 0"
+                        class="px-6 py-14 text-center"
+                    >
+                        <p class="text-sm text-slate-500">
+                            По запросу «{{ searchQuery }}» ничего не найдено.
+                        </p>
+                    </div>
+
+                    <div
+                        v-else
+                        class="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-3"
+                    >
+                        <button
+                            v-for="item in filteredQuickReplies"
+                            :key="item.id"
+                            type="button"
+                            class="group relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                            :class="metaFor(item.type).card"
+                            @click="openEditModal(item)"
+                        >
+                            <div class="flex items-start justify-between gap-3">
+                                <div
+                                    class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ring-black/5"
+                                    :class="metaFor(item.type).iconWrap"
+                                >
+                                    <svg
+                                        class="h-5 w-5"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                        stroke-width="1.8"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            :d="metaFor(item.type).icon"
                                         />
                                     </svg>
                                 </div>
-                            </button>
-                        </li>
-                    </ul>
+
+                                <span
+                                    class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset"
+                                    :class="metaFor(item.type).badge"
+                                >
+                                    {{ metaFor(item.type).label }}
+                                </span>
+                            </div>
+
+                            <div class="mt-4">
+                                <p class="font-mono text-base font-semibold text-slate-900">
+                                    /{{ item.title }}
+                                </p>
+                                <p class="mt-2 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+                                    {{ previewText(item) }}
+                                </p>
+                            </div>
+
+                            <div
+                                v-if="item.type === 'image' && item.attachment_url"
+                                class="mt-4 overflow-hidden rounded-xl border border-white/80 bg-white/70 shadow-sm"
+                            >
+                                <img
+                                    :src="item.attachment_url"
+                                    alt=""
+                                    class="h-28 w-full object-cover"
+                                >
+                            </div>
+
+                            <div
+                                v-else-if="item.type === 'audio'"
+                                class="mt-4 flex items-center gap-2 rounded-xl border border-white/80 bg-white/70 px-3 py-2 text-xs text-slate-500"
+                            >
+                                <span
+                                    class="h-2 w-2 rounded-full"
+                                    :class="metaFor(item.type).dot"
+                                />
+                                Аудиофайл прикреплён
+                            </div>
+
+                            <div class="mt-4 flex items-center justify-between text-xs font-medium text-slate-400 transition group-hover:text-indigo-600">
+                                <span>Нажмите для редактирования</span>
+                                <svg
+                                    class="h-4 w-4 translate-x-0 transition group-hover:translate-x-0.5"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                                    />
+                                </svg>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 via-violet-50 to-sky-50 p-5 sm:p-6">
+                    <h3 class="text-sm font-semibold text-slate-900">
+                        Как пользоваться в чате
+                    </h3>
+                    <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div class="rounded-xl bg-white/70 px-4 py-3 ring-1 ring-white">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                                Шаг 1
+                            </p>
+                            <p class="mt-1 text-sm text-slate-700">
+                                Откройте диалог в мессенджере
+                            </p>
+                        </div>
+                        <div class="rounded-xl bg-white/70 px-4 py-3 ring-1 ring-white">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                                Шаг 2
+                            </p>
+                            <p class="mt-1 text-sm text-slate-700">
+                                Введите <span class="font-mono">/</span> и 2–3 буквы названия
+                            </p>
+                        </div>
+                        <div class="rounded-xl bg-white/70 px-4 py-3 ring-1 ring-white">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                                Шаг 3
+                            </p>
+                            <p class="mt-1 text-sm text-slate-700">
+                                Выберите шаблон — текст подставится, медиа отправится сразу
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -328,115 +608,146 @@ function previewText(item) {
             max-width="lg"
             @close="closeCreateModal"
         >
-            <div class="p-6">
-                <h3 class="text-lg font-semibold text-gray-900">
+            <div class="border-b border-slate-100 bg-slate-50/80 px-6 py-5">
+                <h3 class="text-lg font-semibold text-slate-900">
                     Новый шаблон
                 </h3>
+                <p class="mt-1 text-sm text-slate-500">
+                    Создайте быстрый ответ для мессенджера
+                </p>
+            </div>
 
-                <form
-                    class="mt-5 space-y-4"
-                    @submit.prevent="submitCreate"
-                >
-                    <div>
-                        <InputLabel value="Тип шаблона" />
-                        <select
-                            v-model="createForm.type"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            <form
+                class="space-y-5 p-6"
+                @submit.prevent="submitCreate"
+            >
+                <div>
+                    <InputLabel value="Тип шаблона" />
+                    <div class="mt-2 grid grid-cols-3 gap-2">
+                        <button
+                            v-for="(meta, type) in typeMeta"
+                            :key="type"
+                            type="button"
+                            class="rounded-xl border px-3 py-3 text-center text-sm font-medium transition"
+                            :class="createForm.type === type
+                                ? 'border-indigo-300 bg-indigo-50 text-indigo-700 shadow-sm'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'"
+                            @click="createForm.type = type"
                         >
-                            <option value="text">
-                                Текст
-                            </option>
-                            <option value="audio">
-                                Голосовое
-                            </option>
-                            <option value="image">
-                                Картинка
-                            </option>
-                        </select>
+                            {{ meta.label }}
+                        </button>
                     </div>
+                </div>
 
-                    <div>
-                        <InputLabel
-                            for="create-title"
-                            value="Название (для /команды)"
-                        />
+                <div>
+                    <InputLabel
+                        for="create-title"
+                        value="Название команды"
+                    />
+                    <div class="relative mt-1">
+                        <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-slate-400">/</span>
                         <TextInput
                             id="create-title"
                             v-model="createForm.title"
-                            class="mt-1 block w-full"
+                            class="block w-full pl-7"
                             placeholder="компофф"
                         />
-                        <p class="mt-1 text-xs text-gray-500">
-                            В чате: /{{ createForm.title || 'название' }}
-                        </p>
-                        <InputError
-                            class="mt-1"
-                            :message="createForm.errors.title"
-                        />
                     </div>
+                    <p class="mt-1.5 text-xs text-slate-500">
+                        В чате будет доступно как
+                        <span class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-700">/{{ createForm.title || 'название' }}</span>
+                    </p>
+                    <InputError
+                        class="mt-1"
+                        :message="createForm.errors.title"
+                    />
+                </div>
 
-                    <div v-if="createForm.type === 'text'">
+                <div v-if="createForm.type === 'text'">
+                    <InputLabel
+                        for="create-body"
+                        value="Текст сообщения"
+                    />
+                    <textarea
+                        id="create-body"
+                        v-model="createForm.body"
+                        rows="6"
+                        class="mt-1 block w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-400 focus:ring-indigo-400"
+                        placeholder="Здравствуйте! Чем могу помочь?"
+                    />
+                    <InputError
+                        class="mt-1"
+                        :message="createForm.errors.body"
+                    />
+                </div>
+
+                <div v-else>
+                    <InputLabel
+                        for="create-attachment"
+                        :value="createAttachmentLabel"
+                    />
+                    <label
+                        for="create-attachment"
+                        class="mt-2 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                    >
+                        <svg
+                            class="h-8 w-8 text-slate-400"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                            />
+                        </svg>
+                        <span class="mt-3 text-sm font-medium text-slate-700">
+                            {{ createForm.attachment?.name || 'Нажмите, чтобы выбрать файл' }}
+                        </span>
+                        <span class="mt-1 text-xs text-slate-500">
+                            До 16 МБ
+                        </span>
+                    </label>
+                    <input
+                        id="create-attachment"
+                        type="file"
+                        class="hidden"
+                        :accept="createForm.type === 'audio' ? 'audio/*' : 'image/*'"
+                        @change="onCreateAttachmentChange"
+                    >
+                    <InputError
+                        class="mt-1"
+                        :message="createForm.errors.attachment"
+                    />
+
+                    <div class="mt-4">
                         <InputLabel
-                            for="create-body"
-                            value="Текст сообщения"
+                            for="create-caption"
+                            value="Подпись (необязательно)"
                         />
                         <textarea
-                            id="create-body"
+                            id="create-caption"
                             v-model="createForm.body"
-                            rows="6"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                            placeholder="Здравствуйте! Чем могу помочь?"
-                        />
-                        <InputError
-                            class="mt-1"
-                            :message="createForm.errors.body"
+                            rows="3"
+                            class="mt-1 block w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-400 focus:ring-indigo-400"
                         />
                     </div>
+                </div>
 
-                    <div v-else>
-                        <InputLabel
-                            for="create-attachment"
-                            :value="createAttachmentLabel"
-                        />
-                        <input
-                            id="create-attachment"
-                            type="file"
-                            class="mt-1 block w-full text-sm text-gray-600"
-                            :accept="createForm.type === 'audio' ? 'audio/*' : 'image/*'"
-                            @change="onCreateAttachmentChange"
-                        >
-                        <InputError
-                            class="mt-1"
-                            :message="createForm.errors.attachment"
-                        />
-
-                        <div class="mt-4">
-                            <InputLabel
-                                for="create-caption"
-                                value="Подпись (необязательно)"
-                            />
-                            <textarea
-                                id="create-caption"
-                                v-model="createForm.body"
-                                rows="3"
-                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                            />
-                        </div>
-                    </div>
-
-                    <div class="flex justify-end gap-3 pt-2">
-                        <SecondaryButton
-                            type="button"
-                            @click="closeCreateModal"
-                        >
-                            Отмена
-                        </SecondaryButton>
-                        <PrimaryButton :disabled="createForm.processing">
-                            Сохранить
-                        </PrimaryButton>
-                    </div>
-                </form>
-            </div>
+                <div class="flex justify-end gap-3 border-t border-slate-100 pt-5">
+                    <SecondaryButton
+                        type="button"
+                        @click="closeCreateModal"
+                    >
+                        Отмена
+                    </SecondaryButton>
+                    <PrimaryButton :disabled="createForm.processing">
+                        Сохранить шаблон
+                    </PrimaryButton>
+                </div>
+            </form>
         </Modal>
 
         <Modal
@@ -446,127 +757,152 @@ function previewText(item) {
         >
             <div
                 v-if="selectedItem"
-                class="p-6"
+                class="border-b border-slate-100 bg-slate-50/80 px-6 py-5"
             >
-                <h3 class="text-lg font-semibold text-gray-900">
-                    /{{ selectedItem.title }}
-                </h3>
+                <div class="flex items-center gap-3">
+                    <span
+                        class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset"
+                        :class="metaFor(selectedItem.type).badge"
+                    >
+                        {{ metaFor(selectedItem.type).label }}
+                    </span>
+                    <h3 class="font-mono text-lg font-semibold text-slate-900">
+                        /{{ selectedItem.title }}
+                    </h3>
+                </div>
+                <p class="mt-1 text-sm text-slate-500">
+                    Редактирование шаблона
+                </p>
+            </div>
 
-                <form
-                    class="mt-5 space-y-4"
-                    @submit.prevent="submitEdit"
-                >
-                    <div>
-                        <InputLabel value="Тип шаблона" />
-                        <select
-                            v-model="editForm.type"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            <form
+                v-if="selectedItem"
+                class="space-y-5 p-6"
+                @submit.prevent="submitEdit"
+            >
+                <div>
+                    <InputLabel value="Тип шаблона" />
+                    <div class="mt-2 grid grid-cols-3 gap-2">
+                        <button
+                            v-for="(meta, type) in typeMeta"
+                            :key="type"
+                            type="button"
+                            class="rounded-xl border px-3 py-3 text-center text-sm font-medium transition"
+                            :class="editForm.type === type
+                                ? 'border-indigo-300 bg-indigo-50 text-indigo-700 shadow-sm'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'"
+                            @click="editForm.type = type"
                         >
-                            <option value="text">
-                                Текст
-                            </option>
-                            <option value="audio">
-                                Голосовое
-                            </option>
-                            <option value="image">
-                                Картинка
-                            </option>
-                        </select>
+                            {{ meta.label }}
+                        </button>
                     </div>
+                </div>
 
-                    <div>
-                        <InputLabel value="Название (для /команды)" />
+                <div>
+                    <InputLabel value="Название команды" />
+                    <div class="relative mt-1">
+                        <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-slate-400">/</span>
                         <TextInput
                             v-model="editForm.title"
-                            class="mt-1 block w-full"
-                        />
-                        <InputError
-                            class="mt-1"
-                            :message="editForm.errors.title"
+                            class="block w-full pl-7"
                         />
                     </div>
+                    <InputError
+                        class="mt-1"
+                        :message="editForm.errors.title"
+                    />
+                </div>
 
-                    <div v-if="editForm.type === 'text'">
-                        <InputLabel value="Текст сообщения" />
-                        <textarea
-                            v-model="editForm.body"
-                            rows="6"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                        />
-                        <InputError
-                            class="mt-1"
-                            :message="editForm.errors.body"
-                        />
-                    </div>
+                <div v-if="editForm.type === 'text'">
+                    <InputLabel value="Текст сообщения" />
+                    <textarea
+                        v-model="editForm.body"
+                        rows="6"
+                        class="mt-1 block w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-400 focus:ring-indigo-400"
+                    />
+                    <InputError
+                        class="mt-1"
+                        :message="editForm.errors.body"
+                    />
+                </div>
 
-                    <div v-else>
-                        <div
-                            v-if="selectedItem.attachment_url"
-                            class="rounded-lg border border-gray-200 bg-gray-50 p-3"
+                <div v-else>
+                    <div
+                        v-if="selectedItem.attachment_url"
+                        class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                    >
+                        <img
+                            v-if="selectedItem.type === 'image'"
+                            :src="selectedItem.attachment_url"
+                            alt=""
+                            class="max-h-48 w-full object-cover"
                         >
-                            <img
-                                v-if="selectedItem.type === 'image'"
-                                :src="selectedItem.attachment_url"
-                                alt=""
-                                class="max-h-40 rounded-md"
-                            >
+                        <div
+                            v-else-if="selectedItem.type === 'audio'"
+                            class="p-4"
+                        >
                             <audio
-                                v-else-if="selectedItem.type === 'audio'"
                                 :src="selectedItem.attachment_url"
                                 controls
                                 class="w-full"
                             />
                         </div>
-
-                        <div class="mt-4">
-                            <InputLabel
-                                for="edit-attachment"
-                                :value="editAttachmentLabel"
-                            />
-                            <input
-                                id="edit-attachment"
-                                type="file"
-                                class="mt-1 block w-full text-sm text-gray-600"
-                                :accept="editForm.type === 'audio' ? 'audio/*' : 'image/*'"
-                                @change="onEditAttachmentChange"
-                            >
-                            <InputError
-                                class="mt-1"
-                                :message="editForm.errors.attachment"
-                            />
-                        </div>
-
-                        <div class="mt-4">
-                            <InputLabel value="Подпись (необязательно)" />
-                            <textarea
-                                v-model="editForm.body"
-                                rows="3"
-                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                            />
-                        </div>
                     </div>
 
-                    <div class="flex items-center justify-between gap-3 pt-2">
-                        <DangerButton
-                            type="button"
-                            @click="removeSelected"
+                    <div class="mt-4">
+                        <InputLabel
+                            for="edit-attachment"
+                            :value="editAttachmentLabel"
+                        />
+                        <label
+                            for="edit-attachment"
+                            class="mt-2 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 transition hover:border-indigo-300 hover:bg-indigo-50/40"
                         >
-                            Удалить
-                        </DangerButton>
-                        <div class="flex gap-3">
-                            <SecondaryButton
-                                type="button"
-                                @click="closeEditModal"
-                            >
-                                Отмена
-                            </SecondaryButton>
-                            <PrimaryButton :disabled="editForm.processing">
-                                Сохранить
-                            </PrimaryButton>
-                        </div>
+                            {{ editForm.attachment?.name || 'Выбрать новый файл' }}
+                        </label>
+                        <input
+                            id="edit-attachment"
+                            type="file"
+                            class="hidden"
+                            :accept="editForm.type === 'audio' ? 'audio/*' : 'image/*'"
+                            @change="onEditAttachmentChange"
+                        >
+                        <InputError
+                            class="mt-1"
+                            :message="editForm.errors.attachment"
+                        />
                     </div>
-                </form>
-            </div>
+
+                    <div class="mt-4">
+                        <InputLabel value="Подпись (необязательно)" />
+                        <textarea
+                            v-model="editForm.body"
+                            rows="3"
+                            class="mt-1 block w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-400 focus:ring-indigo-400"
+                        />
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+                    <DangerButton
+                        type="button"
+                        @click="removeSelected"
+                    >
+                        Удалить
+                    </DangerButton>
+                    <div class="flex gap-3">
+                        <SecondaryButton
+                            type="button"
+                            @click="closeEditModal"
+                        >
+                            Отмена
+                        </SecondaryButton>
+                        <PrimaryButton :disabled="editForm.processing">
+                            Сохранить
+                        </PrimaryButton>
+                    </div>
+                </div>
+            </form>
         </Modal>
     </AuthenticatedLayout>
 </template>
