@@ -135,7 +135,10 @@ class MessengerController extends Controller
             ]);
         }
 
-        return $this->metaAttachments->streamRemoteUrl($integration, (string) $source['url']);
+        return $this->metaAttachments->streamRemoteUrl(
+            (string) $source['url'],
+            $source['tokens'] ?? $this->instagram->mediaFetchTokens($integration),
+        );
     }
 
     public function sync(Request $request): RedirectResponse

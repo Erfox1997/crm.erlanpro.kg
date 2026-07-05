@@ -368,48 +368,123 @@ class MetaAttachmentService
         };
     }
 
-    public function streamRemoteUrl(CompanyIntegration $integration, string $url): StreamedResponse
+    public function streamRemoteUrl(string $url, array $tokens): StreamedResponse
     {
-        $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
-        $remote = $this->fetchRemoteAttachment($token, $url);
+        $remote = $this->fetchRemoteAttachment($url, $tokens);
+        $body = $remote->body();
+        $headers = $this->responseHeadersFromRemote($remote);
+        $headers['Content-Length'] = (string) strlen($body);
 
-        return response()->stream(function () use ($remote): void {
-            echo $remote->body();
-        }, 200, $this->responseHeadersFromRemote($remote));
+        return response()->stream(function () use ($body): void {
+            echo $body;
+        }, 200, $headers);
     }
 
-    public function fetchRemoteAttachment(string $token, string $url): Response
+    /**
+     * @param  list<string>  $tokens
+     */
+    public function fetchRemoteAttachment(string $url, array $tokens): Response
     {
-        if ($this->isPublicCdnUrl($url)) {
-            $response = Http::timeout(60)->get($url);
-            if ($response->successful()) {
-                return $response;
+        $tokens = array_values(array_unique(array_filter($tokens)));
+
+        if ($tokens === []) {
+            throw new \RuntimeException(__('Нет токена Meta для загрузки вложения.'));
+        }
+
+        foreach ($tokens as $token) {
+            foreach ($this->remoteAttachmentRequests($url, $token) as $request) {
+                try {
+                    $response = $request();
+                    if ($this->isValidMediaResponse($response)) {
+                        return $response;
+                    }
+                } catch (\Throwable) {
+                    continue;
+                }
             }
         }
 
-        $response = Http::timeout(60)
-            ->withToken($token)
-            ->get($url);
-
-        if ($response->successful()) {
-            return $response;
-        }
-
-        $separator = str_contains($url, '?') ? '&' : '?';
-        $response = Http::timeout(60)->get($url.$separator.'access_token='.urlencode($token));
-
-        $response->throw();
-
-        return $response;
+        throw new \RuntimeException(__('Не удалось скачать вложение Meta.'));
     }
 
-    protected function isPublicCdnUrl(string $url): bool
-    {
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+    /**
+     * @param  list<string>  $tokens
+     */
+    public function cacheInboundAttachment(
+        int $companyId,
+        int $messageId,
+        int $index,
+        string $remoteUrl,
+        array $tokens,
+        ?string $mimeType = null,
+    ): ?string {
+        $storagePath = sprintf('public/messenger/inbound/%d/%d_%d.m4a', $companyId, $messageId, $index);
+        $fullPath = $this->resolveLocalStoragePath($storagePath);
 
-        return str_contains($host, 'fbcdn.net')
-            || str_contains($host, 'cdninstagram.com')
-            || str_contains($host, 'lookaside.fbsbx.com');
+        if ($fullPath !== null && filesize($fullPath) > 256) {
+            return $storagePath;
+        }
+
+        $response = $this->fetchRemoteAttachment($remoteUrl, $tokens);
+        $directory = storage_path('app/public/messenger/inbound/'.$companyId);
+
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        $fullPath = storage_path('app/public/messenger/inbound/'.$companyId.'/'.$messageId.'_'.$index.'.m4a');
+        file_put_contents($fullPath, $response->body());
+
+        if (! is_file($fullPath) || filesize($fullPath) < 256) {
+            @unlink($fullPath);
+
+            return null;
+        }
+
+        return $storagePath;
+    }
+
+    /**
+     * @return list<callable(): Response>
+     */
+    protected function remoteAttachmentRequests(string $url, string $token): array
+    {
+        $separator = str_contains($url, '?') ? '&' : '?';
+
+        return [
+            fn () => Http::timeout(60)->withToken($token)->get($url),
+            fn () => Http::timeout(60)->get($url.$separator.'access_token='.urlencode($token)),
+        ];
+    }
+
+    protected function isValidMediaResponse(Response $response): bool
+    {
+        if (! $response->successful()) {
+            return false;
+        }
+
+        $body = $response->body();
+        if ($body === '' || strlen($body) < 256) {
+            return false;
+        }
+
+        $contentType = strtolower((string) $response->header('Content-Type'));
+
+        if ($contentType === '') {
+            return true;
+        }
+
+        if (str_contains($contentType, 'text/html')
+            || str_contains($contentType, 'application/json')
+            || str_contains($contentType, 'text/plain')) {
+            return false;
+        }
+
+        return str_starts_with($contentType, 'audio/')
+            || str_starts_with($contentType, 'video/')
+            || str_starts_with($contentType, 'image/')
+            || str_contains($contentType, 'octet-stream')
+            || str_contains($contentType, 'mp4');
     }
 
     /**
@@ -417,7 +492,11 @@ class MetaAttachmentService
      */
     protected function responseHeadersFromRemote(Response $response): array
     {
-        $contentType = $response->header('Content-Type') ?: 'audio/mp4';
+        $contentType = strtolower((string) ($response->header('Content-Type') ?: 'audio/mp4'));
+
+        if (str_contains($contentType, 'octet-stream') || str_contains($contentType, 'text/')) {
+            $contentType = 'audio/mp4';
+        }
 
         return [
             'Content-Type' => $contentType,

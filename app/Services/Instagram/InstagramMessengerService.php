@@ -691,6 +691,11 @@ class InstagramMessengerService
             'sent_at' => $sentAt,
         ]);
 
+        if ($direction === 'inbound' && $attachments !== []) {
+            $cachedAttachments = $this->prefetchInboundAttachments($integration, $message, $attachments);
+            $message->update(['attachments' => $cachedAttachments]);
+        }
+
         if ($sentAt->greaterThan($conversation->last_message_at ?? $sentAt->copy()->subYear())) {
             $conversation->update(['last_message_at' => $sentAt]);
         }
@@ -914,7 +919,7 @@ class InstagramMessengerService
 
         $attachments = $this->resolveWebhookAttachments($integration, $message, true);
 
-        MessengerMessage::query()->create([
+        $messengerMessage = MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
             'messenger_conversation_id' => $conversation->id,
             'direction' => $direction,
@@ -924,6 +929,11 @@ class InstagramMessengerService
             'status' => $direction === 'outbound' ? 'sent' : 'received',
             'sent_at' => $sentAt,
         ]);
+
+        if ($direction === 'inbound' && $attachments !== []) {
+            $cachedAttachments = $this->prefetchInboundAttachments($integration, $messengerMessage, $attachments);
+            $messengerMessage->update(['attachments' => $cachedAttachments]);
+        }
 
         $conversation->update(['last_message_at' => $sentAt]);
 
@@ -1298,11 +1308,102 @@ class InstagramMessengerService
             throw new \RuntimeException(__('Не удалось получить ссылку на аудио.'));
         }
 
+        $tokens = $this->mediaFetchTokens($integration);
+        $storagePath = $this->metaAttachments->cacheInboundAttachment(
+            $integration->company_id,
+            $message->id,
+            $index,
+            $url,
+            $tokens,
+            $attachment['mime_type'] ?? null,
+        );
+
+        if ($storagePath !== null) {
+            $attachments[$index] = array_merge($attachment, [
+                'storage_path' => $storagePath,
+                'url' => $url,
+            ]);
+            $message->update(['attachments' => $attachments]);
+
+            $fullPath = $this->metaAttachments->resolveLocalStoragePath($storagePath);
+            if ($fullPath !== null) {
+                return [
+                    'type' => 'local',
+                    'path' => $fullPath,
+                    'mime_type' => $this->metaAttachments->mimeTypeForPath(
+                        $fullPath,
+                        $attachment['mime_type'] ?? null,
+                    ),
+                ];
+            }
+        }
+
         return [
             'type' => 'remote',
             'url' => $url,
             'mime_type' => $attachment['mime_type'] ?? null,
+            'tokens' => $tokens,
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function mediaFetchTokens(CompanyIntegration $integration): array
+    {
+        $tokens = [
+            MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token),
+        ];
+
+        $facebookIntegration = CompanyIntegration::query()
+            ->where('company_id', $integration->company_id)
+            ->where('provider', IntegrationProvider::Facebook->value)
+            ->whereNotNull('api_token')
+            ->first();
+
+        if ($facebookIntegration) {
+            $tokens[] = MetaMessagingSupport::normalizeAccessToken((string) $facebookIntegration->api_token);
+        }
+
+        return array_values(array_unique(array_filter($tokens)));
+    }
+
+    /**
+     * @param  list<array{type: string, url: string, name: ?string, mime_type: ?string, storage_path?: string}>  $attachments
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string, storage_path?: string}>
+     */
+    public function prefetchInboundAttachments(
+        CompanyIntegration $integration,
+        MessengerMessage $message,
+        array $attachments,
+    ): array {
+        $tokens = $this->mediaFetchTokens($integration);
+
+        foreach ($attachments as $index => $attachment) {
+            if (($attachment['storage_path'] ?? '') !== '') {
+                continue;
+            }
+
+            $url = (string) ($attachment['url'] ?? '');
+            if ($url === '' || ($attachment['type'] ?? '') !== 'audio') {
+                continue;
+            }
+
+            $storagePath = $this->metaAttachments->cacheInboundAttachment(
+                $integration->company_id,
+                $message->id,
+                $index,
+                $url,
+                $tokens,
+                $attachment['mime_type'] ?? null,
+            );
+
+            if ($storagePath !== null) {
+                $attachments[$index]['storage_path'] = $storagePath;
+            }
+        }
+
+        return $attachments;
     }
 
     /**
@@ -1398,14 +1499,19 @@ class InstagramMessengerService
         }
 
         if (isset($item['audio_data']) && is_array($item['audio_data'])) {
-            $url = (string) ($item['audio_data']['url'] ?? $item['audio_data']['file_url'] ?? '');
+            $url = (string) (
+                $item['audio_data']['url']
+                ?? $item['audio_data']['file_url']
+                ?? $item['audio_data']['preview_url']
+                ?? ''
+            );
 
             if ($url !== '') {
                 return [
                     'type' => 'audio',
                     'url' => $url,
                     'name' => $name,
-                    'mime_type' => $mimeType,
+                    'mime_type' => $mimeType ?: 'audio/mp4',
                 ];
             }
         }
