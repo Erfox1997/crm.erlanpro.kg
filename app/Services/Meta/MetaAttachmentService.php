@@ -76,16 +76,16 @@ class MetaAttachmentService
      */
     public function prepareMetaAudio(string $filePath, string $originalName, ?string $mimeType): array
     {
-        if ($this->isMetaSupportedAudio($originalName, $mimeType)) {
-            return [$filePath, $this->normalizeAudioFilename($originalName, $mimeType), $mimeType];
+        if ($this->canTranscodeWithFfmpeg()) {
+            return $this->transcodeToMobileMessengerAudio($filePath);
         }
 
-        if ($this->canTranscodeWithFfmpeg()) {
-            return $this->transcodeToM4a($filePath);
+        if ($this->isMetaSupportedAudio($originalName, $mimeType)) {
+            return [$filePath, 'voice.m4a', 'audio/mp4'];
         }
 
         throw new \RuntimeException(
-            __('Meta принимает M4A, MP4, WAV или AAC. Установите ffmpeg на сервере или запишите голос в Safari/Edge.'),
+            __('Meta принимает M4A/MP4 (AAC). Установите ffmpeg на сервере или запишите голос в Safari/Edge.'),
         );
     }
 
@@ -136,13 +136,16 @@ class MetaAttachmentService
     }
 
     /**
+     * AAC-LC mono M4A — совместим с Messenger/Facebook на iOS и Android.
+     *
      * @return array{0: string, 1: string, 2: string}
      */
-    protected function transcodeToM4a(string $filePath): array
+    protected function transcodeToMobileMessengerAudio(string $filePath): array
     {
         $outputPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.uniqid('voice_', true).'.m4a';
+
         $command = sprintf(
-            'ffmpeg -y -i %s -vn -acodec aac -b:a 64k -ac 1 -ar 44100 -movflags +faststart -f ipod %s 2>&1',
+            'ffmpeg -y -i %s -vn -map_metadata -1 -c:a aac -profile:a aac_low -b:a 128k -ac 1 -ar 44100 -movflags +faststart -f mp4 %s 2>&1',
             escapeshellarg($filePath),
             escapeshellarg($outputPath),
         );
@@ -151,8 +154,8 @@ class MetaAttachmentService
         $code = 1;
         exec($command, $output, $code);
 
-        if ($code !== 0 || ! is_file($outputPath)) {
-            throw new \RuntimeException(__('Не удалось конвертировать аудио для Meta.'));
+        if ($code !== 0 || ! is_file($outputPath) || filesize($outputPath) < 256) {
+            throw new \RuntimeException(__('Не удалось конвертировать аудио для Messenger.'));
         }
 
         return [$outputPath, 'voice.m4a', 'audio/mp4'];
@@ -248,8 +251,8 @@ class MetaAttachmentService
             ->attach(
                 'filedata',
                 fopen($filePath, 'r'),
-                $originalName,
-                ['Content-Type' => $mimeType ?: 'audio/mp4'],
+                'voice.m4a',
+                ['Content-Type' => 'audio/mp4'],
             )
             ->post($url, [
                 'message' => $message,
@@ -315,7 +318,7 @@ class MetaAttachmentService
 
     public function storeSentAudioCopy(int $companyId, string $filePath, string $originalName): string
     {
-        $filename = uniqid('voice_', true).'_'.preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName);
+        $filename = uniqid('voice_', true).'_voice.m4a';
 
         Storage::disk('public')->putFileAs(
             'messenger/sent/'.$companyId,

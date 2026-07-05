@@ -131,15 +131,18 @@ function sendMessage() {
 }
 
 function pickRecorderMimeType(channel) {
-    if (channel === 'instagram') {
-        const instagramTypes = ['audio/mp4', 'audio/aac', 'audio/wav'];
-        const supported = instagramTypes.find((type) => MediaRecorder.isTypeSupported(type));
+    const mobileFriendlyTypes = ['audio/mp4', 'audio/aac'];
 
-        if (! supported) {
-            return null;
+    if (channel === 'instagram' || channel === 'facebook') {
+        const supported = mobileFriendlyTypes.find((type) => MediaRecorder.isTypeSupported(type));
+
+        if (supported) {
+            return supported;
         }
 
-        return supported;
+        if (channel === 'instagram') {
+            return null;
+        }
     }
 
     const candidates = [
