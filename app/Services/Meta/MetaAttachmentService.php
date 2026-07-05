@@ -409,39 +409,94 @@ class MetaAttachmentService
 
     /**
      * @param  list<string>  $tokens
+     * @param  list<string>  $remoteUrls
      */
     public function cacheInboundAttachment(
         int $companyId,
         int $messageId,
         int $index,
-        string $remoteUrl,
+        array $remoteUrls,
         array $tokens,
         ?string $mimeType = null,
     ): ?string {
         $storagePath = sprintf('public/messenger/inbound/%d/%d_%d.m4a', $companyId, $messageId, $index);
         $fullPath = $this->resolveLocalStoragePath($storagePath);
 
-        if ($fullPath !== null && filesize($fullPath) > 256) {
+        if ($fullPath !== null && filesize($fullPath) > 256 && $this->isBrowserPlayableAudio($fullPath)) {
             return $storagePath;
         }
 
-        $response = $this->fetchRemoteAttachment($remoteUrl, $tokens);
-        $directory = storage_path('app/public/messenger/inbound/'.$companyId);
+        $remoteUrls = array_values(array_unique(array_filter($remoteUrls)));
 
-        if (! is_dir($directory)) {
-            mkdir($directory, 0755, true);
+        foreach ($remoteUrls as $remoteUrl) {
+            try {
+                $response = $this->fetchRemoteAttachment($remoteUrl, $tokens);
+            } catch (\Throwable) {
+                continue;
+            }
+
+            $directory = storage_path('app/public/messenger/inbound/'.$companyId);
+
+            if (! is_dir($directory)) {
+                mkdir($directory, 0755, true);
+            }
+
+            $fullPath = storage_path('app/public/messenger/inbound/'.$companyId.'/'.$messageId.'_'.$index.'.m4a');
+            file_put_contents($fullPath, $response->body());
+
+            if (! is_file($fullPath) || filesize($fullPath) < 256) {
+                @unlink($fullPath);
+
+                continue;
+            }
+
+            $this->normalizeCachedInboundAudio($fullPath);
+
+            if (is_file($fullPath) && filesize($fullPath) > 256) {
+                return $storagePath;
+            }
         }
 
-        $fullPath = storage_path('app/public/messenger/inbound/'.$companyId.'/'.$messageId.'_'.$index.'.m4a');
-        file_put_contents($fullPath, $response->body());
+        return null;
+    }
 
-        if (! is_file($fullPath) || filesize($fullPath) < 256) {
-            @unlink($fullPath);
-
-            return null;
+    protected function normalizeCachedInboundAudio(string $fullPath): void
+    {
+        if ($this->isBrowserPlayableAudio($fullPath)) {
+            return;
         }
 
-        return $storagePath;
+        if (! $this->canTranscodeWithFfmpeg()) {
+            return;
+        }
+
+        try {
+            [$transcodedPath] = $this->transcodeToMobileMessengerAudio($fullPath);
+            if (is_file($transcodedPath) && filesize($transcodedPath) > 256) {
+                rename($transcodedPath, $fullPath);
+            }
+        } catch (\Throwable) {
+            // Keep original bytes if transcode fails.
+        }
+    }
+
+    public function isBrowserPlayableAudio(string $path): bool
+    {
+        if (! is_file($path)) {
+            return false;
+        }
+
+        $head = (string) file_get_contents($path, false, null, 0, 16);
+
+        if ($head === '') {
+            return false;
+        }
+
+        if (str_contains($head, 'ftyp')) {
+            return true;
+        }
+
+        return str_starts_with($head, 'ID3') || str_starts_with($head, 'OggS') || str_starts_with($head, 'RIFF');
     }
 
     /**
@@ -450,10 +505,14 @@ class MetaAttachmentService
     protected function remoteAttachmentRequests(string $url, string $token): array
     {
         $separator = str_contains($url, '?') ? '&' : '?';
+        $http = fn () => Http::timeout(60)
+            ->withOptions(['allow_redirects' => ['max' => 5]])
+            ->withHeaders(['User-Agent' => 'CRM-ErlanPro/1.0']);
 
         return [
-            fn () => Http::timeout(60)->withToken($token)->get($url),
-            fn () => Http::timeout(60)->get($url.$separator.'access_token='.urlencode($token)),
+            fn () => $http()->withToken($token)->get($url),
+            fn () => $http()->get($url.$separator.'access_token='.urlencode($token)),
+            fn () => $http()->get($url),
         ];
     }
 
@@ -464,14 +523,18 @@ class MetaAttachmentService
         }
 
         $body = $response->body();
-        if ($body === '' || strlen($body) < 256) {
+        if ($body === '' || strlen($body) < 128) {
             return false;
+        }
+
+        if ($this->isLikelyBinaryMedia($body)) {
+            return true;
         }
 
         $contentType = strtolower((string) $response->header('Content-Type'));
 
         if ($contentType === '') {
-            return true;
+            return false;
         }
 
         if (str_contains($contentType, 'text/html')
@@ -485,6 +548,16 @@ class MetaAttachmentService
             || str_starts_with($contentType, 'image/')
             || str_contains($contentType, 'octet-stream')
             || str_contains($contentType, 'mp4');
+    }
+
+    protected function isLikelyBinaryMedia(string $body): bool
+    {
+        $head = substr($body, 0, 16);
+
+        return str_contains($head, 'ftyp')
+            || str_starts_with($head, 'ID3')
+            || str_starts_with($head, 'OggS')
+            || str_starts_with($head, 'RIFF');
     }
 
     /**

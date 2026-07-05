@@ -660,10 +660,25 @@ class InstagramMessengerService
                     if ($resolved !== []) {
                         $updates['attachments'] = $resolved;
                     }
+                } elseif ($existing->direction === 'inbound') {
+                    $fresh = $this->fetchMessageAttachmentsFromApi($integration, $externalId, true);
+                    if ($fresh !== []) {
+                        $updates['attachments'] = $fresh;
+                    }
                 }
 
                 if ($updates !== []) {
                     $existing->update($updates);
+                    $existing->refresh();
+
+                    if ($existing->direction === 'inbound' && $existing->normalizedAttachments() !== []) {
+                        $cachedAttachments = $this->prefetchInboundAttachments(
+                            $integration,
+                            $existing,
+                            $existing->normalizedAttachments(),
+                        );
+                        $existing->update(['attachments' => $cachedAttachments]);
+                    }
                 }
 
                 return null;
@@ -1012,7 +1027,7 @@ class InstagramMessengerService
         array $messageData,
         bool $instagramPlatform = false,
     ): array {
-        $attachments = $this->normalizeAttachmentsFromApi($messageData);
+        $attachments = $this->normalizeAttachmentsFromApi($messageData, $integration, $instagramPlatform);
 
         if ($attachments !== [] && $this->attachmentsHavePlayableMedia($attachments)) {
             return $attachments;
@@ -1060,6 +1075,22 @@ class InstagramMessengerService
         string $messageId,
         bool $instagramPlatform = false,
     ): array {
+        if ($instagramPlatform) {
+            $pageToken = $this->pageAccessToken($integration);
+            if ($pageToken !== null) {
+                $attachments = $this->fetchAttachmentsWithPageToken(
+                    $integration,
+                    $pageToken,
+                    $messageId,
+                    true,
+                );
+
+                if ($attachments !== []) {
+                    return $attachments;
+                }
+            }
+        }
+
         $authMode = $this->authMode($integration);
         $attempts = $this->attachmentFetchAttempts($integration, $authMode, $messageId, $instagramPlatform);
 
@@ -1074,7 +1105,7 @@ class InstagramMessengerService
                 if (($attempt['parse'] ?? 'items') === 'items') {
                     $items = $response->json('data', []);
                     if (is_array($items) && $items !== []) {
-                        $parsed = $this->normalizeAttachmentItems($items);
+                        $parsed = $this->normalizeAttachmentItems($items, $integration, $instagramPlatform);
                         if ($parsed !== []) {
                             return $parsed;
                         }
@@ -1083,7 +1114,7 @@ class InstagramMessengerService
                     continue;
                 }
 
-                $parsed = $this->normalizeAttachmentsFromApi($response->json());
+                $parsed = $this->normalizeAttachmentsFromApi($response->json(), $integration, $instagramPlatform);
                 if ($parsed !== []) {
                     return $parsed;
                 }
@@ -1093,6 +1124,110 @@ class InstagramMessengerService
         }
 
         return [];
+    }
+
+    /**
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string, graph_attachment_id?: string}>
+     */
+    protected function fetchAttachmentsWithPageToken(
+        CompanyIntegration $integration,
+        string $pageToken,
+        string $messageId,
+        bool $instagramPlatform,
+    ): array {
+        $platform = $instagramPlatform ? 'instagram' : null;
+        $attempts = [
+            [
+                'url' => MetaMessagingSupport::graphUrl($messageId, $platform),
+                'query' => ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
+                'mode' => 'message',
+            ],
+            [
+                'url' => MetaMessagingSupport::graphUrl("{$messageId}/attachments", $platform),
+                'query' => [],
+                'mode' => 'items',
+            ],
+        ];
+
+        foreach ($attempts as $attempt) {
+            try {
+                $response = MetaMessagingSupport::client($pageToken)->get($attempt['url'], $attempt['query']);
+                $response->throw();
+
+                if ($attempt['mode'] === 'items') {
+                    $items = $response->json('data', []);
+                    if (! is_array($items) || $items === []) {
+                        continue;
+                    }
+
+                    $parsed = $this->normalizeAttachmentItems($items, $integration, $instagramPlatform);
+                } else {
+                    $parsed = $this->normalizeAttachmentsFromApi($response->json(), $integration, $instagramPlatform);
+                }
+
+                if ($parsed !== []) {
+                    return $parsed;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return [];
+    }
+
+    public function pageAccessToken(CompanyIntegration $integration): ?string
+    {
+        $facebookIntegration = CompanyIntegration::query()
+            ->where('company_id', $integration->company_id)
+            ->where('provider', IntegrationProvider::Facebook->value)
+            ->whereNotNull('api_token')
+            ->first();
+
+        if ($facebookIntegration) {
+            return MetaMessagingSupport::normalizeAccessToken((string) $facebookIntegration->api_token);
+        }
+
+        if ($this->authMode($integration) === 'facebook_login') {
+            return MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{type: string, url: string, name: ?string, mime_type: ?string, graph_attachment_id?: string}|null
+     */
+    public function fetchAttachmentById(
+        CompanyIntegration $integration,
+        string $attachmentId,
+        bool $instagramPlatform = false,
+    ): ?array {
+        $pageToken = $this->pageAccessToken($integration);
+
+        if ($pageToken === null) {
+            return null;
+        }
+
+        try {
+            $response = MetaMessagingSupport::client($pageToken)->get(
+                MetaMessagingSupport::graphUrl($attachmentId, $instagramPlatform ? 'instagram' : null),
+                ['fields' => MetaAttachmentService::ATTACHMENT_FIELDS],
+            );
+            $response->throw();
+
+            $parsed = $this->parseGraphAttachment($response->json());
+
+            if ($parsed === null || ($parsed['url'] ?? '') === '') {
+                return null;
+            }
+
+            $parsed['graph_attachment_id'] = $attachmentId;
+
+            return $parsed;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -1172,8 +1307,11 @@ class InstagramMessengerService
      * @param  list<array<string, mixed>>  $items
      * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
      */
-    protected function normalizeAttachmentItems(array $items): array
-    {
+    protected function normalizeAttachmentItems(
+        array $items,
+        CompanyIntegration $integration,
+        bool $instagramPlatform = false,
+    ): array {
         $attachments = [];
 
         foreach ($items as $item) {
@@ -1182,6 +1320,19 @@ class InstagramMessengerService
             }
 
             $parsed = $this->parseGraphAttachment($item);
+
+            if ($parsed !== null && ($parsed['url'] ?? '') === '' && isset($item['id'])) {
+                $enriched = $this->fetchAttachmentById(
+                    $integration,
+                    (string) $item['id'],
+                    $instagramPlatform,
+                );
+
+                if ($enriched !== null) {
+                    $parsed = $enriched;
+                }
+            }
+
             if ($parsed !== null) {
                 $attachments[] = $parsed;
             }
@@ -1194,27 +1345,17 @@ class InstagramMessengerService
      * @param  array<string, mixed>  $messageData
      * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
      */
-    public function normalizeAttachmentsFromApi(array $messageData): array
-    {
+    public function normalizeAttachmentsFromApi(
+        array $messageData,
+        CompanyIntegration $integration,
+        bool $instagramPlatform = false,
+    ): array {
         $items = $messageData['attachments']['data'] ?? [];
         if (! is_array($items)) {
             return [];
         }
 
-        $attachments = [];
-
-        foreach ($items as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-
-            $parsed = $this->parseGraphAttachment($item);
-            if ($parsed !== null) {
-                $attachments[] = $parsed;
-            }
-        }
-
-        return $attachments;
+        return $this->normalizeAttachmentItems($items, $integration, $instagramPlatform);
     }
 
     /**
@@ -1226,13 +1367,21 @@ class InstagramMessengerService
         array $message,
         bool $instagramPlatform = false,
     ): array {
+        $messageId = (string) ($message['mid'] ?? '');
+
+        if ($instagramPlatform && $messageId !== '') {
+            $fetched = $this->fetchMessageAttachmentsFromApi($integration, $messageId, true);
+            if ($fetched !== []) {
+                return $fetched;
+            }
+        }
+
         $attachments = $this->normalizeAttachmentsFromWebhook($message);
 
         if ($attachments !== [] && $this->attachmentsHavePlayableMedia($attachments)) {
             return $attachments;
         }
 
-        $messageId = (string) ($message['mid'] ?? '');
         if ($messageId === '') {
             return $attachments;
         }
@@ -1277,7 +1426,9 @@ class InstagramMessengerService
         $storagePath = (string) ($attachment['storage_path'] ?? '');
         if ($storagePath !== '') {
             $fullPath = $this->metaAttachments->resolveLocalStoragePath($storagePath);
-            if ($fullPath !== null) {
+            if ($fullPath !== null
+                && filesize($fullPath) > 256
+                && $this->metaAttachments->isBrowserPlayableAudio($fullPath)) {
                 return [
                     'type' => 'local',
                     'path' => $fullPath,
@@ -1290,6 +1441,13 @@ class InstagramMessengerService
         }
 
         $url = (string) ($attachment['url'] ?? '');
+        if ($instagramPlatform && $message->external_id) {
+            $attachments = $this->refreshInboundAttachmentsFromGraph($integration, $message, $attachments);
+            $attachment = $attachments[$index] ?? $attachments[0] ?? $attachment;
+            $message->update(['attachments' => $attachments]);
+            $url = (string) ($attachment['url'] ?? '');
+        }
+
         if ($url === '' && $message->external_id) {
             $fetched = $this->fetchMessageAttachmentsFromApi(
                 $integration,
@@ -1297,14 +1455,35 @@ class InstagramMessengerService
                 $instagramPlatform,
             );
             $fetchedAttachment = $fetched[$index] ?? $fetched[0] ?? null;
-            if (is_array($fetchedAttachment) && ($fetchedAttachment['url'] ?? '') !== '') {
-                $url = (string) $fetchedAttachment['url'];
-                $attachments[$index] = array_merge($attachment, $fetchedAttachment);
+            if (is_array($fetchedAttachment)) {
+                $attachment = array_merge($attachment, $fetchedAttachment);
+                $attachments[$index] = $attachment;
+                $message->update(['attachments' => $attachments]);
+                $url = (string) ($attachment['url'] ?? '');
+            }
+        }
+
+        if (($attachment['graph_attachment_id'] ?? '') !== '') {
+            $byId = $this->fetchAttachmentById(
+                $integration,
+                (string) $attachment['graph_attachment_id'],
+                $instagramPlatform,
+            );
+
+            if ($byId !== null) {
+                $attachment = array_merge($attachment, $byId);
+                $attachments[$index] = $attachment;
                 $message->update(['attachments' => $attachments]);
             }
         }
 
-        if ($url === '') {
+        $downloadUrls = $this->attachmentDownloadUrls($attachment);
+
+        if ($downloadUrls === [] && $url !== '') {
+            $downloadUrls = [$url];
+        }
+
+        if ($downloadUrls === []) {
             throw new \RuntimeException(__('Не удалось получить ссылку на аудио.'));
         }
 
@@ -1313,7 +1492,7 @@ class InstagramMessengerService
             $integration->company_id,
             $message->id,
             $index,
-            $url,
+            $downloadUrls,
             $tokens,
             $attachment['mime_type'] ?? null,
         );
@@ -1321,7 +1500,7 @@ class InstagramMessengerService
         if ($storagePath !== null) {
             $attachments[$index] = array_merge($attachment, [
                 'storage_path' => $storagePath,
-                'url' => $url,
+                'url' => $downloadUrls[0] ?? $url,
             ]);
             $message->update(['attachments' => $attachments]);
 
@@ -1340,7 +1519,7 @@ class InstagramMessengerService
 
         return [
             'type' => 'remote',
-            'url' => $url,
+            'url' => $downloadUrls[0],
             'mime_type' => $attachment['mime_type'] ?? null,
             'tokens' => $tokens,
         ];
@@ -1351,21 +1530,74 @@ class InstagramMessengerService
      */
     public function mediaFetchTokens(CompanyIntegration $integration): array
     {
-        $tokens = [
-            MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token),
-        ];
+        $tokens = [];
 
-        $facebookIntegration = CompanyIntegration::query()
-            ->where('company_id', $integration->company_id)
-            ->where('provider', IntegrationProvider::Facebook->value)
-            ->whereNotNull('api_token')
-            ->first();
-
-        if ($facebookIntegration) {
-            $tokens[] = MetaMessagingSupport::normalizeAccessToken((string) $facebookIntegration->api_token);
+        $pageToken = $this->pageAccessToken($integration);
+        if ($pageToken !== null) {
+            $tokens[] = $pageToken;
         }
 
+        $tokens[] = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
+
         return array_values(array_unique(array_filter($tokens)));
+    }
+
+    /**
+     * @param  array<string, mixed>  $attachment
+     * @return list<string>
+     */
+    public function attachmentDownloadUrls(array $attachment): array
+    {
+        return array_values(array_unique(array_filter([
+            (string) ($attachment['url'] ?? ''),
+            (string) ($attachment['file_url'] ?? ''),
+        ])));
+    }
+
+    /**
+     * @param  array<string, mixed>  $attachment
+     */
+    public function isAudioLikeAttachment(array $attachment): bool
+    {
+        if (($attachment['type'] ?? '') === 'audio') {
+            return true;
+        }
+
+        return str_starts_with(strtolower((string) ($attachment['mime_type'] ?? '')), 'audio/');
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $attachments
+     * @return list<array<string, mixed>>
+     */
+    public function refreshInboundAttachmentsFromGraph(
+        CompanyIntegration $integration,
+        MessengerMessage $message,
+        array $attachments,
+    ): array {
+        if (! $message->external_id) {
+            return $attachments;
+        }
+
+        $fresh = $this->fetchMessageAttachmentsFromApi(
+            $integration,
+            (string) $message->external_id,
+            true,
+        );
+
+        if ($fresh === []) {
+            return $attachments;
+        }
+
+        foreach ($fresh as $index => $freshAttachment) {
+            if (! is_array($freshAttachment)) {
+                continue;
+            }
+
+            $attachments[$index] = array_merge($attachments[$index] ?? [], $freshAttachment);
+        }
+
+        return $attachments;
     }
 
     /**
@@ -1377,6 +1609,10 @@ class InstagramMessengerService
         MessengerMessage $message,
         array $attachments,
     ): array {
+        if ($message->external_id) {
+            $attachments = $this->refreshInboundAttachmentsFromGraph($integration, $message, $attachments);
+        }
+
         $tokens = $this->mediaFetchTokens($integration);
 
         foreach ($attachments as $index => $attachment) {
@@ -1384,19 +1620,27 @@ class InstagramMessengerService
                 continue;
             }
 
-            $url = (string) ($attachment['url'] ?? '');
-            if ($url === '' || ($attachment['type'] ?? '') !== 'audio') {
+            if (! $this->isAudioLikeAttachment($attachment)) {
                 continue;
             }
 
-            $storagePath = $this->metaAttachments->cacheInboundAttachment(
-                $integration->company_id,
-                $message->id,
-                $index,
-                $url,
-                $tokens,
-                $attachment['mime_type'] ?? null,
-            );
+            $downloadUrls = $this->attachmentDownloadUrls($attachment);
+            if ($downloadUrls === []) {
+                continue;
+            }
+
+            try {
+                $storagePath = $this->metaAttachments->cacheInboundAttachment(
+                    $integration->company_id,
+                    $message->id,
+                    $index,
+                    $downloadUrls,
+                    $tokens,
+                    $attachment['mime_type'] ?? null,
+                );
+            } catch (\Throwable) {
+                continue;
+            }
 
             if ($storagePath !== null) {
                 $attachments[$index]['storage_path'] = $storagePath;
@@ -1447,6 +1691,7 @@ class InstagramMessengerService
                     'url' => '',
                     'name' => isset($item['title']) ? (string) $item['title'] : null,
                     'mime_type' => $mimeType,
+                    'graph_attachment_id' => (string) ($payload['attachment_id'] ?? $item['id'] ?? ''),
                 ];
 
                 continue;
@@ -1457,6 +1702,7 @@ class InstagramMessengerService
                 'url' => $url,
                 'name' => isset($item['title']) ? (string) $item['title'] : null,
                 'mime_type' => $mimeType,
+                'graph_attachment_id' => (string) ($payload['attachment_id'] ?? $item['id'] ?? ''),
             ];
         }
 
@@ -1489,8 +1735,10 @@ class InstagramMessengerService
             $url = (string) ($item['video_data']['url'] ?? $item['video_data']['preview_url'] ?? '');
 
             if ($url !== '') {
+                $mediaType = $this->looksLikeAudioAttachment($item, $mimeType, $name) ? 'audio' : 'video';
+
                 return [
-                    'type' => 'video',
+                    'type' => $mediaType,
                     'url' => $url,
                     'name' => $name,
                     'mime_type' => $mimeType,
@@ -1505,13 +1753,15 @@ class InstagramMessengerService
                 ?? $item['audio_data']['preview_url']
                 ?? ''
             );
+            $attachmentId = (string) ($item['id'] ?? '');
 
-            if ($url !== '') {
+            if ($url !== '' || $attachmentId !== '') {
                 return [
                     'type' => 'audio',
                     'url' => $url,
                     'name' => $name,
                     'mime_type' => $mimeType ?: 'audio/mp4',
+                    'graph_attachment_id' => $attachmentId,
                 ];
             }
         }
