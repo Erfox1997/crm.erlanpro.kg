@@ -64,4 +64,8 @@ return [
         'timeout' => (int) env('WAPPI_TIMEOUT', 60),
     ],
 
+    'telegram' => [
+        'timeout' => (int) env('TELEGRAM_TIMEOUT', 60),
+    ],
+
 ];

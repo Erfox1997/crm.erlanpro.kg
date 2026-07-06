@@ -24,7 +24,7 @@ enum IntegrationProvider: string
         return match ($this) {
             self::Wappi => 'WhatsApp через Wappi — входящие сообщения и чаты.',
             self::Instagram => 'Direct-сообщения Instagram.',
-            self::Telegram => 'Telegram-бот или личный аккаунт.',
+            self::Telegram => 'Telegram-бот для личных сообщений клиентов.',
             self::Facebook => 'Messenger страницы Facebook.',
         };
     }

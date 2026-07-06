@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\CompanyIntegration;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
+use App\Services\Telegram\TelegramMessengerService;
 use App\Services\Wappi\WappiMessengerService;
 
 class MessengerSyncService
@@ -15,6 +16,7 @@ class MessengerSyncService
         private InstagramMessengerService $instagram,
         private FacebookMessengerService $facebook,
         private WappiMessengerService $wappi,
+        private TelegramMessengerService $telegram,
     ) {}
 
     /**
@@ -38,11 +40,12 @@ class MessengerSyncService
         $instagramIntegration = $this->instagram->integrationForCompany($companyId);
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
         $wappiIntegration = $this->wappi->integrationForCompany($companyId);
+        $telegramIntegration = $this->telegram->integrationForCompany($companyId);
 
-        if (! $instagramIntegration && ! $facebookIntegration && ! $wappiIntegration) {
+        if (! $instagramIntegration && ! $facebookIntegration && ! $wappiIntegration && ! $telegramIntegration) {
             return [
                 'synced' => 0,
-                'errors' => [__('Подключите Instagram, Facebook или Wappi (WhatsApp) в разделе «Интеграции».')],
+                'errors' => [__('Подключите Instagram, Facebook, WhatsApp или Telegram в разделе «Интеграции».')],
                 'company_id' => $companyId,
                 'company_name' => $company?->name,
             ];
@@ -114,6 +117,7 @@ class MessengerSyncService
                 IntegrationProvider::Instagram->value,
                 IntegrationProvider::Facebook->value,
                 IntegrationProvider::Wappi->value,
+                IntegrationProvider::Telegram->value,
             ])
             ->whereNotNull('api_token')
             ->distinct()

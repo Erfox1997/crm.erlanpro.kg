@@ -7,6 +7,7 @@ use App\Models\CompanyIntegration;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Meta\MetaMessagingSupport;
+use App\Services\Telegram\TelegramMessengerService;
 use App\Services\Wappi\WappiMessengerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -30,6 +31,9 @@ class IntegrationController extends Controller
                 IntegrationProvider::Wappi => $record !== null
                     && filled($record->api_token)
                     && filled($record->metadata['profile_id'] ?? null),
+                IntegrationProvider::Telegram => $record !== null
+                    && filled($record->api_token)
+                    && filled($record->metadata['bot_id'] ?? null),
                 default => $record !== null && filled($record->api_token),
             };
 
@@ -70,6 +74,16 @@ class IntegrationController extends Controller
                         'profile_id' => $record->metadata['profile_id'] ?? null,
                     ];
                 }
+            }
+
+            if ($provider === IntegrationProvider::Telegram && $hasToken) {
+                $item['account'] = [
+                    'username' => $record->metadata['bot_username'] ?? null,
+                    'name' => $record->metadata['bot_name'] ?? null,
+                ];
+                $item['webhook_url'] = filled($record->metadata['webhook_secret'] ?? null)
+                    ? route('webhooks.telegram.handle', ['secret' => $record->metadata['webhook_secret']])
+                    : null;
             }
 
             return $item;
@@ -152,6 +166,31 @@ class IntegrationController extends Controller
             ];
         }
 
+        if ($integrationProvider === IntegrationProvider::Telegram) {
+            $existing = CompanyIntegration::query()
+                ->where('company_id', $companyId)
+                ->where('provider', $integrationProvider->value)
+                ->first();
+
+            try {
+                $connection = app(TelegramMessengerService::class)->connectFromToken(
+                    $apiToken,
+                    $existing?->metadata,
+                );
+            } catch (\Throwable $e) {
+                return back()->withErrors([
+                    'api_token' => __('Telegram API отклонил токен: :msg', [
+                        'msg' => $e->getMessage(),
+                    ]),
+                ]);
+            }
+
+            $attributes = [
+                'api_token' => $connection['api_token'],
+                'metadata' => $connection['metadata'],
+            ];
+        }
+
         $integration = CompanyIntegration::query()->updateOrCreate(
             [
                 'company_id' => $companyId,
@@ -170,9 +209,21 @@ class IntegrationController extends Controller
             }
         }
 
-        $message = $integrationProvider === IntegrationProvider::Wappi
-            ? __('Интеграция :name сохранена. Webhook настроен автоматически.', ['name' => $integrationProvider->label()])
-            : __('Токен :name сохранён.', ['name' => $integrationProvider->label()]);
+        if ($integrationProvider === IntegrationProvider::Telegram) {
+            try {
+                app(TelegramMessengerService::class)->connectIntegration($integration);
+            } catch (\Throwable $e) {
+                return back()->withErrors([
+                    'api_token' => __('Telegram: :msg', ['msg' => $e->getMessage()]),
+                ]);
+            }
+        }
+
+        $message = match ($integrationProvider) {
+            IntegrationProvider::Wappi => __('Интеграция :name сохранена. Webhook настроен автоматически.', ['name' => $integrationProvider->label()]),
+            IntegrationProvider::Telegram => __('Интеграция :name сохранена. Webhook настроен автоматически.', ['name' => $integrationProvider->label()]),
+            default => __('Токен :name сохранён.', ['name' => $integrationProvider->label()]),
+        };
 
         return back()->with('success', $message);
     }
@@ -183,6 +234,15 @@ class IntegrationController extends Controller
         abort_unless($integrationProvider !== null, 404);
 
         $companyId = (int) $request->user()->company_id;
+
+        $integration = CompanyIntegration::query()
+            ->where('company_id', $companyId)
+            ->where('provider', $integrationProvider->value)
+            ->first();
+
+        if ($integration && $integrationProvider === IntegrationProvider::Telegram) {
+            app(TelegramMessengerService::class)->disconnectIntegration($integration);
+        }
 
         CompanyIntegration::query()
             ->where('company_id', $companyId)

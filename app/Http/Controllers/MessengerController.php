@@ -13,6 +13,7 @@ use App\Services\Messenger\MessengerSyncService;
 use App\Services\Messenger\MessengerUnreadService;
 use App\Services\Meta\MetaAttachmentService;
 use App\Services\Meta\MetaMessagingSupport;
+use App\Services\Telegram\TelegramMessengerService;
 use App\Services\Wappi\WappiMessengerService;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\RedirectResponse;
@@ -30,6 +31,7 @@ class MessengerController extends Controller
         private InstagramMessengerService $instagram,
         private FacebookMessengerService $facebook,
         private WappiMessengerService $wappi,
+        private TelegramMessengerService $telegram,
         private MetaAttachmentService $metaAttachments,
         private MessengerSyncService $messengerSync,
         private MessengerUnreadService $unread,
@@ -42,11 +44,13 @@ class MessengerController extends Controller
         $instagramIntegration = $this->instagram->integrationForCompany($companyId);
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
         $wappiIntegration = $this->wappi->integrationForCompany($companyId);
+        $telegramIntegration = $this->telegram->integrationForCompany($companyId);
 
         $channels = array_values(array_filter([
             $instagramIntegration ? IntegrationProvider::Instagram->value : null,
             $facebookIntegration ? IntegrationProvider::Facebook->value : null,
             $wappiIntegration ? IntegrationProvider::Wappi->value : null,
+            $telegramIntegration ? IntegrationProvider::Telegram->value : null,
         ]));
 
         $conversations = MessengerConversation::query()
@@ -128,6 +132,7 @@ class MessengerController extends Controller
             'instagramConnected' => $instagramIntegration !== null,
             'facebookConnected' => $facebookIntegration !== null,
             'wappiConnected' => $wappiIntegration !== null,
+            'telegramConnected' => $telegramIntegration !== null,
             'instagramAccount' => $instagramIntegration ? [
                 'username' => $instagramIntegration->metadata['username'] ?? null,
                 'name' => $instagramIntegration->metadata['name'] ?? null,
@@ -141,6 +146,10 @@ class MessengerController extends Controller
                 'profile_name' => $wappiIntegration->metadata['profile_name'] ?? null,
                 'profile_phone' => $wappiIntegration->metadata['profile_phone'] ?? null,
                 'profile_id' => $wappiIntegration->metadata['profile_id'] ?? null,
+            ] : null,
+            'telegramAccount' => $telegramIntegration ? [
+                'bot_name' => $telegramIntegration->metadata['bot_name'] ?? null,
+                'bot_username' => $telegramIntegration->metadata['bot_username'] ?? null,
             ] : null,
             'conversations' => $conversations,
             'selectedConversation' => $selectedConversation,
@@ -188,6 +197,30 @@ class MessengerController extends Controller
             abort(404);
         }
 
+        if ($conversation->channel === IntegrationProvider::Telegram->value) {
+            $attachment = $message->normalizedAttachments()[$index] ?? null;
+
+            if (! is_array($attachment)) {
+                abort(404);
+            }
+
+            $storagePath = (string) ($attachment['storage_path'] ?? '');
+            if ($storagePath !== '') {
+                $localPath = $this->metaAttachments->resolveLocalStoragePath($storagePath);
+
+                if ($localPath) {
+                    return response()->file($localPath, [
+                        'Content-Type' => $attachment['mime_type']
+                            ?? $this->metaAttachments->mimeTypeForPath($localPath),
+                        'Cache-Control' => 'private, max-age=3600',
+                        'Accept-Ranges' => 'bytes',
+                    ]);
+                }
+            }
+
+            abort(404);
+        }
+
         $integration = $this->integrationForConversation($companyId, $conversation);
 
         $source = $this->instagram->resolveAttachmentPlayback($integration, $message, $index);
@@ -213,11 +246,12 @@ class MessengerController extends Controller
         $instagramIntegration = $this->instagram->integrationForCompany($companyId);
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
         $wappiIntegration = $this->wappi->integrationForCompany($companyId);
+        $telegramIntegration = $this->telegram->integrationForCompany($companyId);
 
-        if (! $instagramIntegration && ! $facebookIntegration && ! $wappiIntegration) {
+        if (! $instagramIntegration && ! $facebookIntegration && ! $wappiIntegration && ! $telegramIntegration) {
             return redirect()
                 ->route('integrations.index')
-                ->withErrors(['sync' => __('Подключите Instagram, Facebook или Wappi (WhatsApp) в разделе «Интеграции».')]);
+                ->withErrors(['sync' => __('Подключите Instagram, Facebook, WhatsApp или Telegram в разделе «Интеграции».')]);
         }
 
         set_time_limit(120);
@@ -297,7 +331,7 @@ class MessengerController extends Controller
                 } else {
                     $this->facebook->sendMessage($integration, $conversation, (string) $validated['body']);
                 }
-            } else {
+            } elseif ($conversation->channel === IntegrationProvider::Instagram->value) {
                 $integration = $this->instagram->integrationForCompany($companyId);
                 if (! $integration) {
                     return back()->withErrors(['body' => __('Instagram не подключён.')]);
@@ -310,6 +344,21 @@ class MessengerController extends Controller
                 } else {
                     $this->instagram->sendMessage($integration, $conversation, (string) $validated['body']);
                 }
+            } elseif ($conversation->channel === IntegrationProvider::Telegram->value) {
+                $integration = $this->telegram->integrationForCompany($companyId);
+                if (! $integration) {
+                    return back()->withErrors(['body' => __('Telegram не подключён.')]);
+                }
+
+                if ($request->hasFile('image')) {
+                    $this->sendImage($this->telegram, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
+                } elseif ($request->hasFile('audio')) {
+                    $this->sendTelegramAudio($integration, $conversation, $request->file('audio'));
+                } else {
+                    $this->telegram->sendMessage($integration, $conversation, (string) $validated['body']);
+                }
+            } else {
+                return back()->withErrors(['body' => __('Канал не поддерживается.')]);
             }
 
             $conversation->update(['last_message_at' => now()]);
@@ -318,9 +367,11 @@ class MessengerController extends Controller
                 ->route('messenger.index', ['conversation' => $conversation->id])
                 ->with('success', __('Сообщение отправлено.'));
         } catch (RequestException $e) {
-            $error = $conversation->channel === IntegrationProvider::Wappi->value
-                ? $this->formatWappiRequestError($e)
-                : MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage());
+            $error = match ($conversation->channel) {
+                IntegrationProvider::Wappi->value => $this->formatWappiRequestError($e),
+                IntegrationProvider::Telegram->value => $this->formatTelegramRequestError($e),
+                default => MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage()),
+            };
 
             return back()->withErrors(['body' => $error]);
         } catch (\Throwable $e) {
@@ -358,13 +409,28 @@ class MessengerController extends Controller
                 }
 
                 $this->dispatchQuickReply($this->facebook, $integration, $conversation, $quickReply);
-            } else {
+            } elseif ($conversation->channel === IntegrationProvider::Instagram->value) {
                 $integration = $this->instagram->integrationForCompany($companyId);
                 if (! $integration) {
                     return back()->withErrors(['body' => __('Instagram не подключён.')]);
                 }
 
                 $this->dispatchQuickReply($this->instagram, $integration, $conversation, $quickReply);
+            } elseif ($conversation->channel === IntegrationProvider::Telegram->value) {
+                $integration = $this->telegram->integrationForCompany($companyId);
+                if (! $integration) {
+                    return back()->withErrors(['body' => __('Telegram не подключён.')]);
+                }
+
+                if ($quickReply->type === 'text') {
+                    $this->telegram->sendMessage($integration, $conversation, (string) $quickReply->body);
+                } elseif (in_array($quickReply->type, ['audio', 'image'], true)) {
+                    $this->dispatchTelegramQuickReply($integration, $conversation, $quickReply);
+                } else {
+                    return back()->withErrors(['body' => __('Медиа-шаблоны для Telegram пока не поддерживаются.')]);
+                }
+            } else {
+                return back()->withErrors(['body' => __('Канал не поддерживается.')]);
             }
 
             $conversation->update(['last_message_at' => now()]);
@@ -373,9 +439,11 @@ class MessengerController extends Controller
                 ->route('messenger.index', ['conversation' => $conversation->id])
                 ->with('success', __('Сообщение отправлено.'));
         } catch (RequestException $e) {
-            $error = $conversation->channel === IntegrationProvider::Wappi->value
-                ? $this->formatWappiRequestError($e)
-                : MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage());
+            $error = match ($conversation->channel) {
+                IntegrationProvider::Wappi->value => $this->formatWappiRequestError($e),
+                IntegrationProvider::Telegram->value => $this->formatTelegramRequestError($e),
+                default => MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage()),
+            };
 
             return back()->withErrors(['body' => $error]);
         } catch (\Throwable $e) {
@@ -451,12 +519,67 @@ class MessengerController extends Controller
             return $integration;
         }
 
-        $integration = $this->instagram->integrationForCompany($companyId);
-        if (! $integration) {
-            throw new \RuntimeException(__('Instagram не подключён.'));
+        if ($conversation->channel === IntegrationProvider::Instagram->value) {
+            $integration = $this->instagram->integrationForCompany($companyId);
+            if (! $integration) {
+                throw new \RuntimeException(__('Instagram не подключён.'));
+            }
+
+            return $integration;
         }
 
-        return $integration;
+        if ($conversation->channel === IntegrationProvider::Telegram->value) {
+            $integration = $this->telegram->integrationForCompany($companyId);
+            if (! $integration) {
+                throw new \RuntimeException(__('Telegram не подключён.'));
+            }
+
+            return $integration;
+        }
+
+        throw new \RuntimeException(__('Канал не поддерживается.'));
+    }
+
+    protected function dispatchTelegramQuickReply(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        MessengerQuickReply $quickReply,
+    ): void {
+        if (! $quickReply->attachment_path) {
+            throw new \RuntimeException(__('Файл шаблона не найден.'));
+        }
+
+        $path = Storage::disk('local')->path($quickReply->attachment_path);
+        if (! is_file($path)) {
+            throw new \RuntimeException(__('Файл шаблона не найден.'));
+        }
+
+        if ($quickReply->type === 'audio') {
+            $this->telegram->sendAudioMessage(
+                $integration,
+                $conversation,
+                $path,
+                $quickReply->attachment_name ?: 'voice.m4a',
+                $quickReply->attachment_mime,
+            );
+
+            return;
+        }
+
+        if ($quickReply->type === 'image') {
+            $this->telegram->sendImageMessage(
+                $integration,
+                $conversation,
+                $path,
+                $quickReply->attachment_name ?: 'image.jpg',
+                $quickReply->attachment_mime,
+                $quickReply->body,
+            );
+
+            return;
+        }
+
+        throw new \RuntimeException(__('Медиа-шаблоны для Telegram пока не поддерживаются.'));
     }
 
     protected function dispatchWappiQuickReply(
@@ -507,6 +630,37 @@ class MessengerController extends Controller
         throw new \RuntimeException(__('Медиа-шаблоны для WhatsApp пока не поддерживаются.'));
     }
 
+    protected function formatTelegramRequestError(RequestException $exception): string
+    {
+        $response = $exception->response;
+        $message = trim((string) ($response?->json('description') ?? $response?->json('error') ?? ''));
+
+        if ($message !== '') {
+            return $message;
+        }
+
+        return $exception->getMessage();
+    }
+
+    protected function sendTelegramAudio(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        UploadedFile $audio,
+    ): void {
+        $path = $audio->getRealPath();
+        if (! is_string($path) || $path === '') {
+            throw new \RuntimeException(__('Не удалось прочитать аудиофайл.'));
+        }
+
+        $this->telegram->sendAudioMessage(
+            $integration,
+            $conversation,
+            $path,
+            $audio->getClientOriginalName() ?: 'voice.webm',
+            $audio->getMimeType(),
+        );
+    }
+
     protected function formatWappiRequestError(RequestException $exception): string
     {
         $response = $exception->response;
@@ -540,7 +694,7 @@ class MessengerController extends Controller
     }
 
     protected function sendImage(
-        FacebookMessengerService|InstagramMessengerService|WappiMessengerService $service,
+        FacebookMessengerService|InstagramMessengerService|TelegramMessengerService|WappiMessengerService $service,
         CompanyIntegration $integration,
         MessengerConversation $conversation,
         UploadedFile $image,

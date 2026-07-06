@@ -18,6 +18,7 @@ use App\Http\Controllers\PipelineTunnelController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StageController;
 use App\Http\Controllers\TariffController;
+use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\WappiOutboundMediaController;
 use App\Http\Controllers\WappiWebhookController;
 use Illuminate\Http\Request;
@@ -27,6 +28,9 @@ use Inertia\Inertia;
 Route::get('/webhooks/meta', [MetaWebhookController::class, 'verify'])->name('webhooks.meta.verify');
 Route::post('/webhooks/meta', [MetaWebhookController::class, 'handle'])->name('webhooks.meta.handle');
 Route::post('/webhooks/wappi', [WappiWebhookController::class, 'handle'])->name('webhooks.wappi.handle');
+Route::post('/webhooks/telegram/{secret}', [TelegramWebhookController::class, 'handle'])
+    ->where('secret', '[a-zA-Z0-9]+')
+    ->name('webhooks.telegram.handle');
 Route::get('/media/wappi-outbound/{filename}', [WappiOutboundMediaController::class, 'show'])
     ->where('filename', '[a-zA-Z0-9._-]+')
     ->name('wappi.outbound-media');

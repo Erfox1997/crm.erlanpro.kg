@@ -129,6 +129,10 @@ function isWappiProvider(provider) {
     return provider === 'wappi';
 }
 
+function isTelegramProvider(provider) {
+    return provider === 'telegram';
+}
+
 function wappiCanSave() {
     const form = forms.wappi;
 
@@ -336,6 +340,70 @@ function wappiCanSave() {
                                 <PrimaryButton
                                     type="submit"
                                     :disabled="!wappiCanSave()"
+                                >
+                                    Сохранить
+                                </PrimaryButton>
+                                <SecondaryButton
+                                    v-if="item.has_token"
+                                    type="button"
+                                    @click="disconnect(item.provider)"
+                                >
+                                    Отключить
+                                </SecondaryButton>
+                            </div>
+                        </form>
+
+                        <form
+                            v-else-if="isTelegramProvider(item.provider)"
+                            class="mt-5 space-y-4"
+                            @submit.prevent="saveToken(item.provider)"
+                        >
+                            <div>
+                                <InputLabel
+                                    for="telegram_api_token"
+                                    value="Токен бота"
+                                />
+                                <TextInput
+                                    id="telegram_api_token"
+                                    v-model="tokenInputs.telegram"
+                                    type="password"
+                                    class="mt-1 block w-full font-mono text-sm"
+                                    :placeholder="
+                                        item.has_token
+                                            ? 'Новый токен бота'
+                                            : 'Токен от @BotFather'
+                                    "
+                                    autocomplete="off"
+                                />
+                                <p class="mt-2 text-xs text-slate-500">
+                                    Создайте бота через @BotFather и вставьте HTTP API токен.
+                                    Клиенты должны сначала написать боту в Telegram.
+                                </p>
+                                <InputError
+                                    class="mt-2"
+                                    :message="forms.telegram.errors.api_token"
+                                />
+                            </div>
+
+                            <div
+                                v-if="item.webhook_url"
+                                class="rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2.5 text-xs text-sky-900"
+                            >
+                                <p class="font-medium">
+                                    Webhook (настраивается автоматически при сохранении)
+                                </p>
+                                <p class="mt-1 break-all font-mono text-[11px] text-sky-800">
+                                    {{ item.webhook_url }}
+                                </p>
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                <PrimaryButton
+                                    type="submit"
+                                    :disabled="
+                                        forms.telegram.processing ||
+                                        !tokenInputs.telegram?.trim()
+                                    "
                                 >
                                     Сохранить
                                 </PrimaryButton>

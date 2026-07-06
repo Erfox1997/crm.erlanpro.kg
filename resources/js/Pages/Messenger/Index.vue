@@ -17,6 +17,10 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    telegramConnected: {
+        type: Boolean,
+        default: false,
+    },
     instagramAccount: {
         type: Object,
         default: null,
@@ -42,6 +46,10 @@ const props = defineProps({
         default: () => [],
     },
     wappiAccount: {
+        type: Object,
+        default: null,
+    },
+    telegramAccount: {
         type: Object,
         default: null,
     },
@@ -79,7 +87,10 @@ let recordingTimer = null;
 let audioChunks = [];
 
 const messengerConnected = computed(() => (
-    props.instagramConnected || props.facebookConnected || props.wappiConnected
+    props.instagramConnected
+    || props.facebookConnected
+    || props.wappiConnected
+    || props.telegramConnected
 ));
 
 const filteredConversations = computed(() => {
@@ -139,6 +150,10 @@ function channelBadgeClass(channel) {
         return 'bg-[#25D366] text-white';
     }
 
+    if (channel === 'telegram') {
+        return 'bg-[#229ED9] text-white';
+    }
+
     return 'bg-gradient-to-br from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white';
 }
 
@@ -149,6 +164,10 @@ function avatarClass(channel) {
 
     if (channel === 'wappi') {
         return 'bg-[#25D366]';
+    }
+
+    if (channel === 'telegram') {
+        return 'bg-[#229ED9]';
     }
 
     return 'bg-gradient-to-br from-pink-500 to-purple-600';
@@ -315,7 +334,7 @@ function pickRecorderMimeType(channel) {
         }
     }
 
-    const candidates = channel === 'wappi'
+    const candidates = channel === 'wappi' || channel === 'telegram'
         ? [
             'audio/ogg;codecs=opus',
             'audio/webm;codecs=opus',
@@ -716,7 +735,7 @@ watch(
                     v-if="!messengerConnected"
                     class="flex flex-1 items-center justify-center px-6 text-center text-sm text-[#667781]"
                 >
-                    Подключите Instagram, Facebook или WhatsApp (Wappi) в
+                    Подключите Instagram, Facebook, WhatsApp или Telegram в
                     <Link
                         :href="route('integrations.index')"
                         class="ml-1 text-[#00a884] hover:underline"
