@@ -309,9 +309,11 @@ class MessengerController extends Controller
                 ->route('messenger.index', ['conversation' => $conversation->id])
                 ->with('success', __('Сообщение отправлено.'));
         } catch (RequestException $e) {
-            return back()->withErrors([
-                'body' => MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage()),
-            ]);
+            $error = $conversation->channel === IntegrationProvider::Wappi->value
+                ? $this->formatWappiRequestError($e)
+                : MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage());
+
+            return back()->withErrors(['body' => $error]);
         } catch (\Throwable $e) {
             return back()->withErrors(['body' => $e->getMessage()]);
         }
@@ -362,9 +364,11 @@ class MessengerController extends Controller
                 ->route('messenger.index', ['conversation' => $conversation->id])
                 ->with('success', __('Сообщение отправлено.'));
         } catch (RequestException $e) {
-            return back()->withErrors([
-                'body' => MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage()),
-            ]);
+            $error = $conversation->channel === IntegrationProvider::Wappi->value
+                ? $this->formatWappiRequestError($e)
+                : MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage());
+
+            return back()->withErrors(['body' => $error]);
         } catch (\Throwable $e) {
             return back()->withErrors(['body' => $e->getMessage()]);
         }
@@ -479,6 +483,18 @@ class MessengerController extends Controller
         }
 
         throw new \RuntimeException(__('Медиа-шаблоны для WhatsApp пока не поддерживаются.'));
+    }
+
+    protected function formatWappiRequestError(RequestException $exception): string
+    {
+        $response = $exception->response;
+        $message = trim((string) ($response?->json('message') ?? $response?->json('detail') ?? $response?->json('error') ?? ''));
+
+        if ($message !== '') {
+            return $message;
+        }
+
+        return $exception->getMessage();
     }
 
     protected function sendAudio(

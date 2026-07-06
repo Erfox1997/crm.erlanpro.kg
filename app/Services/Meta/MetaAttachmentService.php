@@ -458,6 +458,25 @@ class MetaAttachmentService
         return Storage::disk('public')->url('messenger/outbound/'.$filename);
     }
 
+    public function publishTemporaryAudioForSend(string $filePath, string $originalName): string
+    {
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        if (! in_array($extension, ['ogg', 'opus', 'mp3', 'mpeg', 'm4a', 'mp4', 'webm', 'aac', 'wav'], true)) {
+            $extension = 'ogg';
+        }
+
+        $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', pathinfo($originalName, PATHINFO_FILENAME)) ?: 'voice';
+        $filename = uniqid('voice_', true).'_'.$safeName.'.'.$extension;
+
+        Storage::disk('public')->putFileAs(
+            'messenger/outbound',
+            new File($filePath),
+            $filename,
+        );
+
+        return Storage::disk('public')->url('messenger/outbound/'.$filename);
+    }
+
     protected function publishTemporaryAudio(string $filePath, string $originalName): string
     {
         $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName) ?: 'voice.m4a';
