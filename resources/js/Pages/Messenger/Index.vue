@@ -263,12 +263,19 @@ function pickRecorderMimeType(channel) {
         }
     }
 
-    const candidates = [
-        'audio/mp4',
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/ogg;codecs=opus',
-    ];
+    const candidates = channel === 'wappi'
+        ? [
+            'audio/ogg;codecs=opus',
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/mp4',
+        ]
+        : [
+            'audio/mp4',
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/ogg;codecs=opus',
+        ];
 
     return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? '';
 }
@@ -349,9 +356,12 @@ function sendVoiceMessage() {
     }
 
     const mimeType = mediaRecorder?.mimeType || audioChunks[0]?.type || 'audio/webm';
-    const extension = props.selectedConversation.channel === 'instagram'
+    const channel = props.selectedConversation.channel;
+    const extension = channel === 'instagram'
         ? (mimeType.includes('wav') ? 'wav' : 'm4a')
-        : (mimeType.includes('mp4') ? 'm4a' : 'webm');
+        : channel === 'wappi'
+            ? (mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'm4a' : 'webm')
+            : (mimeType.includes('mp4') ? 'm4a' : 'webm');
     const blob = new Blob(audioChunks, { type: mimeType });
     const file = new File([blob], `voice.${extension}`, { type: mimeType });
 

@@ -6,15 +6,18 @@ use App\Enums\IntegrationProvider;
 use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
+use App\Services\Meta\MetaAttachmentService;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class WappiMessengerService
 {
     public function __construct(
         private WappiApiClient $api,
+        private MetaAttachmentService $metaAttachments,
     ) {}
 
     public function integrationForCompany(int $companyId): ?CompanyIntegration
@@ -205,6 +208,70 @@ class WappiMessengerService
         ]);
     }
 
+    public function sendAudioMessage(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        string $filePath,
+        string $originalName,
+        ?string $mimeType = null,
+    ): MessengerMessage {
+        [$preparedPath, $preparedName, $preparedMime] = $this->prepareAudioForSend(
+            $filePath,
+            $originalName,
+            $mimeType,
+        );
+
+        $recipient = $this->recipientFromParticipantId($conversation->participant_id);
+        $contents = file_get_contents($preparedPath);
+
+        if (! is_string($contents) || $contents === '') {
+            throw new \RuntimeException(__('Не удалось прочитать аудиофайл.'));
+        }
+
+        $response = $this->api->postJson(
+            $integration,
+            '/api/sync/message/audio/send',
+            [
+                'recipient' => $recipient,
+                'body' => base64_encode($contents),
+            ],
+        );
+
+        $response->throw();
+
+        $messageId = (string) ($response->json('message_id')
+            ?? $response->json('id')
+            ?? $response->json('messages.id')
+            ?? '');
+
+        $storedPath = $this->metaAttachments->storeSentAudioCopy(
+            $integration->company_id,
+            $preparedPath,
+            $preparedName,
+        );
+
+        if ($preparedPath !== $filePath && is_file($preparedPath)) {
+            @unlink($preparedPath);
+        }
+
+        return MessengerMessage::query()->create([
+            'company_id' => $integration->company_id,
+            'messenger_conversation_id' => $conversation->id,
+            'direction' => 'outbound',
+            'external_id' => $messageId !== '' ? $messageId : null,
+            'body' => '',
+            'attachments' => [[
+                'type' => 'audio',
+                'url' => '',
+                'name' => $preparedName,
+                'mime_type' => $preparedMime,
+                'storage_path' => $storedPath,
+            ]],
+            'status' => 'sent',
+            'sent_at' => now(),
+        ]);
+    }
+
     /**
      * @param  array<string, mixed>  $message
      */
@@ -265,6 +332,7 @@ class WappiMessengerService
         }
 
         [$body, $attachments] = $this->resolveBodyAndAttachments($message);
+        $attachments = $this->materializeInboundAttachments($integration->company_id, $message, $attachments);
         $sentAt = $this->resolveSentAt($message);
 
         MessengerMessage::query()->create([
@@ -344,6 +412,7 @@ class WappiMessengerService
 
             $direction = ($message['is_me'] ?? false) ? 'outbound' : 'inbound';
             [$body, $attachments] = $this->resolveBodyAndAttachments($message);
+            $attachments = $this->materializeInboundAttachments($integration->company_id, $message, $attachments);
 
             MessengerMessage::query()->create([
                 'company_id' => $integration->company_id,
@@ -637,6 +706,196 @@ class WappiMessengerService
         }
 
         return (bool) preg_match('/^[A-Za-z0-9+\/=\r\n]+$/', substr($value, 0, 200));
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: string}
+     */
+    protected function prepareAudioForSend(string $filePath, string $originalName, ?string $mimeType): array
+    {
+        if ($this->canTranscodeWithFfmpeg()) {
+            return $this->transcodeToWhatsAppAudio($filePath);
+        }
+
+        $mimeType = strtolower((string) $mimeType);
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        $supportedExtensions = ['ogg', 'opus', 'mp3', 'mpeg', 'm4a', 'mp4', 'webm', 'aac', 'wav'];
+
+        if (in_array($extension, $supportedExtensions, true)
+            || str_contains($mimeType, 'ogg')
+            || str_contains($mimeType, 'opus')
+            || str_contains($mimeType, 'mpeg')
+            || str_contains($mimeType, 'mp3')
+            || str_contains($mimeType, 'mp4')
+            || str_contains($mimeType, 'webm')
+            || str_contains($mimeType, 'wav')) {
+            return [
+                $filePath,
+                $this->normalizeAudioFilename($originalName, $mimeType),
+                $mimeType !== '' ? $mimeType : 'audio/ogg',
+            ];
+        }
+
+        throw new \RuntimeException(
+            __('Установите ffmpeg на сервере для конвертации голосовых сообщений WhatsApp.'),
+        );
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: string}
+     */
+    protected function transcodeToWhatsAppAudio(string $filePath): array
+    {
+        $outputPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.uniqid('wappi_voice_', true).'.ogg';
+
+        $command = sprintf(
+            'ffmpeg -y -i %s -vn -map_metadata -1 -c:a libopus -b:a 32k -vbr on -compression_level 10 -ac 1 -ar 48000 %s 2>&1',
+            escapeshellarg($filePath),
+            escapeshellarg($outputPath),
+        );
+
+        $output = [];
+        $code = 1;
+        exec($command, $output, $code);
+
+        if ($code === 0 && is_file($outputPath) && filesize($outputPath) >= 256) {
+            return [$outputPath, 'voice.ogg', 'audio/ogg; codecs=opus'];
+        }
+
+        $mp3Path = sys_get_temp_dir().DIRECTORY_SEPARATOR.uniqid('wappi_voice_', true).'.mp3';
+        $mp3Command = sprintf(
+            'ffmpeg -y -i %s -vn -map_metadata -1 -c:a libmp3lame -b:a 128k -ac 1 -ar 44100 %s 2>&1',
+            escapeshellarg($filePath),
+            escapeshellarg($mp3Path),
+        );
+
+        exec($mp3Command, $output, $code);
+
+        if (is_file($outputPath)) {
+            @unlink($outputPath);
+        }
+
+        if ($code !== 0 || ! is_file($mp3Path) || filesize($mp3Path) < 256) {
+            throw new \RuntimeException(__('Не удалось конвертировать аудио для WhatsApp.'));
+        }
+
+        return [$mp3Path, 'voice.mp3', 'audio/mpeg'];
+    }
+
+    protected function normalizeAudioFilename(string $originalName, ?string $mimeType): string
+    {
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+        if (in_array($extension, ['ogg', 'opus', 'mp3', 'mpeg', 'm4a', 'mp4', 'webm', 'aac', 'wav'], true)) {
+            return $originalName;
+        }
+
+        $mimeType = strtolower((string) $mimeType);
+
+        if (str_contains($mimeType, 'ogg') || str_contains($mimeType, 'opus')) {
+            return 'voice.ogg';
+        }
+
+        if (str_contains($mimeType, 'mpeg') || str_contains($mimeType, 'mp3')) {
+            return 'voice.mp3';
+        }
+
+        if (str_contains($mimeType, 'webm')) {
+            return 'voice.webm';
+        }
+
+        return 'voice.m4a';
+    }
+
+    protected function canTranscodeWithFfmpeg(): bool
+    {
+        if (! function_exists('exec')) {
+            return false;
+        }
+
+        $output = [];
+        $code = 1;
+        @exec('ffmpeg -version 2>&1', $output, $code);
+
+        return $code === 0;
+    }
+
+    /**
+     * @param  list<array{type: string, url: string, name: ?string, mime_type: ?string, storage_path?: string}>  $attachments
+     * @param  array<string, mixed>  $message
+     * @return list<array{type: string, url: string, name: ?string, mime_type: ?string, storage_path?: string}>
+     */
+    protected function materializeInboundAttachments(int $companyId, array $message, array $attachments): array
+    {
+        if ($attachments === []) {
+            return $attachments;
+        }
+
+        $first = $attachments[0];
+        $type = (string) ($first['type'] ?? '');
+
+        if ($type !== 'audio') {
+            return $attachments;
+        }
+
+        if (($first['url'] ?? '') !== '' || ($first['storage_path'] ?? '') !== '') {
+            return $attachments;
+        }
+
+        $rawBody = (string) ($message['body'] ?? '');
+        if (! $this->looksLikeBase64($rawBody)) {
+            return $attachments;
+        }
+
+        $storagePath = $this->storeInboundAudio($companyId, $rawBody, $first['mime_type'] ?? null);
+        if ($storagePath === null) {
+            return $attachments;
+        }
+
+        $attachments[0]['storage_path'] = $storagePath;
+        $attachments[0]['url'] = '';
+
+        return $attachments;
+    }
+
+    protected function storeInboundAudio(int $companyId, string $base64Body, ?string $mimeType): ?string
+    {
+        $binary = base64_decode(preg_replace('/\s+/', '', $base64Body) ?: '', true);
+
+        if ($binary === false || strlen($binary) < 128) {
+            return null;
+        }
+
+        $extension = $this->extensionForMime($mimeType);
+        $filename = uniqid('wappi_voice_', true).'.'.$extension;
+        $relativePath = 'messenger/inbound/'.$companyId.'/'.$filename;
+
+        Storage::disk('public')->put($relativePath, $binary);
+
+        return 'public/'.$relativePath;
+    }
+
+    protected function extensionForMime(?string $mimeType): string
+    {
+        $mimeType = strtolower((string) $mimeType);
+
+        if (str_contains($mimeType, 'ogg') || str_contains($mimeType, 'opus')) {
+            return 'ogg';
+        }
+
+        if (str_contains($mimeType, 'mpeg') || str_contains($mimeType, 'mp3')) {
+            return 'mp3';
+        }
+
+        if (str_contains($mimeType, 'webm')) {
+            return 'webm';
+        }
+
+        if (str_contains($mimeType, 'wav')) {
+            return 'wav';
+        }
+
+        return 'm4a';
     }
 
     /**

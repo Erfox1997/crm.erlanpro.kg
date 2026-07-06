@@ -160,7 +160,26 @@ class MessengerController extends Controller
 
         if ($conversation->channel === IntegrationProvider::Wappi->value) {
             $attachment = $message->normalizedAttachments()[$index] ?? null;
-            $remoteUrl = is_array($attachment) ? (string) ($attachment['url'] ?? '') : '';
+
+            if (! is_array($attachment)) {
+                abort(404);
+            }
+
+            $storagePath = (string) ($attachment['storage_path'] ?? '');
+            if ($storagePath !== '') {
+                $localPath = $this->metaAttachments->resolveLocalStoragePath($storagePath);
+
+                if ($localPath) {
+                    return response()->file($localPath, [
+                        'Content-Type' => $attachment['mime_type']
+                            ?? $this->metaAttachments->mimeTypeForPath($localPath, 'audio/ogg'),
+                        'Cache-Control' => 'private, max-age=3600',
+                        'Accept-Ranges' => 'bytes',
+                    ]);
+                }
+            }
+
+            $remoteUrl = (string) ($attachment['url'] ?? '');
 
             if ($remoteUrl !== '' && str_starts_with($remoteUrl, 'http')) {
                 return $this->metaAttachments->streamRemoteUrl($remoteUrl, []);
@@ -243,10 +262,23 @@ class MessengerController extends Controller
                 }
 
                 if ($request->hasFile('audio')) {
-                    return back()->withErrors(['body' => __('Голосовые сообщения для WhatsApp пока не поддерживаются.')]);
-                }
+                    $audio = $request->file('audio');
+                    $path = $audio->getRealPath();
 
-                $this->wappi->sendMessage($integration, $conversation, (string) $validated['body']);
+                    if (! is_string($path) || $path === '') {
+                        return back()->withErrors(['body' => __('Не удалось прочитать аудиофайл.')]);
+                    }
+
+                    $this->wappi->sendAudioMessage(
+                        $integration,
+                        $conversation,
+                        $path,
+                        $audio->getClientOriginalName() ?: 'voice.webm',
+                        $audio->getMimeType(),
+                    );
+                } else {
+                    $this->wappi->sendMessage($integration, $conversation, (string) $validated['body']);
+                }
             } elseif ($conversation->channel === IntegrationProvider::Facebook->value) {
                 $integration = $this->facebook->integrationForCompany($companyId);
                 if (! $integration) {
@@ -301,11 +333,13 @@ class MessengerController extends Controller
                     return back()->withErrors(['body' => __('WhatsApp (Wappi) не подключён.')]);
                 }
 
-                if ($quickReply->type !== 'text') {
+                if ($quickReply->type === 'text') {
+                    $this->wappi->sendMessage($integration, $conversation, (string) $quickReply->body);
+                } elseif ($quickReply->type === 'audio') {
+                    $this->dispatchWappiQuickReply($integration, $conversation, $quickReply);
+                } else {
                     return back()->withErrors(['body' => __('Медиа-шаблоны для WhatsApp пока не поддерживаются.')]);
                 }
-
-                $this->wappi->sendMessage($integration, $conversation, (string) $quickReply->body);
             } elseif ($conversation->channel === IntegrationProvider::Facebook->value) {
                 $integration = $this->facebook->integrationForCompany($companyId);
                 if (! $integration) {
@@ -410,6 +444,41 @@ class MessengerController extends Controller
         }
 
         return $integration;
+    }
+
+    protected function dispatchWappiQuickReply(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        MessengerQuickReply $quickReply,
+    ): void {
+        if ($quickReply->type === 'text') {
+            $this->wappi->sendMessage($integration, $conversation, (string) $quickReply->body);
+
+            return;
+        }
+
+        if (! $quickReply->attachment_path) {
+            throw new \RuntimeException(__('Файл шаблона не найден.'));
+        }
+
+        $path = Storage::disk('local')->path($quickReply->attachment_path);
+        if (! is_file($path)) {
+            throw new \RuntimeException(__('Файл шаблона не найден.'));
+        }
+
+        if ($quickReply->type === 'audio') {
+            $this->wappi->sendAudioMessage(
+                $integration,
+                $conversation,
+                $path,
+                $quickReply->attachment_name ?: 'voice.m4a',
+                $quickReply->attachment_mime,
+            );
+
+            return;
+        }
+
+        throw new \RuntimeException(__('Медиа-шаблоны для WhatsApp пока не поддерживаются.'));
     }
 
     protected function sendAudio(
