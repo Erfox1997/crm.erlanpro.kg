@@ -111,9 +111,6 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
     Route::delete('/stage-tunnels/{stage_tunnel}', [StageTunnelController::class, 'destroy'])->name('stage-tunnels.destroy');
     Route::post('/pipeline-tunnels', [PipelineTunnelController::class, 'store'])->name('pipeline-tunnels.store');
     Route::delete('/pipeline-tunnels/{pipeline_tunnel}', [PipelineTunnelController::class, 'destroy'])->name('pipeline-tunnels.destroy');
-    Route::get('/employees', fn () => Inertia::render('Placeholder', ['title' => 'Сотрудники']))->name('employees.index');
-    Route::get('/tasks', fn () => Inertia::render('Placeholder', ['title' => 'Задачи']))->name('tasks.index');
-    Route::get('/warehouse', fn () => Inertia::render('Placeholder', ['title' => 'Склад']))->name('warehouse.index');
     Route::get('/integrations', [IntegrationController::class, 'index'])->name('integrations.index');
     Route::get('/integrations/instagram/oauth', [MetaOAuthController::class, 'redirect'])->defaults('provider', 'instagram')->name('integrations.instagram.oauth');
     Route::get('/integrations/instagram/oauth/callback', [MetaOAuthController::class, 'callback'])->defaults('provider', 'instagram')->name('integrations.instagram.callback');
