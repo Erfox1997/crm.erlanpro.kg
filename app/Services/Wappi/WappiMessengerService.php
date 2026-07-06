@@ -74,6 +74,7 @@ class WappiMessengerService
                 'incoming_message',
                 'outgoing_message_api',
                 'outgoing_message_phone',
+                'delivery_status',
             ],
         ]);
 
@@ -101,6 +102,8 @@ class WappiMessengerService
             }
 
             if ($this->processWebhookMessage($integration, $message)) {
+                $processed++;
+            } elseif ($this->processDeliveryStatus($integration, $message)) {
                 $processed++;
             }
         }
@@ -279,18 +282,51 @@ class WappiMessengerService
     ): Response {
         $errors = [];
         $base64 = base64_encode($binaryContents);
+        $mimeType = $this->normalizeWhatsAppAudioMime($preparedMime);
 
-        foreach ($this->recipientCandidates($conversation) as $recipient) {
-            try {
-                return $this->sendAudioBase64(
-                    $integration,
-                    $recipient,
-                    $base64,
-                    $preparedName,
-                    $preparedMime,
-                );
-            } catch (\Throwable $e) {
-                $errors[] = $e->getMessage();
+        $payloads = [
+            [
+                'body' => $base64,
+                'file_name' => $preparedName,
+                'mimetype' => $mimeType,
+            ],
+            [
+                'body' => $base64,
+            ],
+            [
+                'body' => 'data:'.$mimeType.';base64,'.$base64,
+                'file_name' => $preparedName,
+                'mimetype' => $mimeType,
+            ],
+        ];
+
+        $endpoints = [
+            '/api/sync/message/audio/send',
+            '/api/async/message/audio/send',
+        ];
+
+        foreach ($endpoints as $endpoint) {
+            foreach ($this->recipientCandidates($conversation, preferChatId: true) as $recipient) {
+                foreach ($payloads as $payload) {
+                    try {
+                        $response = $this->postAudioPayload($integration, $endpoint, $recipient, $payload);
+                        $messageId = $this->extractMessageId($response);
+
+                        Log::info('Wappi audio send accepted', [
+                            'profile_id' => $this->profileId($integration),
+                            'conversation_id' => $conversation->id,
+                            'endpoint' => $endpoint,
+                            'recipient' => $recipient,
+                            'message_id' => $messageId,
+                            'payload_keys' => array_keys($payload),
+                            'bytes' => strlen($binaryContents),
+                        ]);
+
+                        return $response;
+                    } catch (\Throwable $e) {
+                        $errors[] = $endpoint.'/'.$recipient.': '.$e->getMessage();
+                    }
+                }
             }
         }
 
@@ -302,7 +338,7 @@ class WappiMessengerService
                 $conversation,
                 $publicUrl,
                 $preparedName,
-                $preparedMime,
+                $mimeType,
             );
         } catch (\Throwable $e) {
             $errors[] = $e->getMessage();
@@ -317,28 +353,29 @@ class WappiMessengerService
         throw new \RuntimeException($errors[0] ?? __('Не удалось отправить голосовое сообщение в WhatsApp.'));
     }
 
-    protected function sendAudioBase64(
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function postAudioPayload(
         CompanyIntegration $integration,
+        string $endpoint,
         string $recipient,
-        string $base64,
-        string $fileName,
-        string $mimeType,
+        array $payload,
     ): Response {
         $response = $this->api->postJson(
             $integration,
-            '/api/sync/message/audio/send',
+            $endpoint,
             [
                 'recipient' => $recipient,
-                'body' => $base64,
-                'file_name' => $fileName,
-                'filename' => $fileName,
-                'mimetype' => $mimeType,
-                'mime_type' => $mimeType,
-                'ptt' => true,
+                ...$payload,
             ],
         );
 
         $this->assertSuccessfulSendResponse($response);
+
+        if ($this->extractMessageId($response) === '') {
+            throw new \RuntimeException(__('Wappi не вернул ID отправленного сообщения.'));
+        }
 
         return $response;
     }
@@ -352,7 +389,7 @@ class WappiMessengerService
     ): Response {
         $errors = [];
 
-        foreach ($this->recipientCandidates($conversation) as $recipient) {
+        foreach ($this->recipientCandidates($conversation, preferChatId: true) as $recipient) {
             try {
                 $response = $this->api->postJson(
                     $integration,
@@ -361,14 +398,15 @@ class WappiMessengerService
                         'recipient' => $recipient,
                         'url' => $url,
                         'file_name' => $fileName,
-                        'filename' => $fileName,
                         'mimetype' => $mimeType,
-                        'mime_type' => $mimeType,
-                        'ptt' => true,
                     ],
                 );
 
                 $this->assertSuccessfulSendResponse($response);
+
+                if ($this->extractMessageId($response) === '') {
+                    throw new \RuntimeException(__('Wappi не вернул ID отправленного сообщения.'));
+                }
 
                 return $response;
             } catch (\Throwable $e) {
@@ -382,15 +420,32 @@ class WappiMessengerService
     /**
      * @return list<string>
      */
-    protected function recipientCandidates(MessengerConversation $conversation): array
+    protected function recipientCandidates(MessengerConversation $conversation, bool $preferChatId = false): array
     {
         $phone = $this->recipientFromParticipantId($conversation->participant_id);
         $chatId = $this->chatIdFromConversation($conversation);
 
-        return array_values(array_unique(array_filter([
+        $candidates = array_values(array_unique(array_filter([
             $phone,
             $chatId !== $phone ? $chatId : null,
         ])));
+
+        if ($preferChatId && count($candidates) === 2) {
+            return array_reverse($candidates);
+        }
+
+        return $candidates;
+    }
+
+    protected function normalizeWhatsAppAudioMime(string $mimeType): string
+    {
+        $mimeType = strtolower(trim($mimeType));
+
+        if ($mimeType === '' || str_contains($mimeType, 'ogg') || str_contains($mimeType, 'opus')) {
+            return 'audio/ogg; codecs=opus';
+        }
+
+        return $mimeType;
     }
 
     protected function chatIdFromConversation(MessengerConversation $conversation): string
@@ -437,6 +492,49 @@ class WappiMessengerService
         if ($message !== '' && preg_match('/error|fail|invalid|не удалось|ошиб/i', $message)) {
             throw new \RuntimeException($message);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     */
+    protected function processDeliveryStatus(CompanyIntegration $integration, array $message): bool
+    {
+        if ((string) ($message['wh_type'] ?? '') !== 'delivery_status') {
+            return false;
+        }
+
+        $externalId = (string) ($message['id'] ?? '');
+        if ($externalId === '') {
+            return false;
+        }
+
+        $status = strtolower((string) ($message['status'] ?? ''));
+        $mapped = match ($status) {
+            'delivered', 'read' => 'delivered',
+            'pending' => 'sent',
+            'undelivered', 'error', 'failed', 'fail', 'temporary ban' => 'failed',
+            default => null,
+        };
+
+        if ($mapped === null) {
+            return false;
+        }
+
+        $updated = MessengerMessage::query()
+            ->where('company_id', $integration->company_id)
+            ->where('external_id', $externalId)
+            ->where('direction', 'outbound')
+            ->update(['status' => $mapped]);
+
+        if ($updated > 0 && $mapped === 'failed') {
+            Log::warning('Wappi message delivery failed', [
+                'profile_id' => $this->profileId($integration),
+                'message_id' => $externalId,
+                'status' => $status,
+            ]);
+        }
+
+        return $updated > 0;
     }
 
     /**
@@ -906,16 +1004,14 @@ class WappiMessengerService
         $outputPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.uniqid('wappi_voice_', true).'.ogg';
 
         $command = sprintf(
-            'ffmpeg -y -i %s -vn -map_metadata -1 -c:a libopus -b:a 32k -vbr on -compression_level 10 -ac 1 -ar 48000 %s 2>&1',
+            'ffmpeg -y -i %s -vn -map_metadata -1 -c:a libopus -application voip -b:a 32k -vbr on -compression_level 10 -ac 1 -ar 48000 %s 2>&1',
             escapeshellarg($filePath),
             escapeshellarg($outputPath),
         );
 
-        $output = [];
-        $code = 1;
-        exec($command, $output, $code);
+        $code = $this->runShellCommand($command);
 
-        if ($code === 0 && is_file($outputPath) && filesize($outputPath) >= 256) {
+        if ($code === 0 && is_file($outputPath) && filesize($outputPath) >= 256 && $this->isOggOpusFile($outputPath)) {
             return [$outputPath, 'voice.ogg', 'audio/ogg; codecs=opus'];
         }
 
@@ -924,6 +1020,64 @@ class WappiMessengerService
         }
 
         throw new \RuntimeException(__('Не удалось конвертировать аудио для WhatsApp. Установите ffmpeg с libopus.'));
+    }
+
+    protected function runShellCommand(string $command): int
+    {
+        if (function_exists('exec')) {
+            $output = [];
+            $code = 1;
+            @exec($command, $output, $code);
+
+            return (int) $code;
+        }
+
+        if (! function_exists('proc_open')) {
+            return 1;
+        }
+
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $process = @proc_open($command, $descriptors, $pipes);
+
+        if (! is_resource($process)) {
+            return 1;
+        }
+
+        fclose($pipes[0]);
+        stream_get_contents($pipes[1]);
+        stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        return (int) proc_close($process);
+    }
+
+    protected function isOggOpusFile(string $filePath): bool
+    {
+        $handle = @fopen($filePath, 'rb');
+
+        if (! is_resource($handle)) {
+            return false;
+        }
+
+        $header = fread($handle, 4);
+        fclose($handle);
+
+        return $header === 'OggS';
+    }
+
+    protected function canTranscodeWithFfmpeg(): bool
+    {
+        if (! function_exists('exec') && ! function_exists('proc_open')) {
+            return false;
+        }
+
+        return $this->runShellCommand('ffmpeg -version 2>&1') === 0;
     }
 
     protected function normalizeAudioFilename(string $originalName, ?string $mimeType): string
@@ -949,19 +1103,6 @@ class WappiMessengerService
         }
 
         return 'voice.m4a';
-    }
-
-    protected function canTranscodeWithFfmpeg(): bool
-    {
-        if (! function_exists('exec')) {
-            return false;
-        }
-
-        $output = [];
-        $code = 1;
-        @exec('ffmpeg -version 2>&1', $output, $code);
-
-        return $code === 0;
     }
 
     /**

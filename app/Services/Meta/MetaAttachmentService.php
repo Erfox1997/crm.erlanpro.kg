@@ -474,7 +474,13 @@ class MetaAttachmentService
             $filename,
         );
 
-        return Storage::disk('public')->url('messenger/outbound/'.$filename);
+        $url = Storage::disk('public')->url('messenger/outbound/'.$filename);
+
+        if (! str_starts_with($url, 'http')) {
+            $url = rtrim((string) config('app.url'), '/').$url;
+        }
+
+        return $url;
     }
 
     protected function publishTemporaryAudio(string $filePath, string $originalName): string
