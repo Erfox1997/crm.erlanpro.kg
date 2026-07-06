@@ -141,6 +141,7 @@ const filteredConversations = computed(() => {
             conversation.participant_username,
             conversation.participant_id,
             conversation.pipeline_name,
+            conversation.stage_name,
         ]
             .filter(Boolean)
             .join(' ')
@@ -966,17 +967,25 @@ watch(
                                         {{ formatListTime(conversation.last_message_at) }}
                                     </span>
                                 </div>
-                                <div class="mt-0.5 flex items-center gap-1.5">
+                                <div class="mt-0.5 flex min-w-0 items-center gap-1.5">
                                     <ChannelIcon
                                         :channel="conversation.channel"
                                         :title="conversation.channel_label"
                                     />
                                     <p
                                         v-if="conversation.pipeline_name"
-                                        class="truncate text-sm"
+                                        class="flex min-w-0 items-center gap-1 truncate text-sm leading-tight"
                                         :class="conversation.unread_count > 0 ? 'font-medium text-[#111b21]' : 'text-[#667781]'"
                                     >
-                                        {{ conversation.pipeline_name }}
+                                        <span class="truncate">
+                                            {{ conversation.pipeline_name }}
+                                        </span>
+                                        <span
+                                            v-if="conversation.stage_name"
+                                            class="shrink-0 text-[11px] font-normal text-[#8696a0]"
+                                        >
+                                            · {{ conversation.stage_name }}
+                                        </span>
                                     </p>
                                 </div>
                             </div>

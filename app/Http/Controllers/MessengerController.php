@@ -67,7 +67,7 @@ class MessengerController extends Controller
             ->orderByDesc('id')
             ->with([
                 'client.deals' => fn ($q) => $q
-                    ->with('pipeline')
+                    ->with(['pipeline', 'stage'])
                     ->orderByDesc('id')
                     ->limit(1),
             ])
@@ -88,6 +88,7 @@ class MessengerController extends Controller
                     'display_name' => $this->clientFields->resolveMessengerDisplayName($c, $c->client, $messengerField),
                     'last_message_at' => $c->last_message_at?->toIso8601String(),
                     'pipeline_name' => $deal?->pipeline?->name,
+                    'stage_name' => $deal?->stage?->name,
                     'unread_count' => $this->unread->unreadCountForConversation($c),
                 ];
             });
