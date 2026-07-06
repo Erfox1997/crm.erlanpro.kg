@@ -1,6 +1,5 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import DangerButton from '@/Components/DangerButton.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import Modal from '@/Components/Modal.vue';
@@ -8,7 +7,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, useForm } from '@inertiajs/vue3';
-import { computed, nextTick, ref } from 'vue';
+import { nextTick, ref } from 'vue';
 
 const props = defineProps({
     fields: {
@@ -71,10 +70,6 @@ const editForm = useForm({
     show_in_messenger: false,
 });
 
-const typeLabel = computed(() => Object.fromEntries(fieldTypes.map((item) => [item.value, item.label])));
-
-const previewFields = computed(() => props.fields.filter((field) => field.show_in_messenger));
-
 function transliterate(value) {
     return value
         .toLowerCase()
@@ -101,6 +96,22 @@ function onRowLabelInput(index) {
 
 function onRowKeyInput(index) {
     createRows.value[index].keyTouched = true;
+}
+
+function existingMessengerFieldId() {
+    return props.fields.find((field) => field.show_in_messenger)?.id ?? null;
+}
+
+function onRowMessengerToggle(index, checked) {
+    if (!checked) {
+        createRows.value[index].show_in_messenger = false;
+
+        return;
+    }
+
+    createRows.value.forEach((row, rowIndex) => {
+        row.show_in_messenger = rowIndex === index;
+    });
 }
 
 function openCreateModal() {
@@ -220,22 +231,11 @@ function destroyField(field) {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head title="CRM" />
 
     <AuthenticatedLayout>
-        <template #header>
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <h2 class="text-xl font-semibold text-gray-800">
-                    {{ pageTitle }}
-                </h2>
-                <PrimaryButton type="button" @click="openCreateModal">
-                    Добавить поля
-                </PrimaryButton>
-            </div>
-        </template>
-
-        <div class="py-8">
-            <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+        <div class="bg-slate-100 py-8 sm:py-10">
+            <div class="mx-auto max-w-3xl px-4 sm:px-6">
                 <div
                     v-if="$page.props.flash?.success"
                     class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
@@ -243,141 +243,76 @@ function destroyField(field) {
                     {{ $page.props.flash.success }}
                 </div>
 
-                <div class="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-6 text-white shadow-lg">
-                    <div class="flex flex-col gap-6 md:flex-row md:items-start">
-                        <div class="flex shrink-0 flex-col items-center">
-                            <div class="flex h-20 w-20 items-center justify-center rounded-full bg-white/15 ring-4 ring-white/10">
-                                <svg class="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                                </svg>
-                            </div>
-                            <p class="mt-3 text-sm font-medium text-white/80">
-                                Карточка клиента
-                            </p>
-                        </div>
-
-                        <div class="min-w-0 flex-1">
-                            <h3 class="text-lg font-semibold">
-                                Как это выглядит в мессенджере
-                            </h3>
-                            <p class="mt-1 text-sm text-white/70">
-                                Поля с галочкой «Показывать в мессенджере» отображаются под именем контакта, если данные заполнены.
-                            </p>
-
-                            <div
-                                v-if="previewFields.length > 0"
-                                class="mt-4 grid gap-2 sm:grid-cols-2"
-                            >
-                                <div
-                                    v-for="field in previewFields"
-                                    :key="field.id"
-                                    class="rounded-xl bg-white/10 px-3 py-2 backdrop-blur-sm"
-                                >
-                                    <p class="text-[11px] uppercase tracking-wide text-white/50">
-                                        {{ field.label }}
-                                    </p>
-                                    <p class="mt-0.5 text-sm font-medium text-white">
-                                        …
-                                    </p>
-                                </div>
-                            </div>
-                            <p
-                                v-else
-                                class="mt-4 text-sm text-white/60"
-                            >
-                                Отметьте поля для отображения в мессенджере — они появятся здесь.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mb-6 rounded-xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-900">
-                    Настройте поля для сохранения контакта из мессенджера. Отметьте «Показывать в мессенджере», чтобы данные были видны в чате.
-                </div>
-
-                <div
-                    v-if="fields.length === 0"
-                    class="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center"
-                >
-                    <p class="text-slate-600">
-                        Поля ещё не добавлены.
-                    </p>
-                    <PrimaryButton
+                <div class="mb-6 flex justify-center">
+                    <button
                         type="button"
-                        class="mt-4"
+                        class="rounded-lg bg-slate-800 px-8 py-2.5 text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-slate-700"
                         @click="openCreateModal"
                     >
-                        Добавить первые поля
-                    </PrimaryButton>
+                        Добавить поля
+                    </button>
                 </div>
 
-                <div
-                    v-else
-                    class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
-                >
-                    <article
-                        v-for="field in fields"
-                        :key="field.id"
-                        class="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-indigo-200 hover:shadow-md"
-                    >
-                        <div class="bg-gradient-to-b from-slate-50 to-white px-5 pb-4 pt-5 text-center">
-                            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md">
-                                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <div class="overflow-hidden rounded-xl bg-white shadow-lg">
+                    <div class="flex flex-col sm:flex-row">
+                        <div class="flex items-center justify-center border-b border-slate-100 bg-white px-8 py-10 sm:w-[34%] sm:border-b-0 sm:border-r">
+                            <div class="flex h-28 w-28 items-center justify-center rounded-full bg-slate-800 shadow-md">
+                                <svg class="h-14 w-14 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                                 </svg>
                             </div>
-                            <h3 class="mt-3 text-base font-semibold text-slate-900">
-                                {{ field.label }}
-                            </h3>
-                            <p class="mt-1 font-mono text-[11px] text-slate-400">
-                                {{ field.key }}
-                            </p>
                         </div>
 
-                        <div class="border-t border-slate-100 px-5 py-4">
-                            <div class="flex flex-wrap gap-1.5">
-                                <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                                    {{ typeLabel[field.type] || field.type }}
-                                </span>
-                                <span
-                                    v-if="field.is_required"
-                                    class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700"
-                                >
-                                    Обязательное
-                                </span>
-                                <span
-                                    v-if="field.show_in_messenger"
-                                    class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
-                                >
-                                    В мессенджере
-                                </span>
-                            </div>
-
-                            <p
-                                v-if="field.type === 'select' && field.options?.length"
-                                class="mt-3 text-xs leading-relaxed text-slate-500"
+                        <div class="min-w-0 flex-1 px-6 py-4 sm:px-8 sm:py-6">
+                            <div
+                                v-if="fields.length === 0"
+                                class="flex h-full min-h-[12rem] items-center justify-center py-8 text-center text-sm text-slate-400"
                             >
-                                {{ field.options.join(' · ') }}
-                            </p>
-
-                            <div class="mt-4 flex gap-2">
-                                <SecondaryButton
-                                    type="button"
-                                    class="flex-1 justify-center text-xs"
-                                    @click="openEditModal(field)"
-                                >
-                                    Изменить
-                                </SecondaryButton>
-                                <DangerButton
-                                    type="button"
-                                    class="text-xs"
-                                    @click="destroyField(field)"
-                                >
-                                    Удалить
-                                </DangerButton>
+                                Поля ещё не добавлены
                             </div>
+
+                            <ul v-else class="divide-y divide-slate-100">
+                                <li
+                                    v-for="field in fields"
+                                    :key="field.id"
+                                    class="flex items-center justify-between gap-4 py-3.5"
+                                >
+                                    <span class="text-sm text-slate-700">
+                                        {{ field.label }}:
+                                        <span
+                                            v-if="field.show_in_messenger"
+                                            class="ml-1 text-xs font-normal text-emerald-600"
+                                        >
+                                            (имя в чате)
+                                        </span>
+                                    </span>
+
+                                    <div class="flex shrink-0 items-center gap-2">
+                                        <button
+                                            type="button"
+                                            class="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                                            title="Редактировать"
+                                            @click="openEditModal(field)"
+                                        >
+                                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                                            title="Удалить"
+                                            @click="destroyField(field)"
+                                        >
+                                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </li>
+                            </ul>
                         </div>
-                    </article>
+                    </div>
                 </div>
             </div>
         </div>
@@ -471,13 +406,26 @@ function destroyField(field) {
                                 </label>
                             </div>
 
-                            <label class="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                            <label class="mt-3 flex items-start gap-2 text-sm text-slate-700">
                                 <input
-                                    v-model="row.show_in_messenger"
+                                    :checked="row.show_in_messenger"
                                     type="checkbox"
-                                    class="rounded border-slate-300 text-emerald-600"
+                                    class="mt-0.5 rounded border-slate-300 text-emerald-600"
+                                    :disabled="existingMessengerFieldId() !== null"
+                                    @change="onRowMessengerToggle(index, $event.target.checked)"
                                 >
-                                Показывать в мессенджере
+                                <span>
+                                    Имя в мессенджере
+                                    <span class="block text-xs text-slate-500">
+                                        Это значение показывается в шапке чата вместо имени из Telegram / Instagram.
+                                    </span>
+                                    <span
+                                        v-if="existingMessengerFieldId() !== null"
+                                        class="mt-1 block text-xs text-amber-600"
+                                    >
+                                        Уже назначено другому полю — снимите галочку там или отредактируйте его.
+                                    </span>
+                                </span>
                             </label>
 
                             <div
@@ -601,13 +549,19 @@ function destroyField(field) {
                         Обязательное поле
                     </label>
 
-                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                    <label class="flex items-start gap-2 text-sm text-slate-700">
                         <input
                             v-model="editForm.show_in_messenger"
                             type="checkbox"
-                            class="rounded border-slate-300 text-emerald-600"
+                            class="mt-0.5 rounded border-slate-300 text-emerald-600"
+                            :disabled="existingMessengerFieldId() !== null && existingMessengerFieldId() !== selectedField?.id"
                         >
-                        Показывать в мессенджере
+                        <span>
+                            Имя в мессенджере
+                            <span class="block text-xs text-slate-500">
+                                Это значение показывается в шапке чата вместо имени из мессенджера.
+                            </span>
+                        </span>
                     </label>
 
                     <div class="flex justify-end gap-2">

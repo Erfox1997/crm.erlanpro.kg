@@ -60,9 +60,15 @@ class MessengerController extends Controller
             ->when($channels !== [], fn ($q) => $q->whereIn('channel', $channels))
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
-            ->with(['messages' => fn ($q) => $q->orderByDesc('sent_at')->orderByDesc('id')->limit(1)])
-            ->get()
-            ->map(function (MessengerConversation $c) {
+            ->with([
+                'messages' => fn ($q) => $q->orderByDesc('sent_at')->orderByDesc('id')->limit(1),
+                'client',
+            ])
+            ->get();
+
+        $messengerField = $this->clientFields->messengerFieldDefinition($companyId);
+
+        $conversations = $conversations->map(function (MessengerConversation $c) use ($messengerField) {
                 $lastMessage = $c->messages->first();
 
                 return [
@@ -72,6 +78,7 @@ class MessengerController extends Controller
                     'participant_id' => $c->participant_id,
                     'participant_name' => $c->participant_name,
                     'participant_username' => $c->participant_username,
+                    'display_name' => $this->clientFields->resolveMessengerDisplayName($c, $c->client, $messengerField),
                     'last_message_at' => $c->last_message_at?->toIso8601String(),
                     'preview' => $lastMessage?->previewLabel(),
                     'unread_count' => $this->unread->unreadCountForConversation($c),
@@ -129,6 +136,11 @@ class MessengerController extends Controller
                     'participant_username' => $conversation->participant_username,
                     'participant_id' => $conversation->participant_id,
                     'client_id' => $conversation->client_id,
+                    'display_name' => $this->clientFields->resolveMessengerDisplayName(
+                        $conversation,
+                        $conversation->client,
+                        $messengerField,
+                    ),
                 ];
 
                 if ($conversation->client) {
@@ -182,6 +194,7 @@ class MessengerController extends Controller
             'messages' => $messages,
             'quickReplies' => $quickReplies,
             'clientFieldDefinitions' => $fieldDefinitions,
+            'messengerFieldKey' => $messengerField?->key,
             'linkedClient' => $linkedClient,
             'webhookUrl' => url('/webhooks/meta'),
             'wappiWebhookUrl' => route('webhooks.wappi.handle'),

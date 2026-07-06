@@ -3,8 +3,15 @@ import BrandLogo from '@/Components/BrandLogo.vue';
 import CrmSidebarLink from '@/Components/CrmSidebarLink.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
-import { Link, usePage } from '@inertiajs/vue3';
-import { computed, onMounted, ref, watch } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+
+const props = defineProps({
+    fullHeight: {
+        type: Boolean,
+        default: false,
+    },
+});
 
 const page = usePage();
 const branding = page.props.branding ?? {};
@@ -92,10 +99,49 @@ const userInitials = computed(() => {
         .map((part) => part[0]?.toUpperCase() ?? '')
         .join('');
 });
+
+function resetPageScroll() {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+}
+
+function syncDocumentScrollLock(locked) {
+    document.documentElement.style.overflow = locked ? 'hidden' : '';
+    document.body.style.overflow = locked ? 'hidden' : '';
+}
+
+watch(
+    () => props.fullHeight,
+    (locked) => {
+        syncDocumentScrollLock(locked);
+
+        if (!locked) {
+            resetPageScroll();
+        }
+    },
+    { immediate: true },
+);
+
+let removeNavigateListener = null;
+
+onMounted(() => {
+    removeNavigateListener = router.on('navigate', () => {
+        resetPageScroll();
+    });
+});
+
+onUnmounted(() => {
+    removeNavigateListener?.();
+    syncDocumentScrollLock(false);
+});
 </script>
 
 <template>
-    <div class="min-h-screen bg-[#eef2f8] md:flex">
+    <div
+        class="flex flex-col bg-[#eef2f8] md:flex-row"
+        :class="fullHeight ? 'h-svh overflow-hidden' : 'min-h-svh'"
+    >
         <!-- Мобильная подложка -->
         <div
             v-show="mobileDrawerOpen"
@@ -130,11 +176,11 @@ const userInitials = computed(() => {
 
         <aside
             :class="[
-                'relative shrink-0 flex-col overflow-hidden border-white/10 bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 text-slate-100',
-                'fixed inset-y-0 left-0 z-50 flex h-full w-[min(18rem,calc(100vw-3rem))] max-w-[18rem] border-e transition-transform duration-200 ease-out',
-                'md:static md:z-0 md:h-auto md:max-w-none md:translate-x-0',
-                mobileDrawerOpen ? 'translate-x-0' : '-translate-x-full',
-                'md:translate-x-0',
+                'shrink-0 flex-col overflow-hidden border-white/10 bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 text-slate-100',
+                mobileDrawerOpen
+                    ? 'fixed inset-y-0 left-0 z-50 flex h-full w-[min(18rem,calc(100vw-3rem))] max-w-[18rem] translate-x-0 border-e'
+                    : 'max-md:hidden',
+                'md:static md:z-0 md:flex md:h-auto md:w-64 md:max-w-none md:translate-x-0 md:border-e',
                 navMode === 'hidden' ? 'md:hidden' : '',
                 navMode === 'collapsed' ? 'md:w-16 md:min-w-16' : 'md:w-64',
             ]"
@@ -552,7 +598,10 @@ const userInitials = computed(() => {
             </div>
         </aside>
 
-        <div class="flex min-h-screen min-w-0 flex-1 flex-col md:min-h-0">
+        <div
+            class="flex min-h-0 min-w-0 w-full flex-1 flex-col"
+            :class="fullHeight ? 'overflow-hidden' : ''"
+        >
             <header
                 class="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-200/70 bg-white/85 px-3 py-2.5 shadow-sm backdrop-blur-md sm:px-5"
             >
@@ -678,14 +727,18 @@ const userInitials = computed(() => {
 
             <header
                 v-if="$slots.header"
-                class="border-b border-slate-200/60 bg-white/50"
+                class="shrink-0 border-b border-slate-200/60 bg-white/50"
             >
-                <div class="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+                <div class="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
                     <slot name="header" />
                 </div>
             </header>
 
-            <main class="flex-1 pb-8">
+            <main
+                :class="fullHeight
+                    ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                    : 'flex-1 pb-6 sm:pb-8'"
+            >
                 <slot />
             </main>
         </div>

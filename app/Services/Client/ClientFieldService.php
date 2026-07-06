@@ -184,4 +184,41 @@ class ClientFieldService
 
         return $slug !== '' ? $slug : 'field';
     }
+
+    public function messengerFieldDefinition(int $companyId): ?ClientFieldDefinition
+    {
+        return ClientFieldDefinition::query()
+            ->where('company_id', $companyId)
+            ->where('show_in_messenger', true)
+            ->first();
+    }
+
+    public function ensureSingleMessengerField(int $companyId, ?int $activeFieldId = null): void
+    {
+        ClientFieldDefinition::query()
+            ->where('company_id', $companyId)
+            ->when($activeFieldId !== null, fn ($query) => $query->whereKeyNot($activeFieldId))
+            ->update(['show_in_messenger' => false]);
+    }
+
+    public function resolveMessengerDisplayName(
+        MessengerConversation $conversation,
+        ?Client $client,
+        ?ClientFieldDefinition $messengerField,
+    ): string {
+        if ($client && $messengerField) {
+            $value = $client->custom_fields[$messengerField->key] ?? null;
+
+            if (is_string($value) && trim($value) !== '') {
+                return trim($value);
+            }
+        }
+
+        return (string) (
+            $conversation->participant_name
+            ?? $conversation->participant_username
+            ?? $conversation->participant_id
+            ?? ''
+        );
+    }
 }

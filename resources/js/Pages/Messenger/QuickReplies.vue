@@ -7,7 +7,7 @@ import Modal from '@/Components/Modal.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
 const props = defineProps({
@@ -229,51 +229,67 @@ function previewText(item) {
 
     return item.body || 'Изображение без подписи';
 }
+
+function deleteItem(item) {
+    if (!window.confirm(`Удалить шаблон «/${item.title}»?`)) {
+        return;
+    }
+
+    useForm({}).delete(route('messenger.quick-replies.destroy', item.id), {
+        preserveScroll: true,
+    });
+}
 </script>
 
 <template>
-    <Head title="Быстрые ответы" />
+    <Head title="CRM" />
 
     <AuthenticatedLayout>
-        <template #header>
-            <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                    <p class="text-sm font-medium text-indigo-600">
-                        Мессенджер
-                    </p>
-                    <h2 class="text-2xl font-bold tracking-tight text-slate-900">
-                        Быстрые ответы
-                    </h2>
-                    <p class="mt-1 max-w-xl text-sm text-slate-500">
-                        Готовые шаблоны для Instagram и Facebook. В чате введите
-                        <span class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">/</span>
-                        и начните писать название.
-                    </p>
+        <div class="py-5 sm:py-6">
+            <div class="mx-auto max-w-6xl space-y-4 px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-end">
+                    <div class="flex items-stretch overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <div class="flex items-center gap-2 px-4 py-2.5">
+                            <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+                            </svg>
+                            <div>
+                                <p class="text-[10px] font-medium uppercase tracking-wide text-slate-400">Всего</p>
+                                <p class="text-sm font-bold text-slate-900">{{ stats.total }}</p>
+                            </div>
+                        </div>
+                        <div class="w-px bg-slate-200" />
+                        <div class="flex items-center gap-2 px-4 py-2.5">
+                            <svg class="h-4 w-4 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                            </svg>
+                            <div>
+                                <p class="text-[10px] font-medium uppercase tracking-wide text-violet-500">Текст</p>
+                                <p class="text-sm font-bold text-slate-900">{{ stats.text }}</p>
+                            </div>
+                        </div>
+                        <div class="w-px bg-slate-200" />
+                        <div class="flex items-center gap-2 px-4 py-2.5">
+                            <svg class="h-4 w-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                            </svg>
+                            <div>
+                                <p class="text-[10px] font-medium uppercase tracking-wide text-sky-500">Голос</p>
+                                <p class="text-sm font-bold text-slate-900">{{ stats.audio }}</p>
+                            </div>
+                        </div>
+                        <div class="w-px bg-slate-200" />
+                        <div class="flex items-center gap-2 px-4 py-2.5">
+                            <svg class="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+                            </svg>
+                            <div>
+                                <p class="text-[10px] font-medium uppercase tracking-wide text-emerald-500">Картинка</p>
+                                <p class="text-sm font-bold text-slate-900">{{ stats.image }}</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <Link
-                    :href="route('messenger.index')"
-                    class="inline-flex items-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 sm:self-auto"
-                >
-                    <svg
-                        class="h-4 w-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        stroke-width="2"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
-                        />
-                    </svg>
-                    К чатам
-                </Link>
-            </div>
-        </template>
-
-        <div class="py-6 sm:py-8">
-            <div class="mx-auto max-w-6xl space-y-6 px-4 sm:px-6 lg:px-8">
                 <div
                     v-if="$page.props.flash?.success"
                     class="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm"
@@ -284,105 +300,45 @@ function previewText(item) {
                     {{ $page.props.flash.success }}
                 </div>
 
-                <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    <div class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-                        <p class="text-sm font-medium text-slate-500">
-                            Всего шаблонов
-                        </p>
-                        <p class="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-                            {{ stats.total }}
-                        </p>
-                    </div>
-                    <div class="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-5 shadow-sm">
-                        <p class="text-sm font-medium text-violet-600">
-                            Текстовые
-                        </p>
-                        <p class="mt-2 text-3xl font-bold tracking-tight text-violet-900">
-                            {{ stats.text }}
-                        </p>
-                    </div>
-                    <div class="rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50 to-white p-5 shadow-sm">
-                        <p class="text-sm font-medium text-sky-600">
-                            Голосовые
-                        </p>
-                        <p class="mt-2 text-3xl font-bold tracking-tight text-sky-900">
-                            {{ stats.audio }}
-                        </p>
-                    </div>
-                    <div class="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm">
-                        <p class="text-sm font-medium text-emerald-600">
-                            Картинки
-                        </p>
-                        <p class="mt-2 text-3xl font-bold tracking-tight text-emerald-900">
-                            {{ stats.image }}
-                        </p>
-                    </div>
-                </div>
-
                 <div class="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-                    <div class="border-b border-slate-100 bg-slate-50/70 px-5 py-5 sm:px-6">
-                        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                            <div class="relative min-w-0 flex-1 lg:max-w-md">
+                    <div class="border-b border-slate-100 px-4 py-4 sm:px-5">
+                        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div class="relative min-w-0 flex-1">
                                 <svg
-                                    class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                                    class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                                     fill="none"
                                     viewBox="0 0 24 24"
                                     stroke="currentColor"
                                     stroke-width="1.8"
                                 >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-                                    />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                                 </svg>
                                 <input
                                     v-model="searchQuery"
                                     type="search"
                                     placeholder="Поиск по названию или тексту..."
-                                    class="w-full rounded-xl border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:ring-indigo-400"
+                                    class="w-full rounded-xl border-slate-200 bg-white py-2 pl-9 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-violet-400 focus:ring-violet-400"
                                 >
                             </div>
 
                             <div class="flex flex-wrap items-center gap-2">
                                 <a
                                     :href="route('messenger.quick-replies.sample')"
-                                    class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+                                    class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                                 >
-                                    <svg
-                                        class="h-4 w-4 text-slate-500"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                        stroke-width="1.8"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3"
-                                        />
+                                    <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3" />
                                     </svg>
                                     Образец Excel
                                 </a>
                                 <button
                                     type="button"
-                                    class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+                                    class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
                                     :disabled="importForm.processing"
                                     @click="triggerImport"
                                 >
-                                    <svg
-                                        class="h-4 w-4 text-slate-500"
-                                        :class="{ 'animate-spin': importForm.processing }"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                        stroke-width="1.8"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-                                        />
+                                    <svg class="h-4 w-4 text-slate-500" :class="{ 'animate-spin': importForm.processing }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                                     </svg>
                                     {{ importForm.processing ? 'Импорт...' : 'Импорт Excel' }}
                                 </button>
@@ -395,35 +351,18 @@ function previewText(item) {
                                 >
                                 <button
                                     type="button"
-                                    class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:from-violet-500 hover:to-indigo-500"
+                                    class="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-500"
                                     @click="openCreateModal"
                                 >
-                                    <svg
-                                        class="h-4 w-4"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            d="M12 4.5v15m7.5-7.5h-15"
-                                        />
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                     </svg>
                                     Создать шаблон
                                 </button>
                             </div>
                         </div>
 
-                        <InputError
-                            class="mt-3"
-                            :message="importForm.errors.file"
-                        />
-
-                        <p class="mt-3 text-xs text-slate-500">
-                            Excel: колонка A — название, B — текст. Импорт поддерживает только текстовые шаблоны.
-                        </p>
+                        <InputError class="mt-2" :message="importForm.errors.file" />
                     </div>
 
                     <div
@@ -480,123 +419,97 @@ function previewText(item) {
 
                     <div
                         v-else
-                        class="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-3"
+                        class="divide-y divide-slate-100"
                     >
-                        <button
+                        <div
                             v-for="item in filteredQuickReplies"
                             :key="item.id"
-                            type="button"
-                            class="group relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
-                            :class="metaFor(item.type).card"
-                            @click="openEditModal(item)"
+                            class="flex flex-col gap-3 px-4 py-3.5 transition hover:bg-slate-50/80 sm:flex-row sm:items-center sm:gap-4 sm:px-5"
                         >
-                            <div class="flex items-start justify-between gap-3">
-                                <div
-                                    class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ring-black/5"
-                                    :class="metaFor(item.type).iconWrap"
-                                >
-                                    <svg
-                                        class="h-5 w-5"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                        stroke-width="1.8"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            :d="metaFor(item.type).icon"
-                                        />
-                                    </svg>
-                                </div>
-
+                            <div class="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
                                 <span
-                                    class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset"
+                                    class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset"
                                     :class="metaFor(item.type).badge"
                                 >
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                        <path stroke-linecap="round" stroke-linejoin="round" :d="metaFor(item.type).icon" />
+                                    </svg>
                                     {{ metaFor(item.type).label }}
                                 </span>
-                            </div>
 
-                            <div class="mt-4">
-                                <p class="font-mono text-base font-semibold text-slate-900">
+                                <p class="shrink-0 font-mono text-sm font-bold text-slate-900">
                                     /{{ item.title }}
                                 </p>
-                                <p class="mt-2 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
-                                    {{ previewText(item) }}
-                                </p>
+
+                                <div class="min-w-0 flex-1">
+                                    <p
+                                        v-if="item.type === 'text'"
+                                        class="truncate text-sm text-slate-500"
+                                    >
+                                        {{ previewText(item) }}
+                                    </p>
+
+                                    <div
+                                        v-else-if="item.type === 'audio'"
+                                        class="flex items-center gap-2"
+                                    >
+                                        <svg class="h-8 w-28 shrink-0 text-sky-400" viewBox="0 0 112 24" fill="currentColor" aria-hidden="true">
+                                            <rect x="0" y="10" width="3" height="4" rx="1.5" />
+                                            <rect x="6" y="6" width="3" height="12" rx="1.5" />
+                                            <rect x="12" y="2" width="3" height="20" rx="1.5" />
+                                            <rect x="18" y="8" width="3" height="8" rx="1.5" />
+                                            <rect x="24" y="4" width="3" height="16" rx="1.5" />
+                                            <rect x="30" y="9" width="3" height="6" rx="1.5" />
+                                            <rect x="36" y="1" width="3" height="22" rx="1.5" />
+                                            <rect x="42" y="7" width="3" height="10" rx="1.5" />
+                                            <rect x="48" y="3" width="3" height="18" rx="1.5" />
+                                            <rect x="54" y="8" width="3" height="8" rx="1.5" />
+                                            <rect x="60" y="5" width="3" height="14" rx="1.5" />
+                                            <rect x="66" y="10" width="3" height="4" rx="1.5" />
+                                            <rect x="72" y="2" width="3" height="20" rx="1.5" />
+                                            <rect x="78" y="6" width="3" height="12" rx="1.5" />
+                                            <rect x="84" y="9" width="3" height="6" rx="1.5" />
+                                            <rect x="90" y="4" width="3" height="16" rx="1.5" />
+                                            <rect x="96" y="7" width="3" height="10" rx="1.5" />
+                                            <rect x="102" y="11" width="3" height="2" rx="1" />
+                                            <rect x="108" y="8" width="3" height="8" rx="1.5" />
+                                        </svg>
+                                        <span class="truncate text-sm text-slate-400">{{ previewText(item) }}</span>
+                                    </div>
+
+                                    <div
+                                        v-else
+                                        class="flex items-center gap-2"
+                                    >
+                                        <img
+                                            v-if="item.attachment_url"
+                                            :src="item.attachment_url"
+                                            alt=""
+                                            class="h-8 w-8 shrink-0 rounded-lg border border-slate-200 object-cover"
+                                        >
+                                        <p class="truncate text-sm text-slate-500">
+                                            {{ previewText(item) }}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div
-                                v-if="item.type === 'image' && item.attachment_url"
-                                class="mt-4 overflow-hidden rounded-xl border border-white/80 bg-white/70 shadow-sm"
-                            >
-                                <img
-                                    :src="item.attachment_url"
-                                    alt=""
-                                    class="h-28 w-full object-cover"
+                            <div class="flex shrink-0 items-center gap-2 sm:ml-auto">
+                                <button
+                                    type="button"
+                                    class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                    @click="openEditModal(item)"
                                 >
-                            </div>
-
-                            <div
-                                v-else-if="item.type === 'audio'"
-                                class="mt-4 flex items-center gap-2 rounded-xl border border-white/80 bg-white/70 px-3 py-2 text-xs text-slate-500"
-                            >
-                                <span
-                                    class="h-2 w-2 rounded-full"
-                                    :class="metaFor(item.type).dot"
-                                />
-                                Аудиофайл прикреплён
-                            </div>
-
-                            <div class="mt-4 flex items-center justify-between text-xs font-medium text-slate-400 transition group-hover:text-indigo-600">
-                                <span>Нажмите для редактирования</span>
-                                <svg
-                                    class="h-4 w-4 translate-x-0 transition group-hover:translate-x-0.5"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    stroke-width="2"
+                                    Редактировать
+                                </button>
+                                <button
+                                    type="button"
+                                    class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-red-600 transition hover:border-red-200 hover:bg-red-50"
+                                    @click="deleteItem(item)"
                                 >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                                    />
-                                </svg>
+                                    Удалить
+                                </button>
                             </div>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 via-violet-50 to-sky-50 p-5 sm:p-6">
-                    <h3 class="text-sm font-semibold text-slate-900">
-                        Как пользоваться в чате
-                    </h3>
-                    <div class="mt-4 grid gap-3 sm:grid-cols-3">
-                        <div class="rounded-xl bg-white/70 px-4 py-3 ring-1 ring-white">
-                            <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600">
-                                Шаг 1
-                            </p>
-                            <p class="mt-1 text-sm text-slate-700">
-                                Откройте диалог в мессенджере
-                            </p>
-                        </div>
-                        <div class="rounded-xl bg-white/70 px-4 py-3 ring-1 ring-white">
-                            <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600">
-                                Шаг 2
-                            </p>
-                            <p class="mt-1 text-sm text-slate-700">
-                                Введите <span class="font-mono">/</span> и 2–3 буквы названия
-                            </p>
-                        </div>
-                        <div class="rounded-xl bg-white/70 px-4 py-3 ring-1 ring-white">
-                            <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600">
-                                Шаг 3
-                            </p>
-                            <p class="mt-1 text-sm text-slate-700">
-                                Выберите шаблон — текст подставится, медиа отправится сразу
-                            </p>
                         </div>
                     </div>
                 </div>

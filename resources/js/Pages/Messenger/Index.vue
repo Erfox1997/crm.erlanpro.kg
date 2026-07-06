@@ -1,5 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import VoiceMessagePlayer from '@/Components/Messenger/VoiceMessagePlayer.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import Modal from '@/Components/Modal.vue';
@@ -70,6 +71,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    messengerFieldKey: {
+        type: String,
+        default: null,
+    },
     linkedClient: {
         type: Object,
         default: null,
@@ -122,6 +127,7 @@ const filteredConversations = computed(() => {
 
     return props.conversations.filter((conversation) => {
         const haystack = [
+            conversation.display_name,
             conversation.participant_name,
             conversation.participant_username,
             conversation.participant_id,
@@ -386,28 +392,6 @@ function applyApiValue(key) {
 function hasApiValue(key) {
     return apiValueForField(key).trim() !== '';
 }
-
-const visibleClientData = computed(() => {
-    if (!props.linkedClient) {
-        return [];
-    }
-
-    return props.clientFieldDefinitions
-        .filter((definition) => definition.show_in_messenger)
-        .map((definition) => {
-            const value = props.linkedClient?.custom_fields?.[definition.key];
-
-            if (value === undefined || value === null || String(value).trim() === '') {
-                return null;
-            }
-
-            return {
-                label: definition.label,
-                value: String(value).trim(),
-            };
-        })
-        .filter(Boolean);
-});
 
 function resetClientForm() {
     const fields = {};
@@ -703,7 +687,8 @@ const messagesWithDateDividers = computed(() => {
 
 function participantLabel(conversation) {
     return (
-        conversation.participant_name
+        conversation.display_name
+        || conversation.participant_name
         || conversation.participant_username
         || conversation.participant_id
     );
@@ -760,27 +745,23 @@ watch(
 <template>
     <Head title="Мессенджер" />
 
-    <AuthenticatedLayout>
+    <AuthenticatedLayout full-height>
         <div
             v-if="$page.props.errors?.sync"
-            class="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
+            class="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
         >
             {{ $page.props.errors.sync }}
         </div>
 
         <div
-            v-if="$page.props.flash?.success"
-            class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800"
+            class="flex min-h-0 flex-1 flex-col overflow-hidden p-0 sm:p-3"
         >
-            {{ $page.props.flash.success }}
-        </div>
-
         <div
-            class="flex h-[calc(100dvh-4.25rem)] min-h-[32rem] overflow-hidden rounded-xl border border-[#d1d7db] bg-white shadow-sm"
+            class="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-[#d1d7db] bg-white shadow-sm"
         >
             <!-- Список чатов -->
             <aside
-                class="flex w-full flex-col border-[#d1d7db] bg-white lg:w-[360px] lg:shrink-0 lg:border-r"
+                class="flex h-full min-h-0 w-full flex-col border-[#d1d7db] bg-white lg:w-[360px] lg:shrink-0 lg:border-r"
                 :class="selectedConversation ? 'hidden lg:flex' : 'flex'"
             >
                 <div
@@ -883,7 +864,7 @@ watch(
 
                 <ul
                     v-else
-                    class="flex-1 overflow-y-auto"
+                    class="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
                 >
                     <li
                         v-for="conversation in filteredConversations"
@@ -957,7 +938,7 @@ watch(
 
             <!-- Окно чата -->
             <section
-                class="flex min-w-0 flex-1 flex-col bg-[#efeae2]"
+                class="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[#efeae2]"
                 :class="!selectedConversation ? 'hidden lg:flex' : 'flex'"
             >
                 <div
@@ -978,8 +959,9 @@ watch(
                 </div>
 
                 <template v-else>
+                    <div class="flex min-h-0 flex-1 flex-col">
                     <div
-                        class="flex items-center gap-3 border-b border-[#d1d7db] bg-[#f0f2f5] px-4 py-2.5"
+                        class="flex shrink-0 items-center gap-2 border-b border-[#d1d7db] bg-[#f0f2f5] px-2.5 py-2 sm:gap-3 sm:px-4 sm:py-2.5"
                     >
                         <button
                             type="button"
@@ -1002,19 +984,15 @@ watch(
                         </button>
 
                         <div
-                            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white sm:h-10 sm:w-10 sm:text-sm"
                             :class="avatarClass(selectedConversation.channel)"
                         >
                             {{ avatarInitials(selectedConversation) }}
                         </div>
 
                         <div class="min-w-0 flex-1">
-                            <p class="truncate font-medium text-[#111b21]">
-                                {{
-                                    selectedConversation.participant_name
-                                        || selectedConversation.participant_username
-                                        || selectedConversation.participant_id
-                                }}
+                            <p class="truncate text-sm font-medium text-[#111b21] sm:text-base">
+                                {{ participantLabel(selectedConversation) }}
                             </p>
                             <p
                                 v-if="selectedConversation.participant_username"
@@ -1033,7 +1011,7 @@ watch(
 
                         <button
                             type="button"
-                            class="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[#008069] shadow-sm transition hover:bg-[#f0f2f5]"
+                            class="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-medium text-[#008069] shadow-sm transition hover:bg-[#f0f2f5] sm:px-3 sm:py-1.5 sm:text-xs"
                             @click="openClientModal"
                         >
                             {{ linkedClient ? 'Данные клиента' : 'Сохранить контакт' }}
@@ -1041,39 +1019,7 @@ watch(
                     </div>
 
                     <div
-                        v-if="visibleClientData.length > 0"
-                        class="border-b border-[#d1d7db] bg-white px-4 py-3"
-                    >
-                        <div class="flex items-start gap-3">
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e7f7f3] text-[#008069]">
-                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                                </svg>
-                            </div>
-                            <div class="min-w-0 flex-1">
-                                <p class="text-[11px] font-semibold uppercase tracking-wide text-[#667781]">
-                                    Данные клиента
-                                </p>
-                                <div class="mt-2 grid gap-2 sm:grid-cols-2">
-                                    <div
-                                        v-for="item in visibleClientData"
-                                        :key="item.label"
-                                        class="rounded-lg bg-[#f0f2f5] px-3 py-2"
-                                    >
-                                        <p class="text-[10px] uppercase tracking-wide text-[#667781]">
-                                            {{ item.label }}
-                                        </p>
-                                        <p class="mt-0.5 truncate text-sm font-medium text-[#111b21]">
-                                            {{ item.value }}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div
-                        class="flex-1 space-y-1 overflow-y-auto bg-[#efeae2] px-4 py-3"
+                        class="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-y-contain bg-[#efeae2] px-2 py-2 sm:space-y-1 sm:px-4 sm:py-3"
                         style="background-image: url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23d9d0c3%22 fill-opacity=%220.35%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z/%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"
                     >
                         <div
@@ -1091,18 +1037,18 @@ watch(
                                 v-if="item.type === 'date'"
                                 class="flex justify-center py-2"
                             >
-                                <span class="rounded-lg bg-[#ffffffd9] px-3 py-1 text-xs font-medium text-[#54656f] shadow-sm">
+                                <span class="rounded-lg bg-[#ffffffd9] px-2.5 py-0.5 text-[11px] font-medium text-[#54656f] shadow-sm sm:px-3 sm:text-xs">
                                     {{ item.label }}
                                 </span>
                             </div>
 
                             <div
                                 v-else
-                                class="flex"
+                                class="flex px-0.5"
                                 :class="item.message.direction === 'outbound' ? 'justify-end' : 'justify-start'"
                             >
                             <div
-                                class="relative max-w-[min(100%,28rem)] rounded-lg px-3 py-2 text-sm shadow-sm"
+                                class="relative max-w-[82%] rounded-lg px-2 py-1.5 text-[13px] leading-snug shadow-sm sm:max-w-[min(100%,28rem)] sm:px-3 sm:py-2 sm:text-sm"
                                 :class="item.message.direction === 'outbound'
                                     ? 'rounded-tr-none bg-[#d9fdd3]'
                                     : 'rounded-tl-none bg-white'"
@@ -1123,15 +1069,11 @@ watch(
                                         v-for="(attachment, index) in item.message.attachments"
                                         :key="`${item.message.id}-${index}`"
                                     >
-                                        <audio
+                                        <VoiceMessagePlayer
                                             v-if="attachment.type === 'audio' && attachment.url"
-                                            controls
-                                            preload="metadata"
-                                            class="max-w-full min-w-[14rem]"
                                             :src="attachment.url"
-                                        >
-                                            {{ attachmentLabel(attachment.type) }}
-                                        </audio>
+                                            :outbound="item.message.direction === 'outbound'"
+                                        />
 
                                         <p
                                             v-else-if="attachment.type === 'audio'"
@@ -1151,7 +1093,7 @@ watch(
                                             v-else-if="attachment.type === 'image' && attachment.url"
                                             :src="attachment.url"
                                             :alt="attachment.name || attachmentLabel(attachment.type)"
-                                            class="max-h-72 max-w-full cursor-zoom-in rounded-md object-contain transition hover:opacity-90"
+                                            class="max-h-48 max-w-full cursor-zoom-in rounded-md object-contain transition hover:opacity-90 sm:max-h-72"
                                             @click="openImageLightbox(attachment.url)"
                                         >
 
@@ -1190,7 +1132,7 @@ watch(
                                 </p>
 
                                 <div
-                                    class="mt-1 flex items-end justify-end gap-1 text-[11px] text-[#667781]"
+                                    class="mt-0.5 flex items-end justify-end gap-1 text-[10px] text-[#667781] sm:mt-1 sm:text-[11px]"
                                 >
                                     <span>{{ formatMessageTime(item.message.sent_at) }}</span>
                                     <span
@@ -1207,7 +1149,7 @@ watch(
                     </div>
 
                     <form
-                        class="bg-[#f0f2f5] px-4 py-3"
+                        class="shrink-0 bg-[#f0f2f5] px-2 py-2 sm:px-4 sm:py-3"
                         @submit.prevent="sendMessage"
                     >
                         <div
@@ -1254,7 +1196,7 @@ watch(
                             </button>
                         </div>
 
-                        <div class="relative flex items-end gap-2">
+                        <div class="relative flex items-end gap-1.5 sm:gap-2">
                             <input
                                 ref="imageInput"
                                 type="file"
@@ -1265,7 +1207,7 @@ watch(
 
                             <button
                                 type="button"
-                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f0f2f5] text-[#54656f] transition hover:bg-[#e9edef] disabled:opacity-40"
+                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f0f2f5] text-[#54656f] transition hover:bg-[#e9edef] disabled:opacity-40 sm:h-10 sm:w-10"
                                 :disabled="sendForm.processing || isRecording"
                                 title="Прикрепить изображение"
                                 @click="imageInput?.click()"
@@ -1313,8 +1255,8 @@ watch(
                                     ref="messageInput"
                                     v-model="sendForm.body"
                                     type="text"
-                                    placeholder="Введите сообщение или / для шаблона"
-                                    class="w-full rounded-lg border-0 bg-white px-4 py-2.5 text-sm text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30"
+                                    placeholder="Сообщение"
+                                    class="w-full rounded-lg border-0 bg-white px-3 py-2 text-[13px] text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30 sm:px-4 sm:py-2.5 sm:text-sm"
                                     :disabled="sendForm.processing || isRecording"
                                     @keydown="onMessageInputKeydown"
                                 >
@@ -1323,7 +1265,7 @@ watch(
                             <button
                                 v-if="(sendForm.body.trim() || sendForm.image) && !slashQuickRepliesOpen"
                                 type="submit"
-                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#008f6f] disabled:opacity-40"
+                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#008f6f] disabled:opacity-40 sm:h-10 sm:w-10"
                                 :disabled="sendForm.processing || isRecording"
                                 title="Отправить"
                             >
@@ -1341,7 +1283,7 @@ watch(
                             <button
                                 v-else-if="!sendForm.image"
                                 type="button"
-                                class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40"
+                                class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40 sm:h-10 sm:w-10"
                                 :class="isRecording
                                     ? 'bg-[#00a884] text-white shadow-md'
                                     : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'"
@@ -1370,8 +1312,10 @@ watch(
                             :message="sendForm.errors.body"
                         />
                     </form>
+                    </div>
                 </template>
             </section>
+        </div>
         </div>
 
         <div
@@ -1506,7 +1450,7 @@ watch(
 
         <p
             v-if="messengerConnected && webhookUrl"
-            class="mt-2 text-xs text-slate-400"
+            class="mt-2 hidden text-xs text-slate-400 sm:block"
         >
             Webhook для Meta: {{ webhookUrl }}
         </p>

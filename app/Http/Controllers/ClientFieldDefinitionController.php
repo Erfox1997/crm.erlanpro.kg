@@ -68,6 +68,12 @@ class ClientFieldDefinitionController extends Controller
             ->where('company_id', $companyId)
             ->max('sort_order') + 1;
 
+        $showInMessenger = (bool) ($validated['show_in_messenger'] ?? false);
+
+        if ($showInMessenger) {
+            $this->clientFields->ensureSingleMessengerField($companyId);
+        }
+
         ClientFieldDefinition::query()->create([
             'company_id' => $companyId,
             'key' => $key,
@@ -75,7 +81,7 @@ class ClientFieldDefinitionController extends Controller
             'type' => $validated['type'],
             'options' => $validated['type'] === 'select' ? array_values(array_filter($validated['options'] ?? [])) : null,
             'is_required' => (bool) ($validated['is_required'] ?? false),
-            'show_in_messenger' => (bool) ($validated['show_in_messenger'] ?? false),
+            'show_in_messenger' => $showInMessenger,
             'sort_order' => $sortOrder,
         ]);
 
@@ -102,6 +108,23 @@ class ClientFieldDefinitionController extends Controller
             ->max('sort_order');
 
         $keysInBatch = [];
+        $messengerFieldIndex = null;
+
+        foreach ($validated['fields'] as $index => $field) {
+            if ((bool) ($field['show_in_messenger'] ?? false)) {
+                if ($messengerFieldIndex !== null) {
+                    return back()->withErrors([
+                        'fields' => __('Только одно поле может отображаться в мессенджере.'),
+                    ]);
+                }
+
+                $messengerFieldIndex = $index;
+            }
+        }
+
+        if ($messengerFieldIndex !== null) {
+            $this->clientFields->ensureSingleMessengerField($companyId);
+        }
 
         foreach ($validated['fields'] as $index => $field) {
             $key = ClientFieldService::normalizeKey($field['label'], $field['key'] ?? null);
@@ -133,7 +156,7 @@ class ClientFieldDefinitionController extends Controller
                     ? array_values(array_filter($field['options'] ?? []))
                     : null,
                 'is_required' => (bool) ($field['is_required'] ?? false),
-                'show_in_messenger' => (bool) ($field['show_in_messenger'] ?? false),
+                'show_in_messenger' => $messengerFieldIndex === $index,
                 'sort_order' => $sortOrder,
             ]);
         }
@@ -174,13 +197,19 @@ class ClientFieldDefinitionController extends Controller
             __('Поле с таким ключом уже существует.'),
         );
 
+        $showInMessenger = (bool) ($validated['show_in_messenger'] ?? false);
+
+        if ($showInMessenger) {
+            $this->clientFields->ensureSingleMessengerField($companyId, $clientFieldDefinition->id);
+        }
+
         $clientFieldDefinition->update([
             'key' => $key,
             'label' => $validated['label'],
             'type' => $validated['type'],
             'options' => $validated['type'] === 'select' ? array_values(array_filter($validated['options'] ?? [])) : null,
             'is_required' => (bool) ($validated['is_required'] ?? false),
-            'show_in_messenger' => (bool) ($validated['show_in_messenger'] ?? false),
+            'show_in_messenger' => $showInMessenger,
         ]);
 
         return back()->with('success', __('Поле обновлено.'));
