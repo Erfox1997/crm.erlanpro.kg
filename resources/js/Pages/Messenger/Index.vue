@@ -354,6 +354,33 @@ function prefillClientFieldValue(key) {
     return apiValueForField(key);
 }
 
+const messengerApiName = computed(() => {
+    return props.selectedConversation?.participant_name?.trim() || '';
+});
+
+const messengerApiContact = computed(() => {
+    const conversation = props.selectedConversation;
+    if (!conversation) {
+        return '';
+    }
+
+    const username = (conversation.participant_username || '').trim();
+    if (username !== '') {
+        return username.startsWith('@') ? username : `@${username}`;
+    }
+
+    const participantId = (conversation.participant_id || '').trim();
+    if (participantId !== '') {
+        if (/^\+?\d/.test(participantId)) {
+            return participantId.startsWith('+') ? participantId : `@${participantId}`;
+        }
+
+        return participantId;
+    }
+
+    return '';
+});
+
 function apiValueForField(key) {
     const conversation = props.selectedConversation;
     if (!conversation) {
@@ -363,34 +390,30 @@ function apiValueForField(key) {
     const normalizedKey = key.toLowerCase();
 
     if (['name', 'imya', 'fio', 'full_name', 'fullname'].includes(normalizedKey)) {
-        return conversation.participant_name || '';
+        return messengerApiName.value;
     }
 
     if (['phone', 'telefon', 'nomer', 'number', 'tel'].includes(normalizedKey)) {
-        const username = (conversation.participant_username || '').replace(/^@/, '');
-
-        if (username) {
-            return username;
-        }
+        return messengerApiContact.value.replace(/^@/, '');
     }
 
     if (['username', 'login', 'nick'].includes(normalizedKey)) {
-        return (conversation.participant_username || '').replace(/^@/, '');
+        return messengerApiContact.value;
     }
 
     return '';
 }
 
-function applyApiValue(key) {
-    const value = apiValueForField(key);
-
-    if (value.trim()) {
-        clientForm.fields[key] = value;
+function applyMessengerNameToField(key) {
+    if (messengerApiName.value) {
+        clientForm.fields[key] = messengerApiName.value;
     }
 }
 
-function hasApiValue(key) {
-    return apiValueForField(key).trim() !== '';
+function applyMessengerContactToField(key) {
+    if (messengerApiContact.value) {
+        clientForm.fields[key] = messengerApiContact.value;
+    }
 }
 
 function resetClientForm() {
@@ -1366,58 +1389,71 @@ watch(
                         v-for="definition in clientFieldDefinitions"
                         :key="definition.id"
                     >
-                        <div class="flex items-center justify-between gap-2">
-                            <InputLabel
-                                :for="`client_field_${definition.key}`"
-                                :value="definition.label + (definition.is_required ? ' *' : '')"
+                        <InputLabel
+                            :for="`client_field_${definition.key}`"
+                            :value="definition.label + (definition.is_required ? ' *' : '')"
+                        />
+
+                        <div class="mt-1 flex items-start gap-1.5">
+                            <textarea
+                                v-if="definition.type === 'textarea'"
+                                :id="`client_field_${definition.key}`"
+                                v-model="clientForm.fields[definition.key]"
+                                rows="3"
+                                class="block min-w-0 flex-1 rounded-md border-slate-300 shadow-sm"
                             />
-                            <button
-                                v-if="hasApiValue(definition.key)"
-                                type="button"
-                                class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 transition hover:bg-emerald-100"
-                                title="Вставить данные из мессенджера"
-                                @click="applyApiValue(definition.key)"
+
+                            <select
+                                v-else-if="definition.type === 'select'"
+                                :id="`client_field_${definition.key}`"
+                                v-model="clientForm.fields[definition.key]"
+                                class="block min-w-0 flex-1 rounded-md border-slate-300 shadow-sm"
                             >
-                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                                Из API
-                            </button>
+                                <option value="">
+                                    Выберите...
+                                </option>
+                                <option
+                                    v-for="option in definition.options"
+                                    :key="option"
+                                    :value="option"
+                                >
+                                    {{ option }}
+                                </option>
+                            </select>
+
+                            <TextInput
+                                v-else
+                                :id="`client_field_${definition.key}`"
+                                v-model="clientForm.fields[definition.key]"
+                                class="block min-w-0 flex-1"
+                                :type="definition.type === 'number' ? 'number' : definition.type === 'email' ? 'email' : definition.type === 'date' ? 'date' : definition.type === 'phone' ? 'tel' : 'text'"
+                            />
+
+                            <div class="flex shrink-0 flex-col gap-1.5">
+                                <button
+                                    v-if="messengerApiName"
+                                    type="button"
+                                    class="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+                                    :title="`Имя: ${messengerApiName}`"
+                                    @click="applyMessengerNameToField(definition.key)"
+                                >
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                                    </svg>
+                                </button>
+                                <button
+                                    v-if="messengerApiContact"
+                                    type="button"
+                                    class="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+                                    :title="`Контакт: ${messengerApiContact}`"
+                                    @click="applyMessengerContactToField(definition.key)"
+                                >
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
-
-                        <textarea
-                            v-if="definition.type === 'textarea'"
-                            :id="`client_field_${definition.key}`"
-                            v-model="clientForm.fields[definition.key]"
-                            rows="3"
-                            class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"
-                        />
-
-                        <select
-                            v-else-if="definition.type === 'select'"
-                            :id="`client_field_${definition.key}`"
-                            v-model="clientForm.fields[definition.key]"
-                            class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"
-                        >
-                            <option value="">
-                                Выберите...
-                            </option>
-                            <option
-                                v-for="option in definition.options"
-                                :key="option"
-                                :value="option"
-                            >
-                                {{ option }}
-                            </option>
-                        </select>
-
-                        <TextInput
-                            v-else
-                            :id="`client_field_${definition.key}`"
-                            v-model="clientForm.fields[definition.key]"
-                            class="mt-1 block w-full"
-                            :type="definition.type === 'number' ? 'number' : definition.type === 'email' ? 'email' : definition.type === 'date' ? 'date' : definition.type === 'phone' ? 'tel' : 'text'"
-                        />
 
                         <InputError
                             class="mt-2"
