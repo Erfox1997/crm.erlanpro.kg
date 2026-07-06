@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Client;
+use App\Models\ClientFieldDefinition;
 use App\Models\Deal;
 use App\Models\Pipeline;
 use App\Models\PipelineTunnel;
@@ -29,6 +30,13 @@ class AppServiceProvider extends ServiceProvider
 
         Route::bind('client', function (string $value) {
             return Client::query()
+                ->where('company_id', auth()->user()?->company_id)
+                ->whereKey($value)
+                ->firstOrFail();
+        });
+
+        Route::bind('clientFieldDefinition', function (string $value) {
+            return ClientFieldDefinition::query()
                 ->where('company_id', auth()->user()?->company_id)
                 ->whereKey($value)
                 ->firstOrFail();

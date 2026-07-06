@@ -1,7 +1,12 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import InputError from '@/Components/InputError.vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import InputLabel from '@/Components/InputLabel.vue';
+import Modal from '@/Components/Modal.vue';
+import PrimaryButton from '@/Components/PrimaryButton.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
+import TextInput from '@/Components/TextInput.vue';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -61,7 +66,17 @@ const props = defineProps({
         type: String,
         default: '',
     },
+    clientFieldDefinitions: {
+        type: Array,
+        default: () => [],
+    },
+    linkedClient: {
+        type: Object,
+        default: null,
+    },
 });
+
+const page = usePage();
 
 const messagesEnd = ref(null);
 const syncing = ref(false);
@@ -78,6 +93,11 @@ const sendForm = useForm({
 
 const imagePreviewUrl = ref(null);
 const lightboxImageUrl = ref(null);
+const showClientModal = ref(false);
+
+const clientForm = useForm({
+    fields: {},
+});
 
 const isRecording = ref(false);
 const recordingSeconds = ref(0);
@@ -318,6 +338,73 @@ function closeImageLightbox() {
 onUnmounted(() => {
     clearImagePreview();
 });
+
+function prefillClientFieldValue(key) {
+    const saved = props.linkedClient?.custom_fields?.[key];
+    if (saved !== undefined && saved !== null && String(saved).trim() !== '') {
+        return String(saved);
+    }
+
+    const conversation = props.selectedConversation;
+    if (!conversation) {
+        return '';
+    }
+
+    const normalizedKey = key.toLowerCase();
+
+    if (['name', 'imya', 'fio', 'full_name', 'fullname'].includes(normalizedKey)) {
+        return conversation.participant_name || '';
+    }
+
+    if (['phone', 'telefon', 'nomer', 'number', 'tel'].includes(normalizedKey)) {
+        return (conversation.participant_username || '').replace(/^@/, '');
+    }
+
+    if (['username', 'login', 'nick'].includes(normalizedKey)) {
+        return (conversation.participant_username || '').replace(/^@/, '');
+    }
+
+    return '';
+}
+
+function resetClientForm() {
+    const fields = {};
+
+    for (const definition of props.clientFieldDefinitions) {
+        fields[definition.key] = prefillClientFieldValue(definition.key);
+    }
+
+    clientForm.fields = fields;
+    clientForm.clearErrors();
+}
+
+function openClientModal() {
+    resetClientForm();
+    showClientModal.value = true;
+}
+
+function saveClientData() {
+    if (!props.selectedConversation) {
+        return;
+    }
+
+    clientForm.post(route('messenger.save-client', props.selectedConversation.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showClientModal.value = false;
+        },
+    });
+}
+
+watch(
+    () => [props.selectedConversation?.id, props.linkedClient?.id, props.clientFieldDefinitions],
+    () => {
+        if (showClientModal.value) {
+            resetClientForm();
+        }
+    },
+    { deep: true },
+);
 
 function pickRecorderMimeType(channel) {
     const mobileFriendlyTypes = ['audio/mp4', 'audio/aac'];
@@ -901,6 +988,14 @@ watch(
                         >
                             {{ selectedConversation.channel_label }}
                         </span>
+
+                        <button
+                            type="button"
+                            class="rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[#008069] shadow-sm transition hover:bg-[#f0f2f5]"
+                            @click="openClientModal"
+                        >
+                            {{ linkedClient ? 'Данные клиента' : 'Сохранить контакт' }}
+                        </button>
                     </div>
 
                     <div
@@ -1224,6 +1319,102 @@ watch(
                 @click.stop
             >
         </div>
+
+        <Modal :show="showClientModal" @close="showClientModal = false">
+            <div class="p-6">
+                <h3 class="text-lg font-semibold text-slate-900">
+                    {{ linkedClient ? 'Данные клиента' : 'Сохранить контакт' }}
+                </h3>
+
+                <div
+                    v-if="clientFieldDefinitions.length === 0"
+                    class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+                >
+                    Сначала добавьте поля в разделе
+                    <Link
+                        :href="route('client-fields.index')"
+                        class="font-medium underline"
+                    >
+                        «Данные клиента»
+                    </Link>.
+                </div>
+
+                <form
+                    v-else
+                    class="mt-5 space-y-4"
+                    @submit.prevent="saveClientData"
+                >
+                    <div
+                        v-for="definition in clientFieldDefinitions"
+                        :key="definition.id"
+                    >
+                        <InputLabel
+                            :for="`client_field_${definition.key}`"
+                            :value="definition.label + (definition.is_required ? ' *' : '')"
+                        />
+
+                        <textarea
+                            v-if="definition.type === 'textarea'"
+                            :id="`client_field_${definition.key}`"
+                            v-model="clientForm.fields[definition.key]"
+                            rows="3"
+                            class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"
+                        />
+
+                        <select
+                            v-else-if="definition.type === 'select'"
+                            :id="`client_field_${definition.key}`"
+                            v-model="clientForm.fields[definition.key]"
+                            class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"
+                        >
+                            <option value="">
+                                Выберите...
+                            </option>
+                            <option
+                                v-for="option in definition.options"
+                                :key="option"
+                                :value="option"
+                            >
+                                {{ option }}
+                            </option>
+                        </select>
+
+                        <TextInput
+                            v-else
+                            :id="`client_field_${definition.key}`"
+                            v-model="clientForm.fields[definition.key]"
+                            class="mt-1 block w-full"
+                            :type="definition.type === 'number' ? 'number' : definition.type === 'email' ? 'email' : definition.type === 'date' ? 'date' : definition.type === 'phone' ? 'tel' : 'text'"
+                        />
+
+                        <InputError
+                            class="mt-2"
+                            :message="clientForm.errors[`fields.${definition.key}`]"
+                        />
+                    </div>
+
+                    <InputError
+                        class="mt-2"
+                        :message="clientForm.errors.client || page.props.errors?.client"
+                    />
+
+                    <div class="flex justify-end gap-2">
+                        <SecondaryButton
+                            type="button"
+                            @click="showClientModal = false"
+                        >
+                            Отмена
+                        </SecondaryButton>
+                        <PrimaryButton
+                            type="submit"
+                            :disabled="clientForm.processing"
+                        >
+                            Сохранить
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
 
         <p
             v-if="messengerConnected && webhookUrl"

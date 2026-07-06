@@ -7,6 +7,7 @@ use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Models\MessengerQuickReply;
+use App\Services\Client\ClientFieldService;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Messenger\MessengerSyncService;
@@ -35,6 +36,7 @@ class MessengerController extends Controller
         private MetaAttachmentService $metaAttachments,
         private MessengerSyncService $messengerSync,
         private MessengerUnreadService $unread,
+        private ClientFieldService $clientFields,
     ) {}
 
     public function index(Request $request): Response
@@ -94,11 +96,25 @@ class MessengerController extends Controller
         $selectedId = $request->query('conversation');
         $selectedConversation = null;
         $messages = [];
+        $linkedClient = null;
+
+        $fieldDefinitions = $this->clientFields->definitionsForCompany($companyId)
+            ->map(fn ($field) => [
+                'id' => $field->id,
+                'key' => $field->key,
+                'label' => $field->label,
+                'type' => $field->type,
+                'options' => $field->options ?? [],
+                'is_required' => $field->is_required,
+            ])
+            ->values()
+            ->all();
 
         if ($selectedId) {
             $conversation = MessengerConversation::query()
                 ->where('company_id', $companyId)
                 ->whereKey((int) $selectedId)
+                ->with('client')
                 ->first();
 
             if ($conversation) {
@@ -111,7 +127,16 @@ class MessengerController extends Controller
                     'participant_name' => $conversation->participant_name,
                     'participant_username' => $conversation->participant_username,
                     'participant_id' => $conversation->participant_id,
+                    'client_id' => $conversation->client_id,
                 ];
+
+                if ($conversation->client) {
+                    $linkedClient = [
+                        'id' => $conversation->client->id,
+                        'name' => $conversation->client->name,
+                        'custom_fields' => $conversation->client->custom_fields ?? [],
+                    ];
+                }
 
                 $messages = $conversation->messages()
                     ->orderBy('sent_at')
@@ -155,6 +180,8 @@ class MessengerController extends Controller
             'selectedConversation' => $selectedConversation,
             'messages' => $messages,
             'quickReplies' => $quickReplies,
+            'clientFieldDefinitions' => $fieldDefinitions,
+            'linkedClient' => $linkedClient,
             'webhookUrl' => url('/webhooks/meta'),
             'wappiWebhookUrl' => route('webhooks.wappi.handle'),
         ]);
@@ -272,6 +299,36 @@ class MessengerController extends Controller
         } catch (\Throwable $e) {
             return back()->withErrors(['sync' => $e->getMessage()]);
         }
+    }
+
+    public function saveClient(Request $request, MessengerConversation $conversation): RedirectResponse
+    {
+        $companyId = (int) $request->user()->company_id;
+        abort_unless($conversation->company_id === $companyId, 403);
+
+        $definitions = $this->clientFields->definitionsForCompany($companyId);
+
+        if ($definitions->isEmpty()) {
+            return back()->withErrors([
+                'client' => __('Сначала добавьте поля в разделе «Данные клиента».'),
+            ]);
+        }
+
+        $validated = $request->validate([
+            'fields' => 'required|array',
+            ...$this->clientFields->validationRulesForCompany($companyId),
+        ]);
+
+        $normalized = $this->clientFields->normalizeSubmittedFields(
+            $companyId,
+            $validated['fields'] ?? [],
+        );
+
+        $this->clientFields->upsertClientFromConversation($conversation, $normalized);
+
+        return redirect()
+            ->route('messenger.index', ['conversation' => $conversation->id])
+            ->with('success', __('Данные клиента сохранены.'));
     }
 
     public function send(Request $request, MessengerConversation $conversation): RedirectResponse

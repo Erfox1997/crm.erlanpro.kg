@@ -14,7 +14,15 @@ class Client extends Model
         'phone',
         'email',
         'notes',
+        'custom_fields',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'custom_fields' => 'array',
+        ];
+    }
 
     public function company(): BelongsTo
     {
@@ -24,5 +32,10 @@ class Client extends Model
     public function deals(): HasMany
     {
         return $this->hasMany(Deal::class);
+    }
+
+    public function messengerConversations(): HasMany
+    {
+        return $this->hasMany(MessengerConversation::class);
     }
 }

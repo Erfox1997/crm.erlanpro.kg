@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\CompanyController as AdminCompanyController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\PaymentRequisiteController as AdminPaymentRequisiteController;
 use App\Http\Controllers\Admin\TariffController as AdminTariffController;
+use App\Http\Controllers\ClientFieldDefinitionController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DealController;
@@ -77,6 +78,10 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
 
     Route::get('/messenger', [MessengerController::class, 'index'])->name('messenger.index');
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
+    Route::get('/client-fields', [ClientFieldDefinitionController::class, 'index'])->name('client-fields.index');
+    Route::post('/client-fields', [ClientFieldDefinitionController::class, 'store'])->name('client-fields.store');
+    Route::put('/client-fields/{clientFieldDefinition}', [ClientFieldDefinitionController::class, 'update'])->name('client-fields.update');
+    Route::delete('/client-fields/{clientFieldDefinition}', [ClientFieldDefinitionController::class, 'destroy'])->name('client-fields.destroy');
     Route::get('/messenger/quick-replies', [MessengerQuickReplyController::class, 'index'])->name('messenger.quick-replies.index');
     Route::post('/messenger/quick-replies', [MessengerQuickReplyController::class, 'store'])->name('messenger.quick-replies.store');
     Route::post('/messenger/quick-replies/import', [MessengerQuickReplyController::class, 'import'])->name('messenger.quick-replies.import');
@@ -85,6 +90,7 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
     Route::put('/messenger/quick-replies/{quickReply}', [MessengerQuickReplyController::class, 'update'])->name('messenger.quick-replies.update');
     Route::delete('/messenger/quick-replies/{quickReply}', [MessengerQuickReplyController::class, 'destroy'])->name('messenger.quick-replies.destroy');
     Route::post('/messenger/conversations/{conversation}/messages', [MessengerController::class, 'send'])->name('messenger.send');
+    Route::post('/messenger/conversations/{conversation}/client', [MessengerController::class, 'saveClient'])->name('messenger.save-client');
     Route::post('/messenger/conversations/{conversation}/quick-replies/{quickReply}', [MessengerController::class, 'sendQuickReply'])->name('messenger.send-quick-reply');
     Route::get('/messenger/messages/{message}/attachments/{index}', [MessengerController::class, 'attachment'])
         ->whereNumber('index')
