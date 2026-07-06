@@ -59,4 +59,9 @@ return [
         'oauth_redirect_uri' => env('META_OAUTH_REDIRECT_URI'),
     ],
 
+    'wappi' => [
+        'base_url' => env('WAPPI_BASE_URL', 'https://wappi.pro'),
+        'timeout' => (int) env('WAPPI_TIMEOUT', 60),
+    ],
+
 ];

@@ -13,6 +13,7 @@ use App\Services\Messenger\MessengerSyncService;
 use App\Services\Messenger\MessengerUnreadService;
 use App\Services\Meta\MetaAttachmentService;
 use App\Services\Meta\MetaMessagingSupport;
+use App\Services\Wappi\WappiMessengerService;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,7 @@ class MessengerController extends Controller
     public function __construct(
         private InstagramMessengerService $instagram,
         private FacebookMessengerService $facebook,
+        private WappiMessengerService $wappi,
         private MetaAttachmentService $metaAttachments,
         private MessengerSyncService $messengerSync,
         private MessengerUnreadService $unread,
@@ -39,10 +41,12 @@ class MessengerController extends Controller
 
         $instagramIntegration = $this->instagram->integrationForCompany($companyId);
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
+        $wappiIntegration = $this->wappi->integrationForCompany($companyId);
 
         $channels = array_values(array_filter([
             $instagramIntegration ? IntegrationProvider::Instagram->value : null,
             $facebookIntegration ? IntegrationProvider::Facebook->value : null,
+            $wappiIntegration ? IntegrationProvider::Wappi->value : null,
         ]));
 
         $conversations = MessengerConversation::query()
@@ -113,7 +117,7 @@ class MessengerController extends Controller
                         'id' => $m->id,
                         'direction' => $m->direction,
                         'body' => $m->body,
-                        'attachments' => $this->mapAttachmentsForFrontend($m),
+                        'attachments' => $this->mapAttachmentsForFrontend($m, $conversation->channel),
                         'status' => $m->status,
                         'sent_at' => $m->sent_at?->toIso8601String(),
                     ]);
@@ -123,6 +127,7 @@ class MessengerController extends Controller
         return Inertia::render('Messenger/Index', [
             'instagramConnected' => $instagramIntegration !== null,
             'facebookConnected' => $facebookIntegration !== null,
+            'wappiConnected' => $wappiIntegration !== null,
             'instagramAccount' => $instagramIntegration ? [
                 'username' => $instagramIntegration->metadata['username'] ?? null,
                 'name' => $instagramIntegration->metadata['name'] ?? null,
@@ -132,11 +137,17 @@ class MessengerController extends Controller
                 'page_name' => $facebookIntegration->metadata['page_name'] ?? null,
                 'page_id' => $facebookIntegration->metadata['page_id'] ?? null,
             ] : null,
+            'wappiAccount' => $wappiIntegration ? [
+                'profile_name' => $wappiIntegration->metadata['profile_name'] ?? null,
+                'profile_phone' => $wappiIntegration->metadata['profile_phone'] ?? null,
+                'profile_id' => $wappiIntegration->metadata['profile_id'] ?? null,
+            ] : null,
             'conversations' => $conversations,
             'selectedConversation' => $selectedConversation,
             'messages' => $messages,
             'quickReplies' => $quickReplies,
             'webhookUrl' => url('/webhooks/meta'),
+            'wappiWebhookUrl' => route('webhooks.wappi.handle'),
         ]);
     }
 
@@ -146,6 +157,18 @@ class MessengerController extends Controller
         abort_unless($message->company_id === $companyId, 403);
 
         $conversation = $message->conversation()->firstOrFail();
+
+        if ($conversation->channel === IntegrationProvider::Wappi->value) {
+            $attachment = $message->normalizedAttachments()[$index] ?? null;
+            $remoteUrl = is_array($attachment) ? (string) ($attachment['url'] ?? '') : '';
+
+            if ($remoteUrl !== '' && str_starts_with($remoteUrl, 'http')) {
+                return $this->metaAttachments->streamRemoteUrl($remoteUrl, []);
+            }
+
+            abort(404);
+        }
+
         $integration = $this->integrationForConversation($companyId, $conversation);
 
         $source = $this->instagram->resolveAttachmentPlayback($integration, $message, $index);
@@ -170,11 +193,12 @@ class MessengerController extends Controller
 
         $instagramIntegration = $this->instagram->integrationForCompany($companyId);
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
+        $wappiIntegration = $this->wappi->integrationForCompany($companyId);
 
-        if (! $instagramIntegration && ! $facebookIntegration) {
+        if (! $instagramIntegration && ! $facebookIntegration && ! $wappiIntegration) {
             return redirect()
                 ->route('integrations.index')
-                ->withErrors(['sync' => __('Подключите Instagram или Facebook в разделе «Интеграции».')]);
+                ->withErrors(['sync' => __('Подключите Instagram, Facebook или Wappi (WhatsApp) в разделе «Интеграции».')]);
         }
 
         set_time_limit(120);
@@ -212,7 +236,18 @@ class MessengerController extends Controller
         }
 
         try {
-            if ($conversation->channel === IntegrationProvider::Facebook->value) {
+            if ($conversation->channel === IntegrationProvider::Wappi->value) {
+                $integration = $this->wappi->integrationForCompany($companyId);
+                if (! $integration) {
+                    return back()->withErrors(['body' => __('WhatsApp (Wappi) не подключён.')]);
+                }
+
+                if ($request->hasFile('audio')) {
+                    return back()->withErrors(['body' => __('Голосовые сообщения для WhatsApp пока не поддерживаются.')]);
+                }
+
+                $this->wappi->sendMessage($integration, $conversation, (string) $validated['body']);
+            } elseif ($conversation->channel === IntegrationProvider::Facebook->value) {
                 $integration = $this->facebook->integrationForCompany($companyId);
                 if (! $integration) {
                     return back()->withErrors(['body' => __('Facebook не подключён.')]);
@@ -260,7 +295,18 @@ class MessengerController extends Controller
         abort_unless($quickReply->company_id === $companyId, 403);
 
         try {
-            if ($conversation->channel === IntegrationProvider::Facebook->value) {
+            if ($conversation->channel === IntegrationProvider::Wappi->value) {
+                $integration = $this->wappi->integrationForCompany($companyId);
+                if (! $integration) {
+                    return back()->withErrors(['body' => __('WhatsApp (Wappi) не подключён.')]);
+                }
+
+                if ($quickReply->type !== 'text') {
+                    return back()->withErrors(['body' => __('Медиа-шаблоны для WhatsApp пока не поддерживаются.')]);
+                }
+
+                $this->wappi->sendMessage($integration, $conversation, (string) $quickReply->body);
+            } elseif ($conversation->channel === IntegrationProvider::Facebook->value) {
                 $integration = $this->facebook->integrationForCompany($companyId);
                 if (! $integration) {
                     return back()->withErrors(['body' => __('Facebook не подключён.')]);
@@ -293,7 +339,7 @@ class MessengerController extends Controller
     /**
      * @return list<array{type: string, url: string, name: ?string, mime_type: ?string}>
      */
-    protected function mapAttachmentsForFrontend(MessengerMessage $message): array
+    protected function mapAttachmentsForFrontend(MessengerMessage $message, ?string $channel = null): array
     {
         $attachments = collect($message->normalizedAttachments())->values();
 
@@ -306,14 +352,25 @@ class MessengerController extends Controller
             ]]);
         }
 
+        $channel ??= (string) $message->conversation()->value('channel');
+
         return $attachments
-            ->map(function (array $attachment, int $index) use ($message) {
+            ->map(function (array $attachment, int $index) use ($message, $channel) {
                 $hasRemoteUrl = ($attachment['url'] ?? '') !== '';
                 $hasLocalFile = ($attachment['storage_path'] ?? '') !== '';
                 $canLazyLoad = ! $hasRemoteUrl
                     && ! $hasLocalFile
                     && ($attachment['type'] ?? '') === 'audio'
                     && $message->external_id;
+
+                if ($channel === IntegrationProvider::Wappi->value && $hasRemoteUrl && str_starts_with((string) $attachment['url'], 'http')) {
+                    return [
+                        'type' => $attachment['type'] ?? 'file',
+                        'url' => $attachment['url'],
+                        'name' => $attachment['name'] ?? null,
+                        'mime_type' => $attachment['mime_type'] ?? null,
+                    ];
+                }
 
                 return [
                     'type' => $attachment['type'] ?? 'file',
@@ -329,6 +386,15 @@ class MessengerController extends Controller
 
     protected function integrationForConversation(int $companyId, MessengerConversation $conversation): CompanyIntegration
     {
+        if ($conversation->channel === IntegrationProvider::Wappi->value) {
+            $integration = $this->wappi->integrationForCompany($companyId);
+            if (! $integration) {
+                throw new \RuntimeException(__('WhatsApp (Wappi) не подключён.'));
+            }
+
+            return $integration;
+        }
+
         if ($conversation->channel === IntegrationProvider::Facebook->value) {
             $integration = $this->facebook->integrationForCompany($companyId);
             if (! $integration) {

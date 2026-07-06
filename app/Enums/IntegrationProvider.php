@@ -12,7 +12,7 @@ enum IntegrationProvider: string
     public function label(): string
     {
         return match ($this) {
-            self::Wappi => 'Wappi',
+            self::Wappi => 'WhatsApp',
             self::Instagram => 'Instagram',
             self::Telegram => 'Telegram',
             self::Facebook => 'Facebook',

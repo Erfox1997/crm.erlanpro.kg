@@ -18,6 +18,10 @@ const props = defineProps({
         type: String,
         default: 'Интеграции',
     },
+    wappiWebhookUrl: {
+        type: String,
+        default: '',
+    },
 });
 
 const page = usePage();
@@ -314,6 +318,18 @@ function wappiCanSave() {
                                     class="mt-2"
                                     :message="forms.wappi.errors.profile_id"
                                 />
+                            </div>
+
+                            <div
+                                v-if="wappiWebhookUrl"
+                                class="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 text-xs text-emerald-900"
+                            >
+                                <p class="font-medium">
+                                    Webhook (настраивается автоматически при сохранении)
+                                </p>
+                                <p class="mt-1 break-all font-mono text-[11px] text-emerald-800">
+                                    {{ wappiWebhookUrl }}
+                                </p>
                             </div>
 
                             <div class="flex flex-wrap gap-2">

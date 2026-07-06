@@ -13,6 +13,10 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    wappiConnected: {
+        type: Boolean,
+        default: false,
+    },
     instagramAccount: {
         type: Object,
         default: null,
@@ -36,6 +40,14 @@ const props = defineProps({
     quickReplies: {
         type: Array,
         default: () => [],
+    },
+    wappiAccount: {
+        type: Object,
+        default: null,
+    },
+    wappiWebhookUrl: {
+        type: String,
+        default: '',
     },
     webhookUrl: {
         type: String,
@@ -61,7 +73,9 @@ let recordingStream = null;
 let recordingTimer = null;
 let audioChunks = [];
 
-const messengerConnected = computed(() => props.instagramConnected || props.facebookConnected);
+const messengerConnected = computed(() => (
+    props.instagramConnected || props.facebookConnected || props.wappiConnected
+));
 
 const filteredConversations = computed(() => {
     const q = searchQuery.value.trim().toLowerCase();
@@ -112,15 +126,27 @@ watch(filteredSlashQuickReplies, () => {
 });
 
 function channelBadgeClass(channel) {
-    return channel === 'facebook'
-        ? 'bg-[#1877f2] text-white'
-        : 'bg-gradient-to-br from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white';
+    if (channel === 'facebook') {
+        return 'bg-[#1877f2] text-white';
+    }
+
+    if (channel === 'wappi') {
+        return 'bg-[#25D366] text-white';
+    }
+
+    return 'bg-gradient-to-br from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white';
 }
 
 function avatarClass(channel) {
-    return channel === 'facebook'
-        ? 'bg-[#1877f2]'
-        : 'bg-gradient-to-br from-pink-500 to-purple-600';
+    if (channel === 'facebook') {
+        return 'bg-[#1877f2]';
+    }
+
+    if (channel === 'wappi') {
+        return 'bg-[#25D366]';
+    }
+
+    return 'bg-gradient-to-br from-pink-500 to-purple-600';
 }
 
 function openConversation(id) {
@@ -567,7 +593,7 @@ watch(
                     v-if="!messengerConnected"
                     class="flex flex-1 items-center justify-center px-6 text-center text-sm text-[#667781]"
                 >
-                    Подключите Instagram или Facebook в
+                    Подключите Instagram, Facebook или WhatsApp (Wappi) в
                     <Link
                         :href="route('integrations.index')"
                         class="ml-1 text-[#00a884] hover:underline"

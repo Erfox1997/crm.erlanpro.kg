@@ -7,12 +7,14 @@ use App\Models\Company;
 use App\Models\CompanyIntegration;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
+use App\Services\Wappi\WappiMessengerService;
 
 class MessengerSyncService
 {
     public function __construct(
         private InstagramMessengerService $instagram,
         private FacebookMessengerService $facebook,
+        private WappiMessengerService $wappi,
     ) {}
 
     /**
@@ -35,11 +37,12 @@ class MessengerSyncService
         $company = Company::query()->find($companyId);
         $instagramIntegration = $this->instagram->integrationForCompany($companyId);
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
+        $wappiIntegration = $this->wappi->integrationForCompany($companyId);
 
-        if (! $instagramIntegration && ! $facebookIntegration) {
+        if (! $instagramIntegration && ! $facebookIntegration && ! $wappiIntegration) {
             return [
                 'synced' => 0,
-                'errors' => [__('Подключите Instagram или Facebook в разделе «Интеграции».')],
+                'errors' => [__('Подключите Instagram, Facebook или Wappi (WhatsApp) в разделе «Интеграции».')],
                 'company_id' => $companyId,
                 'company_name' => $company?->name,
             ];
@@ -81,6 +84,18 @@ class MessengerSyncService
             $errors = array_merge($errors, $result['errors']);
         }
 
+        if ($wappiIntegration) {
+            $result = $this->wappi->syncConversations(
+                $wappiIntegration,
+                $days,
+                $maxConversations,
+                $hours,
+                $priorityIds,
+            );
+            $synced += $result['synced'];
+            $errors = array_merge($errors, $result['errors']);
+        }
+
         return [
             'synced' => $synced,
             'errors' => $errors,
@@ -98,6 +113,7 @@ class MessengerSyncService
             ->whereIn('provider', [
                 IntegrationProvider::Instagram->value,
                 IntegrationProvider::Facebook->value,
+                IntegrationProvider::Wappi->value,
             ])
             ->whereNotNull('api_token')
             ->distinct()

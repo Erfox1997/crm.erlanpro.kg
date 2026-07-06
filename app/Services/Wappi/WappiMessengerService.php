@@ -1,0 +1,725 @@
+<?php
+
+namespace App\Services\Wappi;
+
+use App\Enums\IntegrationProvider;
+use App\Models\CompanyIntegration;
+use App\Models\MessengerConversation;
+use App\Models\MessengerMessage;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+
+class WappiMessengerService
+{
+    public function __construct(
+        private WappiApiClient $api,
+    ) {}
+
+    public function integrationForCompany(int $companyId): ?CompanyIntegration
+    {
+        return CompanyIntegration::query()
+            ->where('company_id', $companyId)
+            ->where('provider', IntegrationProvider::Wappi->value)
+            ->whereNotNull('api_token')
+            ->get()
+            ->first(fn (CompanyIntegration $integration) => filled($integration->metadata['profile_id'] ?? null));
+    }
+
+    /**
+     * @return array{metadata: array<string, mixed>}
+     */
+    public function connectIntegration(CompanyIntegration $integration): array
+    {
+        $profileId = $this->profileId($integration);
+        if ($profileId === '') {
+            throw new \RuntimeException(__('Укажите ID профиля Wappi.'));
+        }
+
+        $response = $this->api->get($integration, '/api/sync/get/status');
+        $response->throw();
+
+        $metadata = array_merge($integration->metadata ?? [], [
+            'profile_id' => $profileId,
+            'profile_name' => $this->extractProfileName($response->json()),
+            'profile_phone' => $this->extractProfilePhone($response->json()),
+            'connected_at' => now()->toIso8601String(),
+        ]);
+
+        $integration->update(['metadata' => $metadata]);
+
+        $this->registerWebhook($integration->refresh());
+
+        return ['metadata' => $metadata];
+    }
+
+    public function registerWebhook(CompanyIntegration $integration): void
+    {
+        $webhookUrl = route('webhooks.wappi.handle');
+
+        $setUrl = $this->api->post($integration, '/api/webhook/url/set', [
+            'url' => $webhookUrl,
+        ]);
+
+        if ($setUrl->failed()) {
+            throw new \RuntimeException($this->formatApiError($setUrl, __('Не удалось установить webhook Wappi.')));
+        }
+
+        $setTypes = $this->api->postJson($integration, '/api/webhook/types/set', [
+            'wh_types' => [
+                'incoming_message',
+                'outgoing_message_api',
+                'outgoing_message_phone',
+            ],
+        ]);
+
+        if ($setTypes->failed()) {
+            Log::warning('Wappi webhook types setup failed', [
+                'profile_id' => $this->profileId($integration),
+                'body' => $setTypes->json(),
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    public function handleWebhookPayload(array $payload): int
+    {
+        $processed = 0;
+
+        foreach ($this->normalizeWebhookMessages($payload) as $message) {
+            $profileId = (string) ($message['profile_id'] ?? '');
+            $integration = $this->findIntegrationByProfileId($profileId);
+
+            if (! $integration) {
+                continue;
+            }
+
+            if ($this->processWebhookMessage($integration, $message)) {
+                $processed++;
+            }
+        }
+
+        return $processed;
+    }
+
+    /**
+     * @return array{synced: int, errors: list<string>}
+     */
+    public function syncConversations(
+        CompanyIntegration $integration,
+        int $days = 1,
+        ?int $maxConversations = null,
+        ?int $hours = null,
+        array $priorityExternalIds = [],
+    ): array {
+        $since = $hours !== null
+            ? now()->subHours($hours)
+            : now()->subDays($days);
+
+        $limit = $maxConversations ?? 20;
+        $errors = [];
+        $synced = 0;
+
+        try {
+            $response = $this->api->postJson(
+                $integration,
+                '/api/sync/chats/get',
+                [],
+                ['limit' => $limit, 'offset' => 0],
+            );
+            $response->throw();
+
+            $chats = $this->extractList($response->json(), ['dialogs', 'chats', 'data', 'result']);
+
+            if ($priorityExternalIds !== []) {
+                usort($chats, function (array $a, array $b) use ($priorityExternalIds) {
+                    $aId = $this->chatExternalId($a);
+                    $bId = $this->chatExternalId($b);
+                    $aPriority = in_array($aId, $priorityExternalIds, true) ? 0 : 1;
+                    $bPriority = in_array($bId, $priorityExternalIds, true) ? 0 : 1;
+
+                    return $aPriority <=> $bPriority;
+                });
+            }
+
+            foreach (array_slice($chats, 0, $limit) as $chat) {
+                if (! is_array($chat)) {
+                    continue;
+                }
+
+                if ($this->shouldSkipChat($chat)) {
+                    continue;
+                }
+
+                try {
+                    if ($this->syncChatMessages($integration, $chat, $since)) {
+                        $synced++;
+                    }
+                } catch (\Throwable $e) {
+                    $errors[] = $e->getMessage();
+                }
+            }
+        } catch (RequestException $e) {
+            $errors[] = $this->formatApiError($e->response, $e->getMessage());
+        } catch (\Throwable $e) {
+            $errors[] = $e->getMessage();
+        }
+
+        return ['synced' => $synced, 'errors' => $errors];
+    }
+
+    public function sendMessage(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        string $text,
+    ): MessengerMessage {
+        $recipient = $this->recipientFromParticipantId($conversation->participant_id);
+
+        $response = $this->api->postJson(
+            $integration,
+            '/api/sync/message/send',
+            [
+                'recipient' => $recipient,
+                'body' => $text,
+            ],
+        );
+
+        $response->throw();
+
+        $messageId = (string) ($response->json('message_id')
+            ?? $response->json('id')
+            ?? $response->json('messages.id')
+            ?? '');
+
+        return MessengerMessage::query()->create([
+            'company_id' => $integration->company_id,
+            'messenger_conversation_id' => $conversation->id,
+            'direction' => 'outbound',
+            'external_id' => $messageId !== '' ? $messageId : null,
+            'body' => $text,
+            'status' => 'sent',
+            'sent_at' => now(),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     */
+    protected function processWebhookMessage(CompanyIntegration $integration, array $message): bool
+    {
+        $whType = (string) ($message['wh_type'] ?? '');
+
+        if (! in_array($whType, ['incoming_message', 'outgoing_message_api', 'outgoing_message_phone'], true)) {
+            return false;
+        }
+
+        if ($this->shouldSkipMessageType((string) ($message['type'] ?? ''))) {
+            return false;
+        }
+
+        $chatId = (string) ($message['chatId'] ?? $message['chat_id'] ?? '');
+        if ($chatId === '') {
+            return false;
+        }
+
+        if ($this->shouldSkipChatType((string) ($message['chat_type'] ?? 'dialog'))) {
+            return false;
+        }
+
+        $externalId = (string) ($message['id'] ?? '');
+        if ($externalId === '') {
+            return false;
+        }
+
+        $direction = $this->resolveDirection($whType, $message);
+        $participantId = $this->participantIdFromMessage($message, $direction);
+        if ($participantId === '') {
+            $participantId = $chatId;
+        }
+
+        $conversation = MessengerConversation::query()->firstOrCreate(
+            [
+                'company_id' => $integration->company_id,
+                'channel' => IntegrationProvider::Wappi->value,
+                'participant_id' => $participantId,
+            ],
+            [
+                'external_id' => $chatId,
+                'participant_name' => $this->participantNameFromMessage($message),
+                'participant_username' => $this->participantPhoneFromMessage($message),
+            ],
+        );
+
+        $this->updateConversationMeta($conversation, $message, $chatId);
+
+        $existing = MessengerMessage::query()
+            ->where('messenger_conversation_id', $conversation->id)
+            ->where('external_id', $externalId)
+            ->first();
+
+        if ($existing) {
+            return false;
+        }
+
+        [$body, $attachments] = $this->resolveBodyAndAttachments($message);
+        $sentAt = $this->resolveSentAt($message);
+
+        MessengerMessage::query()->create([
+            'company_id' => $integration->company_id,
+            'messenger_conversation_id' => $conversation->id,
+            'direction' => $direction,
+            'external_id' => $externalId,
+            'body' => $body,
+            'attachments' => $attachments !== [] ? $attachments : null,
+            'status' => $direction === 'outbound' ? 'sent' : 'received',
+            'sent_at' => $sentAt,
+        ]);
+
+        $conversation->update(['last_message_at' => $sentAt]);
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $chat
+     */
+    protected function syncChatMessages(CompanyIntegration $integration, array $chat, Carbon $since): bool
+    {
+        $chatId = $this->chatExternalId($chat);
+        if ($chatId === '') {
+            return false;
+        }
+
+        $response = $this->api->get($integration, '/api/sync/messages/get', [
+            'chat_id' => $chatId,
+            'limit' => 50,
+            'order' => 'desc',
+        ]);
+        $response->throw();
+
+        $messages = $this->extractList($response->json(), ['messages', 'data', 'result']);
+        $syncedAny = false;
+
+        $conversation = MessengerConversation::query()->firstOrCreate(
+            [
+                'company_id' => $integration->company_id,
+                'channel' => IntegrationProvider::Wappi->value,
+                'participant_id' => $chatId,
+            ],
+            [
+                'external_id' => $chatId,
+                'participant_name' => $this->chatDisplayName($chat),
+                'participant_username' => $this->chatPhone($chat),
+            ],
+        );
+
+        foreach ($messages as $message) {
+            if (! is_array($message)) {
+                continue;
+            }
+
+            $sentAt = $this->resolveSentAt($message);
+            if ($sentAt->lt($since)) {
+                continue;
+            }
+
+            if ($this->shouldSkipMessageType((string) ($message['type'] ?? ''))) {
+                continue;
+            }
+
+            $externalId = (string) ($message['id'] ?? $message['message_id'] ?? '');
+            if ($externalId === '') {
+                continue;
+            }
+
+            if (MessengerMessage::query()
+                ->where('messenger_conversation_id', $conversation->id)
+                ->where('external_id', $externalId)
+                ->exists()) {
+                continue;
+            }
+
+            $direction = ($message['is_me'] ?? false) ? 'outbound' : 'inbound';
+            [$body, $attachments] = $this->resolveBodyAndAttachments($message);
+
+            MessengerMessage::query()->create([
+                'company_id' => $integration->company_id,
+                'messenger_conversation_id' => $conversation->id,
+                'direction' => $direction,
+                'external_id' => $externalId,
+                'body' => $body,
+                'attachments' => $attachments !== [] ? $attachments : null,
+                'status' => $direction === 'outbound' ? 'sent' : 'received',
+                'sent_at' => $sentAt,
+            ]);
+
+            $syncedAny = true;
+
+            if (! $conversation->last_message_at || $sentAt->gt($conversation->last_message_at)) {
+                $conversation->update(['last_message_at' => $sentAt]);
+            }
+        }
+
+        return $syncedAny;
+    }
+
+    protected function findIntegrationByProfileId(string $profileId): ?CompanyIntegration
+    {
+        if ($profileId === '') {
+            return null;
+        }
+
+        return CompanyIntegration::query()
+            ->where('provider', IntegrationProvider::Wappi->value)
+            ->whereNotNull('api_token')
+            ->get()
+            ->first(fn (CompanyIntegration $integration) => $this->profileId($integration) === $profileId);
+    }
+
+    protected function profileId(CompanyIntegration $integration): string
+    {
+        return trim((string) ($integration->metadata['profile_id'] ?? ''));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return list<array<string, mixed>>
+     */
+    protected function normalizeWebhookMessages(array $payload): array
+    {
+        $messages = $payload['messages'] ?? [];
+
+        if (! is_array($messages)) {
+            return [];
+        }
+
+        if ($this->isAssocArray($messages)) {
+            return [$messages];
+        }
+
+        return array_values(array_filter($messages, fn ($item) => is_array($item)));
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     */
+    protected function resolveDirection(string $whType, array $message): string
+    {
+        if (in_array($whType, ['outgoing_message_api', 'outgoing_message_phone'], true)) {
+            return 'outbound';
+        }
+
+        if (($message['is_me'] ?? false) === true) {
+            return 'outbound';
+        }
+
+        return 'inbound';
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     */
+    protected function participantIdFromMessage(array $message, string $direction): string
+    {
+        $chatId = (string) ($message['chatId'] ?? $message['chat_id'] ?? '');
+        if ($chatId !== '') {
+            return $chatId;
+        }
+
+        if ($direction === 'inbound') {
+            return (string) ($message['from'] ?? '');
+        }
+
+        return (string) ($message['to'] ?? '');
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     */
+    protected function participantNameFromMessage(array $message): ?string
+    {
+        $name = trim((string) ($message['contact_name'] ?? $message['senderName'] ?? ''));
+
+        return $name !== '' ? $name : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     */
+    protected function participantPhoneFromMessage(array $message): ?string
+    {
+        $phone = trim((string) ($message['phone'] ?? $message['contact_phone'] ?? ''));
+
+        if ($phone !== '') {
+            return $phone;
+        }
+
+        $from = (string) ($message['from'] ?? $message['chatId'] ?? '');
+
+        return $this->phoneFromJid($from);
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     */
+    protected function updateConversationMeta(MessengerConversation $conversation, array $message, string $chatId): void
+    {
+        $updates = [];
+
+        $name = $this->participantNameFromMessage($message);
+        if ($name && $conversation->participant_name !== $name) {
+            $updates['participant_name'] = $name;
+        }
+
+        $phone = $this->participantPhoneFromMessage($message);
+        if ($phone && $conversation->participant_username !== $phone) {
+            $updates['participant_username'] = $phone;
+        }
+
+        if (! $conversation->external_id) {
+            $updates['external_id'] = $chatId;
+        }
+
+        if ($updates !== []) {
+            $conversation->update($updates);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     * @return array{0: string, 1: list<array{type: string, url: string, name: ?string, mime_type: ?string}>}
+     */
+    protected function resolveBodyAndAttachments(array $message): array
+    {
+        $type = strtolower((string) ($message['type'] ?? 'chat'));
+        $caption = trim((string) ($message['caption'] ?? ''));
+        $body = trim((string) ($message['body'] ?? ''));
+
+        $textTypes = ['chat', 'text', 'buttons_response', 'list_response'];
+
+        if (in_array($type, $textTypes, true)) {
+            return [$body, []];
+        }
+
+        $attachmentType = match ($type) {
+            'image' => 'image',
+            'video' => 'video',
+            'audio', 'ptt', 'voice' => 'audio',
+            'document', 'file' => 'file',
+            default => 'file',
+        };
+
+        $url = (string) ($message['file_link'] ?? $message['file_url'] ?? '');
+        if ($url === '' && ! $this->looksLikeBase64($body)) {
+            $url = filter_var($body, FILTER_VALIDATE_URL) ? $body : '';
+        }
+
+        $attachments = [[
+            'type' => $attachmentType,
+            'url' => $url,
+            'name' => $message['file_name'] ?? null,
+            'mime_type' => $message['mimetype'] ?? $message['mime_type'] ?? null,
+        ]];
+
+        return [$caption, $attachments];
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     */
+    protected function resolveSentAt(array $message): Carbon
+    {
+        if (isset($message['time']) && is_numeric($message['time'])) {
+            return Carbon::createFromTimestamp((int) $message['time']);
+        }
+
+        $timestamp = (string) ($message['timestamp'] ?? '');
+        if ($timestamp !== '') {
+            try {
+                return Carbon::parse($timestamp);
+            } catch (\Throwable) {
+                // fall through
+            }
+        }
+
+        return now();
+    }
+
+    protected function shouldSkipMessageType(string $type): bool
+    {
+        return in_array(strtolower($type), [
+            'reaction',
+            'poll',
+            'poll_vote',
+            'incoming_call',
+            'missed_call',
+            'call_terminate',
+            'call_accept',
+            'buttons',
+            'list',
+        ], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $chat
+     */
+    protected function shouldSkipChat(array $chat): bool
+    {
+        $type = strtolower((string) ($chat['chat_type'] ?? $chat['type'] ?? 'dialog'));
+
+        return $this->shouldSkipChatType($type);
+    }
+
+    protected function shouldSkipChatType(string $type): bool
+    {
+        return in_array(strtolower($type), ['group', 'community', 'broadcast'], true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $chat
+     */
+    protected function chatExternalId(array $chat): string
+    {
+        return (string) ($chat['id'] ?? $chat['chat_id'] ?? $chat['chatId'] ?? $chat['jid'] ?? '');
+    }
+
+    /**
+     * @param  array<string, mixed>  $chat
+     */
+    protected function chatDisplayName(array $chat): ?string
+    {
+        $name = trim((string) ($chat['name'] ?? $chat['contact_name'] ?? $chat['title'] ?? ''));
+
+        return $name !== '' ? $name : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $chat
+     */
+    protected function chatPhone(array $chat): ?string
+    {
+        $phone = trim((string) ($chat['phone'] ?? $chat['contact_phone'] ?? ''));
+
+        if ($phone !== '') {
+            return $phone;
+        }
+
+        return $this->phoneFromJid($this->chatExternalId($chat));
+    }
+
+    protected function recipientFromParticipantId(string $participantId): string
+    {
+        if (str_contains($participantId, '@')) {
+            return explode('@', $participantId)[0];
+        }
+
+        return preg_replace('/\D+/', '', $participantId) ?: $participantId;
+    }
+
+    protected function phoneFromJid(string $jid): ?string
+    {
+        if ($jid === '' || ! str_contains($jid, '@')) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', explode('@', $jid)[0]);
+
+        return $digits !== '' ? $digits : null;
+    }
+
+    protected function looksLikeBase64(string $value): bool
+    {
+        if (strlen($value) < 40) {
+            return false;
+        }
+
+        return (bool) preg_match('/^[A-Za-z0-9+\/=\r\n]+$/', substr($value, 0, 200));
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $payload
+     * @param  list<string>  $keys
+     * @return list<array<string, mixed>>
+     */
+    protected function extractList(?array $payload, array $keys): array
+    {
+        if (! is_array($payload)) {
+            return [];
+        }
+
+        foreach ($keys as $key) {
+            $value = $payload[$key] ?? null;
+            if (is_array($value)) {
+                return array_values(array_filter($value, fn ($item) => is_array($item)));
+            }
+        }
+
+        if ($this->isListArray($payload)) {
+            return array_values(array_filter($payload, fn ($item) => is_array($item)));
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $payload
+     */
+    protected function extractProfileName(?array $payload): ?string
+    {
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        $name = trim((string) ($payload['name'] ?? $payload['profile_name'] ?? $payload['phone'] ?? ''));
+
+        return $name !== '' ? $name : null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $payload
+     */
+    protected function extractProfilePhone(?array $payload): ?string
+    {
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        $phone = trim((string) ($payload['phone'] ?? $payload['profile_phone'] ?? ''));
+
+        return $phone !== '' ? $phone : null;
+    }
+
+    protected function formatApiError(?Response $response, string $fallback): string
+    {
+        if (! $response) {
+            return $fallback;
+        }
+
+        $message = trim((string) ($response->json('message') ?? $response->json('detail') ?? $response->json('error') ?? ''));
+
+        if ($message !== '') {
+            return $message;
+        }
+
+        return $fallback.' (HTTP '.$response->status().')';
+    }
+
+    /**
+     * @param  array<mixed>  $array
+     */
+    protected function isAssocArray(array $array): bool
+    {
+        return array_keys($array) !== range(0, count($array) - 1);
+    }
+
+    /**
+     * @param  array<mixed>  $array
+     */
+    protected function isListArray(array $array): bool
+    {
+        return ! $this->isAssocArray($array);
+    }
+}

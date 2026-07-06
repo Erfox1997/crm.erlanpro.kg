@@ -7,6 +7,7 @@ use App\Models\CompanyIntegration;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Meta\MetaMessagingSupport;
+use App\Services\Wappi\WappiMessengerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -77,6 +78,7 @@ class IntegrationController extends Controller
         return Inertia::render('Integrations/Index', [
             'integrations' => $integrations,
             'pageTitle' => 'Интеграции',
+            'wappiWebhookUrl' => route('webhooks.wappi.handle'),
         ]);
     }
 
@@ -150,7 +152,7 @@ class IntegrationController extends Controller
             ];
         }
 
-        CompanyIntegration::query()->updateOrCreate(
+        $integration = CompanyIntegration::query()->updateOrCreate(
             [
                 'company_id' => $companyId,
                 'provider' => $integrationProvider->value,
@@ -158,8 +160,18 @@ class IntegrationController extends Controller
             $attributes,
         );
 
+        if ($integrationProvider === IntegrationProvider::Wappi) {
+            try {
+                app(WappiMessengerService::class)->connectIntegration($integration);
+            } catch (\Throwable $e) {
+                return back()->withErrors([
+                    'api_token' => __('Wappi: :msg', ['msg' => $e->getMessage()]),
+                ]);
+            }
+        }
+
         $message = $integrationProvider === IntegrationProvider::Wappi
-            ? __('Интеграция :name сохранена.', ['name' => $integrationProvider->label()])
+            ? __('Интеграция :name сохранена. Webhook настроен автоматически.', ['name' => $integrationProvider->label()])
             : __('Токен :name сохранён.', ['name' => $integrationProvider->label()]);
 
         return back()->with('success', $message);
