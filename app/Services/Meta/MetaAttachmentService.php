@@ -313,7 +313,7 @@ class MetaAttachmentService
         bool $instagramPlatform = false,
     ): array {
         if ($authMode === 'instagram_login') {
-            $publicUrl = $this->publishTemporaryImage($filePath, $originalName);
+            $publicUrl = $this->publishTemporaryImageForSend($filePath, $originalName);
             $token = MetaMessagingSupport::normalizeAccessToken((string) $integration->api_token);
             $url = 'https://graph.instagram.com/'.MetaMessagingSupport::graphVersion()."/{$messagesEntityId}/messages";
 
@@ -444,6 +444,25 @@ class MetaAttachmentService
         return (string) ($response->json('message_id') ?? $response->json('id') ?? '');
     }
 
+    public function publishTemporaryImageForSend(string $filePath, string $originalName): string
+    {
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        if (! in_array($extension, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) {
+            $extension = 'jpg';
+        }
+
+        $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', pathinfo($originalName, PATHINFO_FILENAME)) ?: 'image';
+        $filename = uniqid('image_', true).'_'.$safeName.'.'.$extension;
+
+        Storage::disk('public')->putFileAs(
+            'messenger/outbound',
+            new File($filePath),
+            $filename,
+        );
+
+        return route('wappi.outbound-media', ['filename' => $filename]);
+    }
+
     protected function publishTemporaryImage(string $filePath, string $originalName): string
     {
         $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $originalName) ?: 'image.jpg';
@@ -493,6 +512,24 @@ class MetaAttachmentService
         );
 
         return Storage::disk('public')->url('messenger/outbound/'.$filename);
+    }
+
+    public function storeSentImageCopy(int $companyId, string $filePath, string $originalName): string
+    {
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        if (! in_array($extension, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) {
+            $extension = 'jpg';
+        }
+
+        $filename = uniqid('image_', true).'_sent.'.$extension;
+
+        Storage::disk('public')->putFileAs(
+            'messenger/sent/'.$companyId,
+            new File($filePath),
+            $filename,
+        );
+
+        return 'public/messenger/sent/'.$companyId.'/'.$filename;
     }
 
     public function storeSentAudioCopy(int $companyId, string $filePath, string $originalName): string

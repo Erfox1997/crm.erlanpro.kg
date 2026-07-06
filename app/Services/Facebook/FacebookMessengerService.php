@@ -403,6 +403,12 @@ class FacebookMessengerService
             false,
         );
 
+        $storedPath = $this->metaAttachments->storeSentImageCopy(
+            $integration->company_id,
+            $result['prepared_path'],
+            $result['prepared_name'],
+        );
+
         return MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
             'messenger_conversation_id' => $conversation->id,
@@ -414,6 +420,7 @@ class FacebookMessengerService
                 'url' => $result['public_url'] ?? '',
                 'name' => $result['prepared_name'],
                 'mime_type' => $result['prepared_mime'],
+                'storage_path' => $storedPath,
             ]],
             'status' => 'sent',
             'sent_at' => now(),

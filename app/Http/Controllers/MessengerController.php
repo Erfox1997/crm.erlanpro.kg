@@ -248,10 +248,13 @@ class MessengerController extends Controller
         $validated = $request->validate([
             'body' => 'nullable|string|max:2000',
             'audio' => 'nullable|file|max:16384',
+            'image' => 'nullable|file|mimes:jpeg,jpg,png,webp,gif|max:16384',
         ]);
 
-        if (! $request->hasFile('audio') && trim((string) ($validated['body'] ?? '')) === '') {
-            return back()->withErrors(['body' => __('Введите текст или запишите голосовое сообщение.')]);
+        if (! $request->hasFile('audio')
+            && ! $request->hasFile('image')
+            && trim((string) ($validated['body'] ?? '')) === '') {
+            return back()->withErrors(['body' => __('Введите текст, прикрепите изображение или запишите голосовое сообщение.')]);
         }
 
         try {
@@ -261,7 +264,9 @@ class MessengerController extends Controller
                     return back()->withErrors(['body' => __('WhatsApp (Wappi) не подключён.')]);
                 }
 
-                if ($request->hasFile('audio')) {
+                if ($request->hasFile('image')) {
+                    $this->sendImage($this->wappi, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
+                } elseif ($request->hasFile('audio')) {
                     $audio = $request->file('audio');
                     $path = $audio->getRealPath();
 
@@ -285,7 +290,9 @@ class MessengerController extends Controller
                     return back()->withErrors(['body' => __('Facebook не подключён.')]);
                 }
 
-                if ($request->hasFile('audio')) {
+                if ($request->hasFile('image')) {
+                    $this->sendImage($this->facebook, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
+                } elseif ($request->hasFile('audio')) {
                     $this->sendAudio($this->facebook, $integration, $conversation, $request->file('audio'));
                 } else {
                     $this->facebook->sendMessage($integration, $conversation, (string) $validated['body']);
@@ -296,7 +303,9 @@ class MessengerController extends Controller
                     return back()->withErrors(['body' => __('Instagram не подключён.')]);
                 }
 
-                if ($request->hasFile('audio')) {
+                if ($request->hasFile('image')) {
+                    $this->sendImage($this->instagram, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
+                } elseif ($request->hasFile('audio')) {
                     $this->sendAudio($this->instagram, $integration, $conversation, $request->file('audio'));
                 } else {
                     $this->instagram->sendMessage($integration, $conversation, (string) $validated['body']);
@@ -337,7 +346,7 @@ class MessengerController extends Controller
 
                 if ($quickReply->type === 'text') {
                     $this->wappi->sendMessage($integration, $conversation, (string) $quickReply->body);
-                } elseif ($quickReply->type === 'audio') {
+                } elseif (in_array($quickReply->type, ['audio', 'image'], true)) {
                     $this->dispatchWappiQuickReply($integration, $conversation, $quickReply);
                 } else {
                     return back()->withErrors(['body' => __('Медиа-шаблоны для WhatsApp пока не поддерживаются.')]);
@@ -482,6 +491,19 @@ class MessengerController extends Controller
             return;
         }
 
+        if ($quickReply->type === 'image') {
+            $this->wappi->sendImageMessage(
+                $integration,
+                $conversation,
+                $path,
+                $quickReply->attachment_name ?: 'image.jpg',
+                $quickReply->attachment_mime,
+                $quickReply->body,
+            );
+
+            return;
+        }
+
         throw new \RuntimeException(__('Медиа-шаблоны для WhatsApp пока не поддерживаются.'));
     }
 
@@ -514,6 +536,28 @@ class MessengerController extends Controller
             $path,
             $audio->getClientOriginalName() ?: 'voice.webm',
             $audio->getMimeType(),
+        );
+    }
+
+    protected function sendImage(
+        FacebookMessengerService|InstagramMessengerService|WappiMessengerService $service,
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        UploadedFile $image,
+        ?string $caption = null,
+    ): void {
+        $path = $image->getRealPath();
+        if (! is_string($path) || $path === '') {
+            throw new \RuntimeException(__('Не удалось прочитать изображение.'));
+        }
+
+        $service->sendImageMessage(
+            $integration,
+            $conversation,
+            $path,
+            $image->getClientOriginalName() ?: 'image.jpg',
+            $image->getMimeType(),
+            $caption !== null && trim($caption) !== '' ? trim($caption) : null,
         );
     }
 

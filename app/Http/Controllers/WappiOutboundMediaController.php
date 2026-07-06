@@ -35,6 +35,10 @@ class WappiOutboundMediaController extends Controller
             'webm' => 'audio/webm',
             'wav' => 'audio/wav',
             'aac' => 'audio/aac',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
             default => 'application/octet-stream',
         };
     }

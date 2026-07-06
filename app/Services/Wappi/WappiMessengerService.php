@@ -269,6 +269,171 @@ class WappiMessengerService
         ]);
     }
 
+    public function sendImageMessage(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        string $filePath,
+        string $originalName,
+        ?string $mimeType = null,
+        ?string $caption = null,
+    ): MessengerMessage {
+        if (! is_file($filePath)) {
+            throw new \RuntimeException(__('Не удалось прочитать изображение.'));
+        }
+
+        $recipient = $this->recipientFromParticipantId($conversation->participant_id);
+        $mimeType = $this->normalizeImageMime($originalName, $mimeType);
+        $publicUrl = $this->metaAttachments->publishTemporaryImageForSend($filePath, $originalName);
+
+        Log::info('Wappi image public URL prepared', [
+            'profile_id' => $this->profileId($integration),
+            'conversation_id' => $conversation->id,
+            'url' => $publicUrl,
+            'recipient' => $recipient,
+        ]);
+
+        try {
+            $response = $this->sendImageViaPublicUrl(
+                $integration,
+                $recipient,
+                $publicUrl,
+                $originalName,
+                $mimeType,
+                $caption,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Wappi image URL send failed, trying base64 fallback', [
+                'profile_id' => $this->profileId($integration),
+                'conversation_id' => $conversation->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $contents = file_get_contents($filePath);
+            if (! is_string($contents) || $contents === '') {
+                throw new \RuntimeException(__('Не удалось прочитать изображение.'));
+            }
+
+            $response = $this->sendImageViaBase64(
+                $integration,
+                $recipient,
+                base64_encode($contents),
+                $originalName,
+                $mimeType,
+                $caption,
+            );
+        }
+
+        $messageId = $this->extractMessageId($response);
+        $storedPath = $this->metaAttachments->storeSentImageCopy(
+            $integration->company_id,
+            $filePath,
+            $originalName,
+        );
+
+        return MessengerMessage::query()->create([
+            'company_id' => $integration->company_id,
+            'messenger_conversation_id' => $conversation->id,
+            'direction' => 'outbound',
+            'external_id' => $messageId !== '' ? $messageId : null,
+            'body' => $caption ?? '',
+            'attachments' => [[
+                'type' => 'image',
+                'url' => '',
+                'name' => $originalName,
+                'mime_type' => $mimeType,
+                'storage_path' => $storedPath,
+            ]],
+            'status' => 'sent',
+            'sent_at' => now(),
+        ]);
+    }
+
+    protected function sendImageViaPublicUrl(
+        CompanyIntegration $integration,
+        string $recipient,
+        string $url,
+        string $fileName,
+        string $mimeType,
+        ?string $caption = null,
+    ): Response {
+        $payload = [
+            'url' => $url,
+            'file_name' => $fileName,
+            'mimetype' => $mimeType,
+        ];
+
+        if ($caption !== null && trim($caption) !== '') {
+            $payload['caption'] = trim($caption);
+        }
+
+        $response = $this->postJsonPayload(
+            $integration,
+            '/api/sync/message/file/url/send',
+            $recipient,
+            $payload,
+        );
+
+        Log::info('Wappi image send accepted', [
+            'profile_id' => $this->profileId($integration),
+            'endpoint' => '/api/sync/message/file/url/send',
+            'recipient' => $recipient,
+            'message_id' => $this->extractMessageId($response),
+        ]);
+
+        return $response;
+    }
+
+    protected function sendImageViaBase64(
+        CompanyIntegration $integration,
+        string $recipient,
+        string $base64,
+        string $fileName,
+        string $mimeType,
+        ?string $caption = null,
+    ): Response {
+        $payload = [
+            'body' => $base64,
+            'file_name' => $fileName,
+            'mimetype' => $mimeType,
+        ];
+
+        if ($caption !== null && trim($caption) !== '') {
+            $payload['caption'] = trim($caption);
+        }
+
+        $response = $this->postJsonPayload(
+            $integration,
+            '/api/sync/message/img/send',
+            $recipient,
+            $payload,
+        );
+
+        Log::info('Wappi image send accepted', [
+            'profile_id' => $this->profileId($integration),
+            'endpoint' => '/api/sync/message/img/send',
+            'recipient' => $recipient,
+            'message_id' => $this->extractMessageId($response),
+        ]);
+
+        return $response;
+    }
+
+    protected function normalizeImageMime(string $originalName, ?string $mimeType): string
+    {
+        $mimeType = strtolower(trim((string) $mimeType));
+
+        if ($mimeType !== '' && str_starts_with($mimeType, 'image/')) {
+            return $mimeType;
+        }
+
+        return match (strtolower(pathinfo($originalName, PATHINFO_EXTENSION))) {
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            default => 'image/jpeg',
+        };
+    }
+
     /**
      * @return array{0: string, 1: string, 2: string}
      */

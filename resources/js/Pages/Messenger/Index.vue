@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 
 const props = defineProps({
     instagramConnected: {
@@ -60,11 +60,16 @@ const syncing = ref(false);
 const searchQuery = ref('');
 const slashActiveIndex = ref(0);
 const messageInput = ref(null);
+const imageInput = ref(null);
 
 const sendForm = useForm({
     body: '',
     audio: null,
+    image: null,
 });
+
+const imagePreviewUrl = ref(null);
+const lightboxImageUrl = ref(null);
 
 const isRecording = ref(false);
 const recordingSeconds = ref(0);
@@ -228,25 +233,72 @@ function onMessageInputKeydown(event) {
 }
 
 function sendMessage() {
-    if (!props.selectedConversation || !sendForm.body.trim() || slashQuickRepliesOpen.value) {
+    if (!props.selectedConversation || slashQuickRepliesOpen.value) {
+        return;
+    }
+
+    if (!sendForm.body.trim() && !sendForm.image) {
         return;
     }
 
     sendForm.transform((data) => ({
         body: data.body,
         audio: null,
+        image: data.image,
     })).post(
         route('messenger.send', props.selectedConversation.id),
         {
             preserveScroll: true,
             forceFormData: true,
             onSuccess: () => {
-                sendForm.reset('body', 'audio');
+                sendForm.reset('body', 'audio', 'image');
+                clearImagePreview();
                 scrollToBottom();
             },
         },
     );
 }
+
+function onImageSelected(event) {
+    const file = event.target.files?.[0] ?? null;
+
+    if (!file) {
+        return;
+    }
+
+    clearImagePreview();
+    sendForm.image = file;
+    imagePreviewUrl.value = URL.createObjectURL(file);
+}
+
+function clearImagePreview() {
+    if (imagePreviewUrl.value) {
+        URL.revokeObjectURL(imagePreviewUrl.value);
+    }
+
+    imagePreviewUrl.value = null;
+    sendForm.image = null;
+
+    if (imageInput.value) {
+        imageInput.value.value = '';
+    }
+}
+
+function openImageLightbox(url) {
+    if (!url) {
+        return;
+    }
+
+    lightboxImageUrl.value = url;
+}
+
+function closeImageLightbox() {
+    lightboxImageUrl.value = null;
+}
+
+onUnmounted(() => {
+    clearImagePreview();
+});
 
 function pickRecorderMimeType(channel) {
     const mobileFriendlyTypes = ['audio/mp4', 'audio/aac'];
@@ -835,11 +887,19 @@ watch(
                                         </p>
 
                                         <img
-                                            v-else-if="attachment.type === 'image'"
+                                            v-else-if="attachment.type === 'image' && attachment.url"
                                             :src="attachment.url"
                                             :alt="attachment.name || attachmentLabel(attachment.type)"
-                                            class="max-h-72 max-w-full rounded-md object-contain"
+                                            class="max-h-72 max-w-full cursor-zoom-in rounded-md object-contain transition hover:opacity-90"
+                                            @click="openImageLightbox(attachment.url)"
                                         >
+
+                                        <p
+                                            v-else-if="attachment.type === 'image'"
+                                            class="text-xs text-[#667781]"
+                                        >
+                                            🖼 {{ attachmentLabel(attachment.type) }}
+                                        </p>
 
                                         <video
                                             v-else-if="attachment.type === 'video'"
@@ -905,7 +965,64 @@ watch(
                             </button>
                         </div>
 
+                        <div
+                            v-if="imagePreviewUrl"
+                            class="mb-2 flex items-center gap-3 rounded-lg bg-white px-3 py-2 shadow-sm"
+                        >
+                            <img
+                                :src="imagePreviewUrl"
+                                alt="Предпросмотр"
+                                class="h-16 w-16 rounded-md object-cover"
+                            >
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate text-sm text-[#111b21]">
+                                    {{ sendForm.image?.name || 'Изображение' }}
+                                </p>
+                                <p class="text-xs text-[#667781]">
+                                    Будет отправлено как фото
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="rounded-full p-2 text-[#667781] hover:bg-[#f0f2f5]"
+                                title="Убрать"
+                                @click="clearImagePreview"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
                         <div class="relative flex items-end gap-2">
+                            <input
+                                ref="imageInput"
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp,image/gif"
+                                class="hidden"
+                                @change="onImageSelected"
+                            >
+
+                            <button
+                                type="button"
+                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f0f2f5] text-[#54656f] transition hover:bg-[#e9edef] disabled:opacity-40"
+                                :disabled="sendForm.processing || isRecording"
+                                title="Прикрепить изображение"
+                                @click="imageInput?.click()"
+                            >
+                                <svg
+                                    class="h-5 w-5"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M21.44 11.05l-8.49 8.49a5 5 0 01-7.07-7.07l9.19-9.19a3 3 0 014.24 4.24l-9.19 9.19a1.5 1.5 0 01-2.12-2.12l8.49-8.49"
+                                    />
+                                </svg>
+                            </button>
+
                             <div class="relative min-w-0 flex-1">
                                 <div
                                     v-if="slashQuickRepliesOpen && filteredSlashQuickReplies.length > 0"
@@ -942,7 +1059,7 @@ watch(
                             </div>
 
                             <button
-                                v-if="sendForm.body.trim() && !slashQuickRepliesOpen"
+                                v-if="(sendForm.body.trim() || sendForm.image) && !slashQuickRepliesOpen"
                                 type="submit"
                                 class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#008f6f] disabled:opacity-40"
                                 :disabled="sendForm.processing || isRecording"
@@ -960,7 +1077,7 @@ watch(
                             </button>
 
                             <button
-                                v-else
+                                v-else-if="!sendForm.image"
                                 type="button"
                                 class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40"
                                 :class="isRecording
@@ -993,6 +1110,26 @@ watch(
                     </form>
                 </template>
             </section>
+        </div>
+
+        <div
+            v-if="lightboxImageUrl"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+            @click="closeImageLightbox"
+        >
+            <button
+                type="button"
+                class="absolute right-4 top-4 rounded-full bg-black/50 px-3 py-1 text-2xl text-white"
+                @click.stop="closeImageLightbox"
+            >
+                ✕
+            </button>
+            <img
+                :src="lightboxImageUrl"
+                alt="Изображение"
+                class="max-h-[92vh] max-w-[92vw] object-contain"
+                @click.stop
+            >
         </div>
 
         <p
