@@ -8,7 +8,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, useForm } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 
 const props = defineProps({
     fields: {
@@ -24,6 +24,7 @@ const props = defineProps({
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
 const selectedField = ref(null);
+const createLabelInput = ref([]);
 
 const fieldTypes = [
     { value: 'text', label: 'Текст' },
@@ -35,13 +36,28 @@ const fieldTypes = [
     { value: 'select', label: 'Список' },
 ];
 
-const createForm = useForm({
-    label: '',
-    key: '',
-    type: 'text',
-    options: [],
-    options_text: '',
-    is_required: false,
+const cyrToLat = {
+    а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z',
+    и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
+    с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch',
+    ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+};
+
+function emptyCreateRow() {
+    return {
+        label: '',
+        key: '',
+        type: 'text',
+        options_text: '',
+        is_required: false,
+        keyTouched: false,
+    };
+}
+
+const createRows = ref([emptyCreateRow()]);
+
+const batchForm = useForm({
+    fields: [],
 });
 
 const editForm = useForm({
@@ -55,27 +71,62 @@ const editForm = useForm({
 
 const typeLabel = computed(() => Object.fromEntries(fieldTypes.map((item) => [item.value, item.label])));
 
-function slugify(value) {
+function transliterate(value) {
     return value
         .toLowerCase()
+        .split('')
+        .map((char) => cyrToLat[char] ?? char)
+        .join('');
+}
+
+function slugify(value) {
+    return transliterate(value)
         .trim()
-        .replace(/[^a-z0-9а-яё]+/gi, '_')
+        .replace(/[^a-z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '')
         .replace(/_+/g, '_');
 }
 
-watch(() => createForm.label, (label) => {
-    if (!createForm.key || createForm.key === slugify(createForm.key)) {
-        createForm.key = slugify(label);
+function onRowLabelInput(index) {
+    const row = createRows.value[index];
+
+    if (!row.keyTouched) {
+        row.key = slugify(row.label);
     }
-});
+}
+
+function onRowKeyInput(index) {
+    createRows.value[index].keyTouched = true;
+}
 
 function openCreateModal() {
-    createForm.reset();
-    createForm.clearErrors();
-    createForm.type = 'text';
-    createForm.is_required = false;
+    createRows.value = [emptyCreateRow()];
+    batchForm.clearErrors();
     showCreateModal.value = true;
+
+    nextTick(() => createLabelInput.value?.[0]?.focus());
+}
+
+function addCreateRow() {
+    createRows.value.push(emptyCreateRow());
+
+    nextTick(() => {
+        const inputs = createLabelInput.value;
+
+        if (inputs?.length) {
+            inputs[inputs.length - 1]?.focus();
+        }
+    });
+}
+
+function removeCreateRow(index) {
+    if (createRows.value.length === 1) {
+        createRows.value[0] = emptyCreateRow();
+
+        return;
+    }
+
+    createRows.value.splice(index, 1);
 }
 
 function openEditModal(field) {
@@ -97,22 +148,39 @@ function parseOptions(text) {
         .filter(Boolean);
 }
 
-function submitCreate() {
-    createForm
-        .transform((data) => ({
-            label: data.label,
-            key: data.key,
-            type: data.type,
-            options: data.type === 'select' ? parseOptions(data.options_text) : [],
-            is_required: data.is_required,
+function submitBatch(closeAfter = true) {
+    const prepared = createRows.value
+        .map((row) => ({
+            label: row.label.trim(),
+            key: row.key.trim(),
+            type: row.type,
+            options: row.type === 'select' ? parseOptions(row.options_text) : [],
+            is_required: row.is_required,
         }))
-        .post(route('client-fields.store'), {
-            preserveScroll: true,
-            onSuccess: () => {
+        .filter((row) => row.label !== '');
+
+    if (prepared.length === 0) {
+        batchForm.setError('fields', 'Добавьте хотя бы одно поле с названием.');
+
+        return;
+    }
+
+    batchForm.fields = prepared;
+    batchForm.post(route('client-fields.store-batch'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            if (closeAfter) {
                 showCreateModal.value = false;
-                createForm.reset();
-            },
-        });
+            }
+
+            createRows.value = [emptyCreateRow()];
+            batchForm.clearErrors();
+
+            if (!closeAfter) {
+                nextTick(() => createLabelInput.value?.[0]?.focus());
+            }
+        },
+    });
 }
 
 function submitEdit() {
@@ -154,7 +222,7 @@ function destroyField(field) {
                     {{ pageTitle }}
                 </h2>
                 <PrimaryButton type="button" @click="openCreateModal">
-                    Добавить поле
+                    Добавить поля
                 </PrimaryButton>
             </div>
         </template>
@@ -185,7 +253,7 @@ function destroyField(field) {
                         class="mt-4"
                         @click="openCreateModal"
                     >
-                        Добавить первое поле
+                        Добавить первые поля
                     </PrimaryButton>
                 </div>
 
@@ -243,90 +311,143 @@ function destroyField(field) {
             </div>
         </div>
 
-        <Modal :show="showCreateModal" @close="showCreateModal = false">
+        <Modal :show="showCreateModal" max-width="3xl" @close="showCreateModal = false">
             <div class="p-6">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    Новое поле
+                    Новые поля
                 </h3>
+                <p class="mt-1 text-sm text-slate-500">
+                    Добавьте сразу несколько полей — например: Имя, Телефон, Адрес, Область.
+                </p>
 
                 <form
                     class="mt-5 space-y-4"
-                    @submit.prevent="submitCreate"
+                    @submit.prevent="submitBatch(true)"
                 >
-                    <div>
-                        <InputLabel for="create_label" value="Название поля" />
-                        <TextInput
-                            id="create_label"
-                            v-model="createForm.label"
-                            class="mt-1 block w-full"
-                            placeholder="Например: Адрес"
-                        />
-                        <InputError class="mt-2" :message="createForm.errors.label" />
-                    </div>
-
-                    <div>
-                        <InputLabel for="create_key" value="Ключ (латиница)" />
-                        <TextInput
-                            id="create_key"
-                            v-model="createForm.key"
-                            class="mt-1 block w-full font-mono text-sm"
-                            placeholder="address"
-                        />
-                        <InputError class="mt-2" :message="createForm.errors.key" />
-                    </div>
-
-                    <div>
-                        <InputLabel for="create_type" value="Тип" />
-                        <select
-                            id="create_type"
-                            v-model="createForm.type"
-                            class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"
+                    <div class="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+                        <div
+                            v-for="(row, index) in createRows"
+                            :key="index"
+                            class="rounded-xl border border-slate-200 bg-slate-50/70 p-4"
                         >
-                            <option
-                                v-for="type in fieldTypes"
-                                :key="type.value"
-                                :value="type.value"
+                            <div class="mb-3 flex items-center justify-between gap-2">
+                                <p class="text-sm font-medium text-slate-700">
+                                    Поле {{ index + 1 }}
+                                </p>
+                                <button
+                                    v-if="createRows.length > 1"
+                                    type="button"
+                                    class="text-xs text-rose-600 hover:text-rose-700"
+                                    @click="removeCreateRow(index)"
+                                >
+                                    Убрать
+                                </button>
+                            </div>
+
+                            <div class="grid gap-4 sm:grid-cols-2">
+                                <div>
+                                    <InputLabel :for="`create_label_${index}`" value="Название поля" />
+                                    <TextInput
+                                        :id="`create_label_${index}`"
+                                        :ref="(el) => { if (el) createLabelInput[index] = el }"
+                                        v-model="row.label"
+                                        class="mt-1 block w-full"
+                                        placeholder="Например: Имя"
+                                        @input="onRowLabelInput(index)"
+                                    />
+                                    <InputError class="mt-2" :message="batchForm.errors[`fields.${index}.label`]" />
+                                </div>
+
+                                <div>
+                                    <InputLabel :for="`create_key_${index}`" value="Ключ (латиница)" />
+                                    <TextInput
+                                        :id="`create_key_${index}`"
+                                        v-model="row.key"
+                                        class="mt-1 block w-full font-mono text-sm"
+                                        placeholder="name"
+                                        @input="onRowKeyInput(index)"
+                                    />
+                                    <InputError class="mt-2" :message="batchForm.errors[`fields.${index}.key`]" />
+                                </div>
+                            </div>
+
+                            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                                <div>
+                                    <InputLabel :for="`create_type_${index}`" value="Тип" />
+                                    <select
+                                        :id="`create_type_${index}`"
+                                        v-model="row.type"
+                                        class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"
+                                    >
+                                        <option
+                                            v-for="type in fieldTypes"
+                                            :key="type.value"
+                                            :value="type.value"
+                                        >
+                                            {{ type.label }}
+                                        </option>
+                                    </select>
+                                    <InputError class="mt-2" :message="batchForm.errors[`fields.${index}.type`]" />
+                                </div>
+
+                                <label class="flex items-end gap-2 pb-2 text-sm text-slate-700">
+                                    <input
+                                        v-model="row.is_required"
+                                        type="checkbox"
+                                        class="rounded border-slate-300 text-indigo-600"
+                                    >
+                                    Обязательное поле
+                                </label>
+                            </div>
+
+                            <div
+                                v-if="row.type === 'select'"
+                                class="mt-4"
                             >
-                                {{ type.label }}
-                            </option>
-                        </select>
-                        <InputError class="mt-2" :message="createForm.errors.type" />
+                                <InputLabel :for="`create_options_${index}`" value="Варианты (по одному в строке)" />
+                                <textarea
+                                    :id="`create_options_${index}`"
+                                    v-model="row.options_text"
+                                    rows="3"
+                                    class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"
+                                    placeholder="Мужской&#10;Женский"
+                                />
+                                <InputError class="mt-2" :message="batchForm.errors[`fields.${index}.options`]" />
+                            </div>
+                        </div>
                     </div>
 
-                    <div v-if="createForm.type === 'select'">
-                        <InputLabel for="create_options" value="Варианты (по одному в строке)" />
-                        <textarea
-                            id="create_options"
-                            v-model="createForm.options_text"
-                            rows="4"
-                            class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"
-                            placeholder="Мужской&#10;Женский"
-                        />
-                        <InputError class="mt-2" :message="createForm.errors.options" />
-                    </div>
+                    <InputError :message="batchForm.errors.fields" />
 
-                    <label class="flex items-center gap-2 text-sm text-slate-700">
-                        <input
-                            v-model="createForm.is_required"
-                            type="checkbox"
-                            class="rounded border-slate-300 text-indigo-600"
-                        >
-                        Обязательное поле
-                    </label>
-
-                    <div class="flex justify-end gap-2">
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
                         <SecondaryButton
                             type="button"
-                            @click="showCreateModal = false"
+                            @click="addCreateRow"
                         >
-                            Отмена
+                            + Добавить ещё поле
                         </SecondaryButton>
-                        <PrimaryButton
-                            type="submit"
-                            :disabled="createForm.processing"
-                        >
-                            Сохранить
-                        </PrimaryButton>
+
+                        <div class="flex flex-wrap gap-2">
+                            <SecondaryButton
+                                type="button"
+                                @click="showCreateModal = false"
+                            >
+                                Отмена
+                            </SecondaryButton>
+                            <SecondaryButton
+                                type="button"
+                                :disabled="batchForm.processing"
+                                @click="submitBatch(false)"
+                            >
+                                Сохранить и добавить ещё
+                            </SecondaryButton>
+                            <PrimaryButton
+                                type="submit"
+                                :disabled="batchForm.processing"
+                            >
+                                Сохранить все
+                            </PrimaryButton>
+                        </div>
                     </div>
                 </form>
             </div>

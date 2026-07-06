@@ -80,6 +80,7 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
     Route::get('/client-fields', [ClientFieldDefinitionController::class, 'index'])->name('client-fields.index');
     Route::post('/client-fields', [ClientFieldDefinitionController::class, 'store'])->name('client-fields.store');
+    Route::post('/client-fields/batch', [ClientFieldDefinitionController::class, 'storeBatch'])->name('client-fields.store-batch');
     Route::put('/client-fields/{clientFieldDefinition}', [ClientFieldDefinitionController::class, 'update'])->name('client-fields.update');
     Route::delete('/client-fields/{clientFieldDefinition}', [ClientFieldDefinitionController::class, 'destroy'])->name('client-fields.destroy');
     Route::get('/messenger/quick-replies', [MessengerQuickReplyController::class, 'index'])->name('messenger.quick-replies.index');

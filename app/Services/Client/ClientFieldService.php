@@ -174,6 +174,8 @@ class ClientFieldService
         $key = trim((string) $key);
 
         if ($key !== '') {
+            $key = Str::ascii($key);
+
             return Str::snake(preg_replace('/[^a-zA-Z0-9_]+/', '_', $key) ?: 'field');
         }
 

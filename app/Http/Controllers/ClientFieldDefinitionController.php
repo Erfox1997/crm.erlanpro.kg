@@ -79,6 +79,69 @@ class ClientFieldDefinitionController extends Controller
         return back()->with('success', __('Поле добавлено.'));
     }
 
+    public function storeBatch(Request $request): RedirectResponse
+    {
+        $companyId = (int) $request->user()->company_id;
+
+        $validated = $request->validate([
+            'fields' => 'required|array|min:1|max:30',
+            'fields.*.label' => 'required|string|max:120',
+            'fields.*.key' => 'nullable|string|max:64',
+            'fields.*.type' => 'required|in:text,textarea,number,phone,email,date,select',
+            'fields.*.options' => 'nullable|array',
+            'fields.*.options.*' => 'string|max:120',
+            'fields.*.is_required' => 'boolean',
+        ]);
+
+        $sortOrder = (int) ClientFieldDefinition::query()
+            ->where('company_id', $companyId)
+            ->max('sort_order');
+
+        $keysInBatch = [];
+
+        foreach ($validated['fields'] as $index => $field) {
+            $key = ClientFieldService::normalizeKey($field['label'], $field['key'] ?? null);
+
+            if (in_array($key, $keysInBatch, true)) {
+                return back()->withErrors([
+                    "fields.{$index}.key" => __('Ключ «:key» повторяется в форме.', ['key' => $key]),
+                ]);
+            }
+
+            if (ClientFieldDefinition::query()
+                ->where('company_id', $companyId)
+                ->where('key', $key)
+                ->exists()) {
+                return back()->withErrors([
+                    "fields.{$index}.key" => __('Поле с ключом «:key» уже существует.', ['key' => $key]),
+                ]);
+            }
+
+            $keysInBatch[] = $key;
+            $sortOrder++;
+
+            ClientFieldDefinition::query()->create([
+                'company_id' => $companyId,
+                'key' => $key,
+                'label' => $field['label'],
+                'type' => $field['type'],
+                'options' => $field['type'] === 'select'
+                    ? array_values(array_filter($field['options'] ?? []))
+                    : null,
+                'is_required' => (bool) ($field['is_required'] ?? false),
+                'sort_order' => $sortOrder,
+            ]);
+        }
+
+        $count = count($validated['fields']);
+
+        return back()->with('success', trans_choice(
+            '{1} Поле добавлено.|[2,*] Добавлено полей: :count.',
+            $count,
+            ['count' => $count],
+        ));
+    }
+
     public function update(Request $request, ClientFieldDefinition $clientFieldDefinition): RedirectResponse
     {
         $companyId = (int) $request->user()->company_id;
