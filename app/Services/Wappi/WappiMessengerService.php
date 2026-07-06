@@ -280,141 +280,86 @@ class WappiMessengerService
         string $preparedName,
         string $preparedMime,
     ): Response {
-        $errors = [];
-        $base64 = base64_encode($binaryContents);
+        $recipient = $this->recipientFromParticipantId($conversation->participant_id);
+        $publicUrl = $this->metaAttachments->publishTemporaryAudioForSend($preparedPath, $preparedName);
+
+        Log::info('Wappi audio public URL prepared', [
+            'profile_id' => $this->profileId($integration),
+            'conversation_id' => $conversation->id,
+            'url' => $publicUrl,
+            'recipient' => $recipient,
+        ]);
 
         try {
-            $publicUrl = $this->metaAttachments->publishTemporaryAudioForSend($preparedPath, $preparedName);
-
-            Log::info('Wappi audio public URL prepared', [
+            return $this->sendAudioViaPublicUrl($integration, $recipient, $publicUrl, $preparedName);
+        } catch (\Throwable $e) {
+            Log::warning('Wappi audio URL send failed, trying base64 fallback', [
                 'profile_id' => $this->profileId($integration),
                 'conversation_id' => $conversation->id,
-                'url' => $publicUrl,
+                'error' => $e->getMessage(),
             ]);
-
-            return $this->attemptUrlAudioSend(
-                $integration,
-                $conversation,
-                $publicUrl,
-                $preparedName,
-                $errors,
-            );
-        } catch (\Throwable $e) {
-            $errors[] = 'url-prep: '.$e->getMessage();
         }
 
-        return $this->attemptBase64AudioSend(
+        return $this->sendAudioViaBase64(
             $integration,
-            $conversation,
-            $base64,
+            $recipient,
+            base64_encode($binaryContents),
             $preparedName,
-            $errors,
         );
     }
 
-    /**
-     * @param  list<string>  $errors
-     */
-    protected function attemptUrlAudioSend(
+    protected function sendAudioViaPublicUrl(
         CompanyIntegration $integration,
-        MessengerConversation $conversation,
+        string $recipient,
         string $url,
         string $fileName,
-        array &$errors,
     ): Response {
-        $mimeTypes = ['audio/ogg', 'audio/ogg; codecs=opus', 'audio/opus'];
-        $payloads = [];
+        $response = $this->postJsonPayload(
+            $integration,
+            '/api/sync/message/file/url/send',
+            $recipient,
+            [
+                'url' => $url,
+                'file_name' => $fileName,
+                'mimetype' => 'audio/ogg',
+            ],
+        );
 
-        foreach ($mimeTypes as $mimeType) {
-            $payloads[] = ['url' => $url, 'file_name' => $fileName, 'mimetype' => $mimeType];
-            $payloads[] = ['url' => $url, 'filename' => $fileName, 'mimetype' => $mimeType];
-        }
-
-        foreach ($this->recipientCandidates($conversation) as $recipient) {
-            foreach ($payloads as $payload) {
-                try {
-                    $response = $this->postJsonPayload(
-                        $integration,
-                        '/api/sync/message/file/url/send',
-                        $recipient,
-                        $payload,
-                    );
-
-                    if ($this->confirmSentAudioMessage($integration, $conversation, $response, 'file/url/send', $recipient, $payload)) {
-                        return $response;
-                    }
-
-                    $errors[] = '/api/sync/message/file/url/send/'.$recipient.': empty message shell';
-                } catch (\Throwable $e) {
-                    $errors[] = '/api/sync/message/file/url/send/'.$recipient.': '.$e->getMessage();
-                }
-            }
-        }
-
-        throw new \RuntimeException($errors[0] ?? __('Не удалось отправить голосовое по URL.'));
-    }
-
-    /**
-     * @param  list<string>  $errors
-     */
-    protected function attemptBase64AudioSend(
-        CompanyIntegration $integration,
-        MessengerConversation $conversation,
-        string $base64,
-        string $fileName,
-        array $errors,
-    ): Response {
-        $mimeTypes = ['audio/ogg', 'audio/ogg; codecs=opus', 'audio/opus'];
-        $payloads = [];
-
-        foreach ($mimeTypes as $mimeType) {
-            $payloads[] = ['body' => $base64, 'file_name' => $fileName, 'mimetype' => $mimeType];
-            $payloads[] = ['body' => $base64, 'filename' => $fileName, 'mimetype' => $mimeType];
-            $payloads[] = ['b64' => $base64, 'file_name' => $fileName, 'mimetype' => $mimeType];
-            $payloads[] = ['body' => 'data:'.$mimeType.';base64,'.$base64, 'file_name' => $fileName, 'mimetype' => $mimeType];
-        }
-
-        $payloads[] = ['body' => $base64];
-        $payloads[] = ['b64' => $base64, 'file_name' => $fileName];
-
-        $attempts = [
-            ['/api/sync/message/audio/send', false],
-            ['/api/sync/message/audio/send', true],
-            ['/api/async/message/audio/send', false],
-            ['/api/sync/message/document/send', false],
-        ];
-
-        foreach ($attempts as [$endpoint, $recipientInQuery]) {
-            foreach ($this->recipientCandidates($conversation) as $recipient) {
-                foreach ($payloads as $payload) {
-                    try {
-                        $response = $this->postJsonPayload(
-                            $integration,
-                            $endpoint,
-                            $recipient,
-                            $payload,
-                            $recipientInQuery,
-                        );
-
-                        if ($this->confirmSentAudioMessage($integration, $conversation, $response, $endpoint, $recipient, $payload)) {
-                            return $response;
-                        }
-
-                        $errors[] = $endpoint.'/'.$recipient.': empty message shell';
-                    } catch (\Throwable $e) {
-                        $errors[] = $endpoint.'/'.$recipient.': '.$e->getMessage();
-                    }
-                }
-            }
-        }
-
-        Log::warning('Wappi audio send failed', [
+        Log::info('Wappi audio send accepted', [
             'profile_id' => $this->profileId($integration),
-            'conversation_id' => $conversation->id,
-            'errors' => $errors,
+            'endpoint' => '/api/sync/message/file/url/send',
+            'recipient' => $recipient,
+            'message_id' => $this->extractMessageId($response),
         ]);
 
-        throw new \RuntimeException($errors[0] ?? __('Не удалось отправить голосовое сообщение в WhatsApp.'));
+        return $response;
+    }
+
+    protected function sendAudioViaBase64(
+        CompanyIntegration $integration,
+        string $recipient,
+        string $base64,
+        string $fileName,
+    ): Response {
+        $response = $this->postJsonPayload(
+            $integration,
+            '/api/sync/message/audio/send',
+            $recipient,
+            [
+                'body' => $base64,
+                'file_name' => $fileName,
+                'mimetype' => 'audio/ogg',
+            ],
+        );
+
+        Log::info('Wappi audio send accepted', [
+            'profile_id' => $this->profileId($integration),
+            'endpoint' => '/api/sync/message/audio/send',
+            'recipient' => $recipient,
+            'message_id' => $this->extractMessageId($response),
+        ]);
+
+        return $response;
     }
 
     /**
@@ -425,12 +370,15 @@ class WappiMessengerService
         string $endpoint,
         string $recipient,
         array $payload,
-        bool $recipientInQuery = false,
     ): Response {
-        $body = $recipientInQuery ? $payload : ['recipient' => $recipient, ...$payload];
-        $query = $recipientInQuery ? ['recipient' => $recipient] : [];
-
-        $response = $this->api->postJson($integration, $endpoint, $body, $query);
+        $response = $this->api->postJson(
+            $integration,
+            $endpoint,
+            [
+                'recipient' => $recipient,
+                ...$payload,
+            ],
+        );
 
         $this->assertSuccessfulSendResponse($response);
 
@@ -439,156 +387,6 @@ class WappiMessengerService
         }
 
         return $response;
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    protected function confirmSentAudioMessage(
-        CompanyIntegration $integration,
-        MessengerConversation $conversation,
-        Response $response,
-        string $endpoint,
-        string $recipient,
-        array $payload,
-    ): bool {
-        $messageId = $this->extractMessageId($response);
-
-        if ($this->sentMessageHasAudioPayload($integration, $conversation, $messageId)) {
-            Log::info('Wappi audio send accepted', [
-                'profile_id' => $this->profileId($integration),
-                'conversation_id' => $conversation->id,
-                'endpoint' => $endpoint,
-                'recipient' => $recipient,
-                'message_id' => $messageId,
-                'payload_keys' => array_keys($payload),
-                'verified' => true,
-            ]);
-
-            return true;
-        }
-
-        Log::warning('Wappi audio send returned empty shell', [
-            'profile_id' => $this->profileId($integration),
-            'conversation_id' => $conversation->id,
-            'endpoint' => $endpoint,
-            'recipient' => $recipient,
-            'message_id' => $messageId,
-            'payload_keys' => array_keys($payload),
-        ]);
-
-        return false;
-    }
-
-    protected function sentMessageHasAudioPayload(
-        CompanyIntegration $integration,
-        MessengerConversation $conversation,
-        string $messageId,
-    ): bool {
-        if ($messageId === '') {
-            return false;
-        }
-
-        $chatId = $this->chatIdFromConversation($conversation);
-        if ($chatId === '') {
-            return true;
-        }
-
-        usleep(750000);
-
-        $response = $this->api->get($integration, '/api/sync/messages/get', [
-            'chat_id' => $chatId,
-            'limit' => 15,
-            'order' => 'desc',
-        ]);
-
-        if ($response->failed()) {
-            return false;
-        }
-
-        foreach ($this->extractList($response->json(), ['messages', 'data', 'result']) as $message) {
-            if (! is_array($message)) {
-                continue;
-            }
-
-            $id = (string) ($message['id'] ?? $message['message_id'] ?? '');
-            if ($id !== $messageId) {
-                continue;
-            }
-
-            return $this->messageHasAudioPayload($message);
-        }
-
-        return false;
-    }
-
-    /**
-     * @param  array<string, mixed>  $message
-     */
-    protected function messageHasAudioPayload(array $message): bool
-    {
-        $type = strtolower((string) ($message['type'] ?? ''));
-
-        if (in_array($type, ['ptt', 'audio', 'voice'], true)) {
-            if (($message['file_link'] ?? $message['file_url'] ?? '') !== '') {
-                return true;
-            }
-
-            $body = (string) ($message['body'] ?? '');
-
-            return $this->looksLikeBase64($body);
-        }
-
-        $mimetype = strtolower((string) ($message['mimetype'] ?? $message['mime_type'] ?? ''));
-        if (str_contains($mimetype, 'audio') || str_contains($mimetype, 'ogg') || str_contains($mimetype, 'opus')) {
-            return true;
-        }
-
-        if (($message['file_link'] ?? $message['file_url'] ?? '') !== '') {
-            return true;
-        }
-
-        $body = (string) ($message['body'] ?? '');
-        if ($this->looksLikeBase64($body)) {
-            return true;
-        }
-
-        if (in_array($type, ['chat', 'text', ''], true)) {
-            return false;
-        }
-
-        return $type !== '';
-    }
-
-    /**
-     * @return list<string>
-     */
-    protected function recipientCandidates(MessengerConversation $conversation, bool $preferChatId = false): array
-    {
-        $phone = $this->recipientFromParticipantId($conversation->participant_id);
-        $chatId = $this->chatIdFromConversation($conversation);
-
-        $candidates = array_values(array_unique(array_filter([
-            $phone,
-            $chatId !== $phone ? $chatId : null,
-        ])));
-
-        if ($preferChatId && count($candidates) === 2) {
-            return array_reverse($candidates);
-        }
-
-        return $candidates;
-    }
-
-    protected function normalizeWhatsAppAudioMime(string $mimeType): string
-    {
-        $mimeType = strtolower(trim($mimeType));
-
-        if ($mimeType === '' || str_contains($mimeType, 'ogg') || str_contains($mimeType, 'opus')) {
-            return 'audio/ogg';
-        }
-
-        return $mimeType;
     }
 
     protected function chatIdFromConversation(MessengerConversation $conversation): string
