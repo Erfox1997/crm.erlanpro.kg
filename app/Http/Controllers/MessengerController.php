@@ -89,6 +89,7 @@ class MessengerController extends Controller
                     'last_message_at' => $c->last_message_at?->toIso8601String(),
                     'pipeline_name' => $deal?->pipeline?->name,
                     'stage_name' => $deal?->stage?->name,
+                    'stage_color' => $deal?->stage?->color,
                     'unread_count' => $this->unread->unreadCountForConversation($c),
                 ];
             });

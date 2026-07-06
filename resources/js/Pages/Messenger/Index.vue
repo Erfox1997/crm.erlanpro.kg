@@ -209,6 +209,26 @@ function avatarClass(channel) {
     return 'bg-gradient-to-br from-pink-500 to-purple-600';
 }
 
+function stageBadgeStyle(color) {
+    const hex = (color || '#94a3b8').replace('#', '');
+
+    if (hex.length !== 6) {
+        return {
+            backgroundColor: 'rgba(148, 163, 184, 0.16)',
+            color: '#64748b',
+        };
+    }
+
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+
+    return {
+        backgroundColor: `rgba(${r}, ${g}, ${b}, 0.16)`,
+        color: `rgb(${Math.max(0, r - 24)}, ${Math.max(0, g - 24)}, ${Math.max(0, b - 24)})`,
+    };
+}
+
 function openConversation(id) {
     router.get(
         route('messenger.index'),
@@ -982,9 +1002,10 @@ watch(
                                         </span>
                                         <span
                                             v-if="conversation.stage_name"
-                                            class="shrink-0 text-[11px] font-normal text-[#8696a0]"
+                                            class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none"
+                                            :style="stageBadgeStyle(conversation.stage_color)"
                                         >
-                                            · {{ conversation.stage_name }}
+                                            {{ conversation.stage_name }}
                                         </span>
                                     </p>
                                 </div>
