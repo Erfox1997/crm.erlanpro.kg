@@ -474,13 +474,7 @@ class MetaAttachmentService
             $filename,
         );
 
-        $url = Storage::disk('public')->url('messenger/outbound/'.$filename);
-
-        if (! str_starts_with($url, 'http')) {
-            $url = rtrim((string) config('app.url'), '/').$url;
-        }
-
-        return $url;
+        return route('wappi.outbound-media', ['filename' => $filename]);
     }
 
     protected function publishTemporaryAudio(string $filePath, string $originalName): string

@@ -503,7 +503,7 @@ class WappiMessengerService
         ]);
 
         if ($response->failed()) {
-            return true;
+            return false;
         }
 
         foreach ($this->extractList($response->json(), ['messages', 'data', 'result']) as $message) {
@@ -519,7 +519,7 @@ class WappiMessengerService
             return $this->messageHasAudioPayload($message);
         }
 
-        return true;
+        return false;
     }
 
     /**
@@ -530,7 +530,13 @@ class WappiMessengerService
         $type = strtolower((string) ($message['type'] ?? ''));
 
         if (in_array($type, ['ptt', 'audio', 'voice'], true)) {
-            return true;
+            if (($message['file_link'] ?? $message['file_url'] ?? '') !== '') {
+                return true;
+            }
+
+            $body = (string) ($message['body'] ?? '');
+
+            return $this->looksLikeBase64($body);
         }
 
         $mimetype = strtolower((string) ($message['mimetype'] ?? $message['mime_type'] ?? ''));
