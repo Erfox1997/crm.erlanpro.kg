@@ -50,6 +50,7 @@ function emptyCreateRow() {
         type: 'text',
         options_text: '',
         is_required: false,
+        show_in_messenger: false,
         keyTouched: false,
     };
 }
@@ -67,9 +68,12 @@ const editForm = useForm({
     options: [],
     options_text: '',
     is_required: false,
+    show_in_messenger: false,
 });
 
 const typeLabel = computed(() => Object.fromEntries(fieldTypes.map((item) => [item.value, item.label])));
+
+const previewFields = computed(() => props.fields.filter((field) => field.show_in_messenger));
 
 function transliterate(value) {
     return value
@@ -137,6 +141,7 @@ function openEditModal(field) {
     editForm.options = field.options ?? [];
     editForm.options_text = (field.options ?? []).join('\n');
     editForm.is_required = field.is_required;
+    editForm.show_in_messenger = field.show_in_messenger;
     editForm.clearErrors();
     showEditModal.value = true;
 }
@@ -156,6 +161,7 @@ function submitBatch(closeAfter = true) {
             type: row.type,
             options: row.type === 'select' ? parseOptions(row.options_text) : [],
             is_required: row.is_required,
+            show_in_messenger: row.show_in_messenger,
         }))
         .filter((row) => row.label !== '');
 
@@ -191,6 +197,7 @@ function submitEdit() {
             type: data.type,
             options: data.type === 'select' ? parseOptions(data.options_text) : [],
             is_required: data.is_required,
+            show_in_messenger: data.show_in_messenger,
         }))
         .put(route('client-fields.update', selectedField.value.id), {
             preserveScroll: true,
@@ -236,9 +243,56 @@ function destroyField(field) {
                     {{ $page.props.flash.success }}
                 </div>
 
+                <div class="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-6 text-white shadow-lg">
+                    <div class="flex flex-col gap-6 md:flex-row md:items-start">
+                        <div class="flex shrink-0 flex-col items-center">
+                            <div class="flex h-20 w-20 items-center justify-center rounded-full bg-white/15 ring-4 ring-white/10">
+                                <svg class="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                                </svg>
+                            </div>
+                            <p class="mt-3 text-sm font-medium text-white/80">
+                                Карточка клиента
+                            </p>
+                        </div>
+
+                        <div class="min-w-0 flex-1">
+                            <h3 class="text-lg font-semibold">
+                                Как это выглядит в мессенджере
+                            </h3>
+                            <p class="mt-1 text-sm text-white/70">
+                                Поля с галочкой «Показывать в мессенджере» отображаются под именем контакта, если данные заполнены.
+                            </p>
+
+                            <div
+                                v-if="previewFields.length > 0"
+                                class="mt-4 grid gap-2 sm:grid-cols-2"
+                            >
+                                <div
+                                    v-for="field in previewFields"
+                                    :key="field.id"
+                                    class="rounded-xl bg-white/10 px-3 py-2 backdrop-blur-sm"
+                                >
+                                    <p class="text-[11px] uppercase tracking-wide text-white/50">
+                                        {{ field.label }}
+                                    </p>
+                                    <p class="mt-0.5 text-sm font-medium text-white">
+                                        …
+                                    </p>
+                                </div>
+                            </div>
+                            <p
+                                v-else
+                                class="mt-4 text-sm text-white/60"
+                            >
+                                Отметьте поля для отображения в мессенджере — они появятся здесь.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mb-6 rounded-xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-900">
-                    Настройте поля, которые менеджер заполняет при сохранении контакта из мессенджера:
-                    имя, телефон, адрес, область, возраст, пол и любые другие параметры.
+                    Настройте поля для сохранения контакта из мессенджера. Отметьте «Показывать в мессенджере», чтобы данные были видны в чате.
                 </div>
 
                 <div
@@ -259,52 +313,69 @@ function destroyField(field) {
 
                 <div
                     v-else
-                    class="space-y-3"
+                    class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
                 >
                     <article
                         v-for="field in fields"
                         :key="field.id"
-                        class="flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                        class="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-indigo-200 hover:shadow-md"
                     >
-                        <div class="min-w-0 flex-1">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <h3 class="font-semibold text-slate-900">
-                                    {{ field.label }}
-                                </h3>
-                                <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                        <div class="bg-gradient-to-b from-slate-50 to-white px-5 pb-4 pt-5 text-center">
+                            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md">
+                                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                                </svg>
+                            </div>
+                            <h3 class="mt-3 text-base font-semibold text-slate-900">
+                                {{ field.label }}
+                            </h3>
+                            <p class="mt-1 font-mono text-[11px] text-slate-400">
+                                {{ field.key }}
+                            </p>
+                        </div>
+
+                        <div class="border-t border-slate-100 px-5 py-4">
+                            <div class="flex flex-wrap gap-1.5">
+                                <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
                                     {{ typeLabel[field.type] || field.type }}
                                 </span>
                                 <span
                                     v-if="field.is_required"
-                                    class="rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-700"
+                                    class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700"
                                 >
                                     Обязательное
                                 </span>
+                                <span
+                                    v-if="field.show_in_messenger"
+                                    class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
+                                >
+                                    В мессенджере
+                                </span>
                             </div>
-                            <p class="mt-1 font-mono text-xs text-slate-500">
-                                {{ field.key }}
-                            </p>
+
                             <p
                                 v-if="field.type === 'select' && field.options?.length"
-                                class="mt-2 text-xs text-slate-500"
+                                class="mt-3 text-xs leading-relaxed text-slate-500"
                             >
                                 {{ field.options.join(' · ') }}
                             </p>
-                        </div>
 
-                        <div class="flex gap-2">
-                            <SecondaryButton
-                                type="button"
-                                @click="openEditModal(field)"
-                            >
-                                Изменить
-                            </SecondaryButton>
-                            <DangerButton
-                                type="button"
-                                @click="destroyField(field)"
-                            >
-                                Удалить
-                            </DangerButton>
+                            <div class="mt-4 flex gap-2">
+                                <SecondaryButton
+                                    type="button"
+                                    class="flex-1 justify-center text-xs"
+                                    @click="openEditModal(field)"
+                                >
+                                    Изменить
+                                </SecondaryButton>
+                                <DangerButton
+                                    type="button"
+                                    class="text-xs"
+                                    @click="destroyField(field)"
+                                >
+                                    Удалить
+                                </DangerButton>
+                            </div>
                         </div>
                     </article>
                 </div>
@@ -396,9 +467,18 @@ function destroyField(field) {
                                         type="checkbox"
                                         class="rounded border-slate-300 text-indigo-600"
                                     >
-                                    Обязательное поле
+                                    Обязательное
                                 </label>
                             </div>
+
+                            <label class="mt-3 flex items-center gap-2 text-sm text-slate-700">
+                                <input
+                                    v-model="row.show_in_messenger"
+                                    type="checkbox"
+                                    class="rounded border-slate-300 text-emerald-600"
+                                >
+                                Показывать в мессенджере
+                            </label>
 
                             <div
                                 v-if="row.type === 'select'"
@@ -519,6 +599,15 @@ function destroyField(field) {
                             class="rounded border-slate-300 text-indigo-600"
                         >
                         Обязательное поле
+                    </label>
+
+                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                            v-model="editForm.show_in_messenger"
+                            type="checkbox"
+                            class="rounded border-slate-300 text-emerald-600"
+                        >
+                        Показывать в мессенджере
                     </label>
 
                     <div class="flex justify-end gap-2">

@@ -106,6 +106,7 @@ class MessengerController extends Controller
                 'type' => $field->type,
                 'options' => $field->options ?? [],
                 'is_required' => $field->is_required,
+                'show_in_messenger' => $field->show_in_messenger,
             ])
             ->values()
             ->all();

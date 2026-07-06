@@ -345,6 +345,10 @@ function prefillClientFieldValue(key) {
         return String(saved);
     }
 
+    return apiValueForField(key);
+}
+
+function apiValueForField(key) {
     const conversation = props.selectedConversation;
     if (!conversation) {
         return '';
@@ -357,7 +361,11 @@ function prefillClientFieldValue(key) {
     }
 
     if (['phone', 'telefon', 'nomer', 'number', 'tel'].includes(normalizedKey)) {
-        return (conversation.participant_username || '').replace(/^@/, '');
+        const username = (conversation.participant_username || '').replace(/^@/, '');
+
+        if (username) {
+            return username;
+        }
     }
 
     if (['username', 'login', 'nick'].includes(normalizedKey)) {
@@ -366,6 +374,40 @@ function prefillClientFieldValue(key) {
 
     return '';
 }
+
+function applyApiValue(key) {
+    const value = apiValueForField(key);
+
+    if (value.trim()) {
+        clientForm.fields[key] = value;
+    }
+}
+
+function hasApiValue(key) {
+    return apiValueForField(key).trim() !== '';
+}
+
+const visibleClientData = computed(() => {
+    if (!props.linkedClient) {
+        return [];
+    }
+
+    return props.clientFieldDefinitions
+        .filter((definition) => definition.show_in_messenger)
+        .map((definition) => {
+            const value = props.linkedClient?.custom_fields?.[definition.key];
+
+            if (value === undefined || value === null || String(value).trim() === '') {
+                return null;
+            }
+
+            return {
+                label: definition.label,
+                value: String(value).trim(),
+            };
+        })
+        .filter(Boolean);
+});
 
 function resetClientForm() {
     const fields = {};
@@ -999,6 +1041,38 @@ watch(
                     </div>
 
                     <div
+                        v-if="visibleClientData.length > 0"
+                        class="border-b border-[#d1d7db] bg-white px-4 py-3"
+                    >
+                        <div class="flex items-start gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e7f7f3] text-[#008069]">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                                </svg>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-[11px] font-semibold uppercase tracking-wide text-[#667781]">
+                                    Данные клиента
+                                </p>
+                                <div class="mt-2 grid gap-2 sm:grid-cols-2">
+                                    <div
+                                        v-for="item in visibleClientData"
+                                        :key="item.label"
+                                        class="rounded-lg bg-[#f0f2f5] px-3 py-2"
+                                    >
+                                        <p class="text-[10px] uppercase tracking-wide text-[#667781]">
+                                            {{ item.label }}
+                                        </p>
+                                        <p class="mt-0.5 truncate text-sm font-medium text-[#111b21]">
+                                            {{ item.value }}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div
                         class="flex-1 space-y-1 overflow-y-auto bg-[#efeae2] px-4 py-3"
                         style="background-image: url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23d9d0c3%22 fill-opacity=%220.35%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z/%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"
                     >
@@ -1348,10 +1422,24 @@ watch(
                         v-for="definition in clientFieldDefinitions"
                         :key="definition.id"
                     >
-                        <InputLabel
-                            :for="`client_field_${definition.key}`"
-                            :value="definition.label + (definition.is_required ? ' *' : '')"
-                        />
+                        <div class="flex items-center justify-between gap-2">
+                            <InputLabel
+                                :for="`client_field_${definition.key}`"
+                                :value="definition.label + (definition.is_required ? ' *' : '')"
+                            />
+                            <button
+                                v-if="hasApiValue(definition.key)"
+                                type="button"
+                                class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 transition hover:bg-emerald-100"
+                                title="Вставить данные из мессенджера"
+                                @click="applyApiValue(definition.key)"
+                            >
+                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                                Из API
+                            </button>
+                        </div>
 
                         <textarea
                             v-if="definition.type === 'textarea'"

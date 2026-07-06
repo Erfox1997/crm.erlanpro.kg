@@ -14,6 +14,7 @@ class ClientFieldDefinition extends Model
         'type',
         'options',
         'is_required',
+        'show_in_messenger',
         'sort_order',
     ];
 
@@ -22,6 +23,7 @@ class ClientFieldDefinition extends Model
         return [
             'options' => 'array',
             'is_required' => 'boolean',
+            'show_in_messenger' => 'boolean',
         ];
     }
 

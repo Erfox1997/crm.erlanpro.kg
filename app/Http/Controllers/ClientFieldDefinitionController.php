@@ -31,6 +31,7 @@ class ClientFieldDefinitionController extends Controller
                 'type' => $field->type,
                 'options' => $field->options ?? [],
                 'is_required' => $field->is_required,
+                'show_in_messenger' => $field->show_in_messenger,
                 'sort_order' => $field->sort_order,
             ]);
 
@@ -51,6 +52,7 @@ class ClientFieldDefinitionController extends Controller
             'options' => 'nullable|array',
             'options.*' => 'string|max:120',
             'is_required' => 'boolean',
+            'show_in_messenger' => 'boolean',
         ]);
 
         $key = ClientFieldService::normalizeKey($validated['label'], $validated['key'] ?? null);
@@ -73,6 +75,7 @@ class ClientFieldDefinitionController extends Controller
             'type' => $validated['type'],
             'options' => $validated['type'] === 'select' ? array_values(array_filter($validated['options'] ?? [])) : null,
             'is_required' => (bool) ($validated['is_required'] ?? false),
+            'show_in_messenger' => (bool) ($validated['show_in_messenger'] ?? false),
             'sort_order' => $sortOrder,
         ]);
 
@@ -91,6 +94,7 @@ class ClientFieldDefinitionController extends Controller
             'fields.*.options' => 'nullable|array',
             'fields.*.options.*' => 'string|max:120',
             'fields.*.is_required' => 'boolean',
+            'fields.*.show_in_messenger' => 'boolean',
         ]);
 
         $sortOrder = (int) ClientFieldDefinition::query()
@@ -129,6 +133,7 @@ class ClientFieldDefinitionController extends Controller
                     ? array_values(array_filter($field['options'] ?? []))
                     : null,
                 'is_required' => (bool) ($field['is_required'] ?? false),
+                'show_in_messenger' => (bool) ($field['show_in_messenger'] ?? false),
                 'sort_order' => $sortOrder,
             ]);
         }
@@ -154,6 +159,7 @@ class ClientFieldDefinitionController extends Controller
             'options' => 'nullable|array',
             'options.*' => 'string|max:120',
             'is_required' => 'boolean',
+            'show_in_messenger' => 'boolean',
         ]);
 
         $key = ClientFieldService::normalizeKey($validated['label'], $validated['key']);
@@ -174,6 +180,7 @@ class ClientFieldDefinitionController extends Controller
             'type' => $validated['type'],
             'options' => $validated['type'] === 'select' ? array_values(array_filter($validated['options'] ?? [])) : null,
             'is_required' => (bool) ($validated['is_required'] ?? false),
+            'show_in_messenger' => (bool) ($validated['show_in_messenger'] ?? false),
         ]);
 
         return back()->with('success', __('Поле обновлено.'));
