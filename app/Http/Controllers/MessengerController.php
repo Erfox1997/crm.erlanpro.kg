@@ -66,15 +66,17 @@ class MessengerController extends Controller
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
             ->with([
-                'messages' => fn ($q) => $q->orderByDesc('sent_at')->orderByDesc('id')->limit(1),
-                'client',
+                'client.deals' => fn ($q) => $q
+                    ->with('pipeline')
+                    ->orderByDesc('id')
+                    ->limit(1),
             ])
             ->get();
 
         $messengerField = $this->clientFields->messengerFieldDefinition($companyId);
 
         $conversations = $conversations->map(function (MessengerConversation $c) use ($messengerField) {
-                $lastMessage = $c->messages->first();
+                $deal = $c->client?->deals->first();
 
                 return [
                     'id' => $c->id,
@@ -85,7 +87,7 @@ class MessengerController extends Controller
                     'participant_username' => $c->participant_username,
                     'display_name' => $this->clientFields->resolveMessengerDisplayName($c, $c->client, $messengerField),
                     'last_message_at' => $c->last_message_at?->toIso8601String(),
-                    'preview' => $lastMessage?->previewLabel(),
+                    'pipeline_name' => $deal?->pipeline?->name,
                     'unread_count' => $this->unread->unreadCountForConversation($c),
                 ];
             });

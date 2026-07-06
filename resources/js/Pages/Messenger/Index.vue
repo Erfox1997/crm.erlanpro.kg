@@ -1,5 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import ChannelIcon from '@/Components/Messenger/ChannelIcon.vue';
 import VoiceMessagePlayer from '@/Components/Messenger/VoiceMessagePlayer.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -139,7 +140,7 @@ const filteredConversations = computed(() => {
             conversation.participant_name,
             conversation.participant_username,
             conversation.participant_id,
-            conversation.preview,
+            conversation.pipeline_name,
         ]
             .filter(Boolean)
             .join(' ')
@@ -965,19 +966,17 @@ watch(
                                         {{ formatListTime(conversation.last_message_at) }}
                                     </span>
                                 </div>
-                                <div class="mt-0.5 flex items-center gap-2">
-                                    <span
-                                        class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase"
-                                        :class="channelBadgeClass(conversation.channel)"
-                                    >
-                                        {{ conversation.channel_label }}
-                                    </span>
+                                <div class="mt-0.5 flex items-center gap-1.5">
+                                    <ChannelIcon
+                                        :channel="conversation.channel"
+                                        :title="conversation.channel_label"
+                                    />
                                     <p
-                                        v-if="conversation.preview"
+                                        v-if="conversation.pipeline_name"
                                         class="truncate text-sm"
                                         :class="conversation.unread_count > 0 ? 'font-medium text-[#111b21]' : 'text-[#667781]'"
                                     >
-                                        {{ conversation.preview }}
+                                        {{ conversation.pipeline_name }}
                                     </p>
                                 </div>
                             </div>
@@ -1079,34 +1078,24 @@ watch(
                         v-if="funnelDeal"
                         class="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#d1d7db] bg-[#f7f8fa] px-2.5 py-2 sm:px-4"
                     >
-                        <span class="text-xs text-[#667781]">Воронка:</span>
                         <span class="text-xs font-medium text-[#111b21]">
                             {{ funnelDeal.pipeline_name }}
                         </span>
                         <span class="text-xs text-[#667781]">·</span>
-                        <label class="flex min-w-0 items-center gap-2">
-                            <span class="shrink-0 text-xs text-[#667781]">Этап:</span>
-                            <select
-                                v-model="dealStageForm.stage_id"
-                                class="min-w-0 max-w-[12rem] rounded-md border-[#d1d7db] bg-white py-1 pl-2 pr-7 text-xs text-[#111b21] shadow-sm focus:border-[#00a884] focus:ring-[#00a884]"
-                                :disabled="dealStageForm.processing"
-                                @change="updateDealStage"
-                            >
-                                <option
-                                    v-for="stage in funnelDeal.stages"
-                                    :key="stage.id"
-                                    :value="String(stage.id)"
-                                >
-                                    {{ stage.name }}
-                                </option>
-                            </select>
-                        </label>
-                        <Link
-                            :href="route('funnels.index', { pipeline: funnelDeal.pipeline_id })"
-                            class="ml-auto text-xs text-[#008069] hover:underline"
+                        <select
+                            v-model="dealStageForm.stage_id"
+                            class="min-w-0 max-w-[12rem] rounded-md border-[#d1d7db] bg-white py-1 pl-2 pr-7 text-xs text-[#111b21] shadow-sm focus:border-[#00a884] focus:ring-[#00a884]"
+                            :disabled="dealStageForm.processing"
+                            @change="updateDealStage"
                         >
-                            Открыть воронку
-                        </Link>
+                            <option
+                                v-for="stage in funnelDeal.stages"
+                                :key="stage.id"
+                                :value="String(stage.id)"
+                            >
+                                {{ stage.name }}
+                            </option>
+                        </select>
                     </div>
 
                     <div
