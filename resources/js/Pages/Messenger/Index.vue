@@ -84,6 +84,10 @@ const props = defineProps({
         type: Object,
         default: null,
     },
+    filterPipelines: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const page = usePage();
@@ -104,6 +108,17 @@ const sendForm = useForm({
 const imagePreviewUrl = ref(null);
 const lightboxImageUrl = ref(null);
 const showClientModal = ref(false);
+const showFilterModal = ref(false);
+
+const funnelFilter = ref({
+    pipeline_id: '',
+    stage_id: '',
+});
+
+const draftFilter = ref({
+    pipeline_id: '',
+    stage_id: '',
+});
 
 const clientForm = useForm({
     fields: {},
@@ -127,14 +142,40 @@ const messengerConnected = computed(() => (
     || props.telegramConnected
 ));
 
+const funnelFilterActive = computed(() => Boolean(funnelFilter.value.pipeline_id));
+
+const draftFilterStages = computed(() => {
+    if (!draftFilter.value.pipeline_id) {
+        return [];
+    }
+
+    const pipeline = props.filterPipelines.find(
+        (p) => p.id === Number(draftFilter.value.pipeline_id),
+    );
+
+    return pipeline?.stages ?? [];
+});
+
 const filteredConversations = computed(() => {
+    let list = props.conversations;
+
+    if (funnelFilter.value.pipeline_id) {
+        const pipelineId = Number(funnelFilter.value.pipeline_id);
+        list = list.filter((conversation) => conversation.pipeline_id === pipelineId);
+
+        if (funnelFilter.value.stage_id) {
+            const stageId = Number(funnelFilter.value.stage_id);
+            list = list.filter((conversation) => conversation.stage_id === stageId);
+        }
+    }
+
     const q = searchQuery.value.trim().toLowerCase();
 
     if (!q) {
-        return props.conversations;
+        return list;
     }
 
-    return props.conversations.filter((conversation) => {
+    return list.filter((conversation) => {
         const haystack = [
             conversation.display_name,
             conversation.participant_name,
@@ -235,6 +276,36 @@ function openConversation(id) {
         { conversation: id },
         { preserveState: true, preserveScroll: true },
     );
+}
+
+function openFilterModal() {
+    draftFilter.value = {
+        pipeline_id: funnelFilter.value.pipeline_id,
+        stage_id: funnelFilter.value.stage_id,
+    };
+    showFilterModal.value = true;
+}
+
+function onDraftPipelineChange() {
+    draftFilter.value.stage_id = '';
+}
+
+function applyFunnelFilter() {
+    if (!draftFilter.value.pipeline_id) {
+        return;
+    }
+
+    funnelFilter.value = {
+        pipeline_id: draftFilter.value.pipeline_id,
+        stage_id: draftFilter.value.stage_id,
+    };
+    showFilterModal.value = false;
+}
+
+function clearFunnelFilter() {
+    funnelFilter.value = { pipeline_id: '', stage_id: '' };
+    draftFilter.value = { pipeline_id: '', stage_id: '' };
+    showFilterModal.value = false;
 }
 
 function syncConversations() {
@@ -850,6 +921,30 @@ watch(
                         Чаты
                     </h2>
                     <div class="flex items-center gap-1">
+                        <button
+                            v-if="filterPipelines.length"
+                            type="button"
+                            class="rounded-full p-2 transition hover:bg-[#e9edef]"
+                            :class="funnelFilterActive
+                                ? 'bg-[#d9fdd3] text-[#008069]'
+                                : 'text-[#54656f]'"
+                            title="Фильтр по воронке"
+                            @click="openFilterModal"
+                        >
+                            <svg
+                                class="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                stroke-width="1.8"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M3 4.5h18M6 9.75h12M10.5 15h3"
+                                />
+                            </svg>
+                        </button>
                         <Link
                             v-if="messengerConnected"
                             :href="route('messenger.quick-replies.index')"
@@ -1447,6 +1542,81 @@ watch(
                 @click.stop
             >
         </div>
+
+        <Modal :show="showFilterModal" max-width="md" @close="showFilterModal = false">
+            <div class="p-6">
+                <h3 class="text-lg font-semibold text-slate-900">
+                    Фильтр чатов
+                </h3>
+                <p class="mt-1 text-sm text-slate-600">
+                    Покажем только клиентов из выбранной воронки. Этап можно не указывать.
+                </p>
+
+                <div class="mt-5 space-y-4">
+                    <div>
+                        <InputLabel for="filter_pipeline" value="Воронка" />
+                        <select
+                            id="filter_pipeline"
+                            v-model="draftFilter.pipeline_id"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            @change="onDraftPipelineChange"
+                        >
+                            <option value="">— выберите воронку —</option>
+                            <option
+                                v-for="pipeline in filterPipelines"
+                                :key="pipeline.id"
+                                :value="String(pipeline.id)"
+                            >
+                                {{ pipeline.is_default ? '★ ' : '' }}{{ pipeline.name }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <div v-if="draftFilter.pipeline_id">
+                        <InputLabel for="filter_stage" value="Этап (необязательно)" />
+                        <select
+                            id="filter_stage"
+                            v-model="draftFilter.stage_id"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                            <option value="">Все этапы</option>
+                            <option
+                                v-for="stage in draftFilterStages"
+                                :key="stage.id"
+                                :value="String(stage.id)"
+                            >
+                                {{ stage.name }}
+                            </option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+                    <SecondaryButton
+                        v-if="funnelFilterActive"
+                        type="button"
+                        @click="clearFunnelFilter"
+                    >
+                        Сбросить
+                    </SecondaryButton>
+                    <div class="flex flex-col-reverse gap-2 sm:ml-auto sm:flex-row">
+                        <SecondaryButton
+                            type="button"
+                            @click="showFilterModal = false"
+                        >
+                            Отмена
+                        </SecondaryButton>
+                        <PrimaryButton
+                            type="button"
+                            :disabled="!draftFilter.pipeline_id"
+                            @click="applyFunnelFilter"
+                        >
+                            Применить
+                        </PrimaryButton>
+                    </div>
+                </div>
+            </div>
+        </Modal>
 
         <Modal :show="showClientModal" @close="showClientModal = false">
             <div class="p-6">

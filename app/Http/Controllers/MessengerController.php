@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\CreateDefaultPipelineForCompany;
 use App\Enums\IntegrationProvider;
+use App\Models\Company;
 use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Models\MessengerQuickReply;
+use App\Models\Pipeline;
 use App\Models\Stage;
 use App\Services\Client\ClientFieldService;
 use App\Services\Deal\DealStageService;
@@ -48,6 +51,8 @@ class MessengerController extends Controller
     {
         $companyId = (int) $request->user()->company_id;
 
+        CreateDefaultPipelineForCompany::ensure(Company::query()->findOrFail($companyId));
+
         $instagramIntegration = $this->instagram->integrationForCompany($companyId);
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
         $wappiIntegration = $this->wappi->integrationForCompany($companyId);
@@ -88,11 +93,30 @@ class MessengerController extends Controller
                     'display_name' => $this->clientFields->resolveMessengerDisplayName($c, $c->client, $messengerField),
                     'last_message_at' => $c->last_message_at?->toIso8601String(),
                     'pipeline_name' => $deal?->pipeline?->name,
+                    'pipeline_id' => $deal?->pipeline_id,
                     'stage_name' => $deal?->stage?->name,
+                    'stage_id' => $deal?->stage_id,
                     'stage_color' => $deal?->stage?->color,
                     'unread_count' => $this->unread->unreadCountForConversation($c),
                 ];
             });
+
+        $filterPipelines = Pipeline::query()
+            ->where('company_id', $companyId)
+            ->with(['stages' => fn ($q) => $q->orderBy('sort_order')])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Pipeline $pipeline) => [
+                'id' => $pipeline->id,
+                'name' => $pipeline->name,
+                'is_default' => $pipeline->is_default,
+                'stages' => $pipeline->stages->map(fn (Stage $stage) => [
+                    'id' => $stage->id,
+                    'name' => $stage->name,
+                    'color' => $stage->color,
+                ])->values(),
+            ]);
 
         $quickReplies = MessengerQuickReply::query()
             ->where('company_id', $companyId)
@@ -204,6 +228,7 @@ class MessengerController extends Controller
                 'bot_username' => $telegramIntegration->metadata['bot_username'] ?? null,
             ] : null,
             'conversations' => $conversations,
+            'filterPipelines' => $filterPipelines,
             'selectedConversation' => $selectedConversation,
             'messages' => $messages,
             'quickReplies' => $quickReplies,
