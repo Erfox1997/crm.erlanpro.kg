@@ -492,6 +492,67 @@ function formatMessageTime(iso) {
     });
 }
 
+function messageDateKey(iso) {
+    if (!iso) {
+        return 'unknown';
+    }
+
+    const date = new Date(iso);
+
+    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function formatMessageDateLabel(iso) {
+    if (!iso) {
+        return '';
+    }
+
+    const date = new Date(iso);
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (date.toDateString() === now.toDateString()) {
+        return 'Сегодня';
+    }
+
+    if (date.toDateString() === yesterday.toDateString()) {
+        return 'Вчера';
+    }
+
+    return date.toLocaleDateString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+    });
+}
+
+const messagesWithDateDividers = computed(() => {
+    const items = [];
+    let lastDateKey = null;
+
+    for (const message of props.messages) {
+        const dateKey = messageDateKey(message.sent_at);
+
+        if (dateKey !== lastDateKey) {
+            items.push({
+                type: 'date',
+                key: `date-${dateKey}`,
+                label: formatMessageDateLabel(message.sent_at),
+            });
+            lastDateKey = dateKey;
+        }
+
+        items.push({
+            type: 'message',
+            key: `message-${message.id}`,
+            message,
+        });
+    }
+
+    return items;
+});
+
 function participantLabel(conversation) {
     return (
         conversation.participant_name
@@ -834,33 +895,45 @@ watch(
                             Сообщений пока нет.
                         </div>
 
-                        <div
-                            v-for="message in messages"
-                            :key="message.id"
-                            class="flex"
-                            :class="message.direction === 'outbound' ? 'justify-end' : 'justify-start'"
+                        <template
+                            v-for="item in messagesWithDateDividers"
+                            :key="item.key"
                         >
                             <div
+                                v-if="item.type === 'date'"
+                                class="flex justify-center py-2"
+                            >
+                                <span class="rounded-lg bg-[#ffffffd9] px-3 py-1 text-xs font-medium text-[#54656f] shadow-sm">
+                                    {{ item.label }}
+                                </span>
+                            </div>
+
+                            <div
+                                v-else
+                                class="flex"
+                                :class="item.message.direction === 'outbound' ? 'justify-end' : 'justify-start'"
+                            >
+                            <div
                                 class="relative max-w-[min(100%,28rem)] rounded-lg px-3 py-2 text-sm shadow-sm"
-                                :class="message.direction === 'outbound'
+                                :class="item.message.direction === 'outbound'
                                     ? 'rounded-tr-none bg-[#d9fdd3]'
                                     : 'rounded-tl-none bg-white'"
                             >
                                 <p
-                                    v-if="message.body?.trim()"
+                                    v-if="item.message.body?.trim()"
                                     class="whitespace-pre-wrap break-words text-[#111b21]"
                                 >
-                                    {{ message.body }}
+                                    {{ item.message.body }}
                                 </p>
 
                                 <div
-                                    v-if="message.attachments?.length"
+                                    v-if="item.message.attachments?.length"
                                     class="space-y-2"
-                                    :class="{ 'mt-1': message.body?.trim() }"
+                                    :class="{ 'mt-1': item.message.body?.trim() }"
                                 >
                                     <div
-                                        v-for="(attachment, index) in message.attachments"
-                                        :key="`${message.id}-${index}`"
+                                        v-for="(attachment, index) in item.message.attachments"
+                                        :key="`${item.message.id}-${index}`"
                                     >
                                         <audio
                                             v-if="attachment.type === 'audio' && attachment.url"
@@ -922,7 +995,7 @@ watch(
                                 </div>
 
                                 <p
-                                    v-if="!messageHasContent(message)"
+                                    v-if="!messageHasContent(item.message)"
                                     class="text-[#667781]"
                                 >
                                     —
@@ -931,16 +1004,17 @@ watch(
                                 <div
                                     class="mt-1 flex items-end justify-end gap-1 text-[11px] text-[#667781]"
                                 >
-                                    <span>{{ formatMessageTime(message.sent_at) }}</span>
+                                    <span>{{ formatMessageTime(item.message.sent_at) }}</span>
                                     <span
-                                        v-if="message.direction === 'outbound'"
+                                        v-if="item.message.direction === 'outbound'"
                                         class="text-[#53bdeb]"
                                     >
                                         ✓✓
                                     </span>
                                 </div>
                             </div>
-                        </div>
+                            </div>
+                        </template>
                         <div ref="messagesEnd" />
                     </div>
 
