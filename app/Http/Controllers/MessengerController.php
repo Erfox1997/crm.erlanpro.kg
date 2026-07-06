@@ -7,7 +7,10 @@ use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Models\MessengerQuickReply;
+use App\Models\Stage;
 use App\Services\Client\ClientFieldService;
+use App\Services\Deal\DealStageService;
+use App\Services\Messenger\MessengerFunnelService;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Messenger\MessengerSyncService;
@@ -37,6 +40,8 @@ class MessengerController extends Controller
         private MessengerSyncService $messengerSync,
         private MessengerUnreadService $unread,
         private ClientFieldService $clientFields,
+        private MessengerFunnelService $messengerFunnel,
+        private DealStageService $dealStages,
     ) {}
 
     public function index(Request $request): Response
@@ -104,6 +109,7 @@ class MessengerController extends Controller
         $selectedConversation = null;
         $messages = [];
         $linkedClient = null;
+        $funnelDeal = null;
 
         $fieldDefinitions = $this->clientFields->definitionsForCompany($companyId)
             ->map(fn ($field) => [
@@ -142,6 +148,10 @@ class MessengerController extends Controller
                         $messengerField,
                     ),
                 ];
+
+                $funnelDeal = $this->messengerFunnel->dealPayloadForConversation($conversation);
+
+                $conversation->refresh()->load('client');
 
                 if ($conversation->client) {
                     $linkedClient = [
@@ -196,6 +206,7 @@ class MessengerController extends Controller
             'clientFieldDefinitions' => $fieldDefinitions,
             'messengerFieldKey' => $messengerField?->key,
             'linkedClient' => $linkedClient,
+            'funnelDeal' => $funnelDeal,
             'webhookUrl' => url('/webhooks/meta'),
             'wappiWebhookUrl' => route('webhooks.wappi.handle'),
         ]);
@@ -339,10 +350,42 @@ class MessengerController extends Controller
         );
 
         $this->clientFields->upsertClientFromConversation($conversation, $normalized);
+        $this->messengerFunnel->ensureClientAndDeal($conversation->fresh());
 
         return redirect()
             ->route('messenger.index', ['conversation' => $conversation->id])
             ->with('success', __('Данные клиента сохранены.'));
+    }
+
+    public function updateDealStage(Request $request, MessengerConversation $conversation): RedirectResponse
+    {
+        $companyId = (int) $request->user()->company_id;
+        abort_unless($conversation->company_id === $companyId, 403);
+
+        $validated = $request->validate([
+            'stage_id' => 'required|exists:stages,id',
+        ]);
+
+        $deal = $this->messengerFunnel->resolveDeal($conversation)
+            ?? $this->messengerFunnel->ensureClientAndDeal($conversation);
+
+        if (! $deal) {
+            return back()->withErrors([
+                'stage' => __('Не удалось найти сделку для этого чата.'),
+            ]);
+        }
+
+        abort_unless($deal->company_id === $companyId, 403);
+
+        $stage = Stage::query()->findOrFail($validated['stage_id']);
+        abort_unless($stage->company_id === $companyId, 403);
+        abort_unless($stage->pipeline_id === $deal->pipeline_id, 422);
+
+        $this->dealStages->moveToStage($deal, $stage);
+
+        return redirect()
+            ->route('messenger.index', ['conversation' => $conversation->id])
+            ->with('success', __('Этап воронки обновлён.'));
     }
 
     public function send(Request $request, MessengerConversation $conversation): RedirectResponse

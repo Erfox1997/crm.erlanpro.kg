@@ -7,6 +7,9 @@ use App\Models\ClientFieldDefinition;
 use App\Models\Deal;
 use App\Models\Pipeline;
 use App\Models\PipelineTunnel;
+use App\Models\MessengerMessage;
+use App\Models\StageTunnel;
+use App\Observers\MessengerMessageObserver;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
@@ -27,6 +30,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Vite::prefetch(concurrency: 3);
+
+        MessengerMessage::observe(MessengerMessageObserver::class);
 
         Route::bind('client', function (string $value) {
             return Client::query()
@@ -58,6 +63,13 @@ class AppServiceProvider extends ServiceProvider
 
         Route::bind('pipeline_tunnel', function (string $value) {
             return PipelineTunnel::query()
+                ->where('company_id', auth()->user()?->company_id)
+                ->whereKey($value)
+                ->firstOrFail();
+        });
+
+        Route::bind('stage_tunnel', function (string $value) {
+            return StageTunnel::query()
                 ->where('company_id', auth()->user()?->company_id)
                 ->whereKey($value)
                 ->firstOrFail();

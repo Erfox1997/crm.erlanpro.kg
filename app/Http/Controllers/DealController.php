@@ -8,11 +8,15 @@ use App\Models\Company;
 use App\Models\Deal;
 use App\Models\Pipeline;
 use App\Models\Stage;
+use App\Services\Deal\DealStageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class DealController extends Controller
 {
+    public function __construct(
+        private DealStageService $dealStages,
+    ) {}
     public function store(Request $request): RedirectResponse
     {
         $companyId = (int) $request->user()->company_id;
@@ -92,17 +96,16 @@ class DealController extends Controller
         abort_unless($stage->company_id === $companyId, 403);
         abort_unless($stage->pipeline_id === $deal->pipeline_id, 422);
 
-        $position = (int) Deal::query()
-            ->where('company_id', $companyId)
-            ->where('stage_id', $stage->id)
-            ->where('id', '!=', $deal->id)
-            ->max('position') + 1;
+        $originalPipelineId = $deal->pipeline_id;
 
-        $deal->update([
-            'stage_id' => $stage->id,
-            'position' => $position,
-            'closed_at' => $this->closedAtForStage($stage),
-        ]);
+        $this->dealStages->moveToStage($deal, $stage);
+        $deal->refresh()->load('pipeline');
+
+        if ($deal->pipeline_id !== $originalPipelineId) {
+            return redirect()
+                ->route('funnels.index', ['pipeline' => $deal->pipeline_id])
+                ->with('success', __('Сделка перенесена в воронку «:name».', ['name' => $deal->pipeline?->name ?? '']));
+        }
 
         return back()->with('success', __('Этап обновлён.'));
     }

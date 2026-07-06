@@ -59,12 +59,14 @@ class FunnelController extends Controller
                 'pipeline' => null,
                 'stages' => [],
                 'clients' => [],
+                'linkablePipelines' => [],
                 'pageTitle' => 'Воронки',
             ]);
         }
 
         $stages = $selectedPipeline->stages()
             ->with([
+                'outboundTunnel.toStage.pipeline',
                 'deals' => fn ($q) => $q
                     ->with(['client', 'assignee'])
                     ->orderByDesc('position')
@@ -74,14 +76,39 @@ class FunnelController extends Controller
             ->get();
 
         $mappedStages = $stages->map(function (Stage $stage) {
+            $tunnel = $stage->outboundTunnel;
+
             return [
                 'id' => $stage->id,
                 'name' => $stage->name,
                 'color' => $stage->color,
                 'outcome' => $stage->outcome,
+                'tunnel' => $tunnel && $tunnel->toStage ? [
+                    'id' => $tunnel->id,
+                    'to_stage_id' => $tunnel->to_stage_id,
+                    'to_stage_name' => $tunnel->toStage->name,
+                    'to_pipeline_id' => $tunnel->toStage->pipeline_id,
+                    'to_pipeline_name' => $tunnel->toStage->pipeline?->name,
+                ] : null,
                 'deals' => $stage->deals->map(fn (Deal $deal) => $this->dealPayload($deal))->values(),
             ];
         });
+
+        $linkablePipelines = Pipeline::query()
+            ->where('company_id', $companyId)
+            ->where('id', '!=', $selectedPipeline->id)
+            ->with(['stages' => fn ($q) => $q->orderBy('sort_order')])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Pipeline $p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'stages' => $p->stages->map(fn (Stage $s) => [
+                    'id' => $s->id,
+                    'name' => $s->name,
+                ])->values(),
+            ]);
 
         $clients = Client::query()
             ->where('company_id', $companyId)
@@ -97,6 +124,7 @@ class FunnelController extends Controller
             ],
             'stages' => $mappedStages,
             'clients' => $clients,
+            'linkablePipelines' => $linkablePipelines,
             'pageTitle' => 'Воронки',
         ]);
     }

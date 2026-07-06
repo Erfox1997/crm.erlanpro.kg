@@ -18,6 +18,7 @@ use App\Http\Controllers\PipelineController;
 use App\Http\Controllers\PipelineTunnelController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StageController;
+use App\Http\Controllers\StageTunnelController;
 use App\Http\Controllers\TariffController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\WappiOutboundMediaController;
@@ -92,6 +93,7 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
     Route::delete('/messenger/quick-replies/{quickReply}', [MessengerQuickReplyController::class, 'destroy'])->name('messenger.quick-replies.destroy');
     Route::post('/messenger/conversations/{conversation}/messages', [MessengerController::class, 'send'])->name('messenger.send');
     Route::post('/messenger/conversations/{conversation}/client', [MessengerController::class, 'saveClient'])->name('messenger.save-client');
+    Route::patch('/messenger/conversations/{conversation}/deal-stage', [MessengerController::class, 'updateDealStage'])->name('messenger.update-deal-stage');
     Route::post('/messenger/conversations/{conversation}/quick-replies/{quickReply}', [MessengerController::class, 'sendQuickReply'])->name('messenger.send-quick-reply');
     Route::get('/messenger/messages/{message}/attachments/{index}', [MessengerController::class, 'attachment'])
         ->whereNumber('index')
@@ -105,6 +107,8 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
     Route::patch('/pipelines/{pipeline}/stages/reorder', [StageController::class, 'reorder'])->name('stages.reorder');
     Route::patch('/stages/{stage}', [StageController::class, 'update'])->name('stages.update');
     Route::delete('/stages/{stage}', [StageController::class, 'destroy'])->name('stages.destroy');
+    Route::post('/stage-tunnels', [StageTunnelController::class, 'store'])->name('stage-tunnels.store');
+    Route::delete('/stage-tunnels/{stage_tunnel}', [StageTunnelController::class, 'destroy'])->name('stage-tunnels.destroy');
     Route::post('/pipeline-tunnels', [PipelineTunnelController::class, 'store'])->name('pipeline-tunnels.store');
     Route::delete('/pipeline-tunnels/{pipeline_tunnel}', [PipelineTunnelController::class, 'destroy'])->name('pipeline-tunnels.destroy');
     Route::get('/employees', fn () => Inertia::render('Placeholder', ['title' => 'Сотрудники']))->name('employees.index');

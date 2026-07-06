@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Stage extends Model
 {
@@ -37,5 +38,10 @@ class Stage extends Model
     public function deals(): HasMany
     {
         return $this->hasMany(Deal::class);
+    }
+
+    public function outboundTunnel(): HasOne
+    {
+        return $this->hasOne(StageTunnel::class, 'from_stage_id');
     }
 }

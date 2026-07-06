@@ -31,6 +31,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    linkablePipelines: {
+        type: Array,
+        default: () => [],
+    },
     pageTitle: {
         type: String,
         default: 'Воронки',
@@ -40,6 +44,11 @@ const props = defineProps({
 const pipelineForm = useForm({ name: '' });
 const editPipelineForm = useForm({ name: '' });
 const editStageForm = useForm({ name: '' });
+const tunnelForm = useForm({
+    from_stage_id: '',
+    to_stage_id: '',
+});
+const tunnelTargetPipelineId = ref('');
 const dealForm = useForm({
     title: '',
     amount: '',
@@ -83,6 +92,21 @@ const displayStages = computed(() =>
     reorderMode.value ? orderedStages.value : props.stages,
 );
 
+const tunnelTargetStages = computed(() => {
+    if (!tunnelTargetPipelineId.value) {
+        return [];
+    }
+    const pipeline = props.linkablePipelines.find(
+        (p) => p.id === Number(tunnelTargetPipelineId.value),
+    );
+
+    return pipeline?.stages ?? [];
+});
+
+const hasLinkablePipelines = computed(
+    () => props.linkablePipelines.length > 0,
+);
+
 const submitPipeline = () => {
     pipelineForm.post(route('pipelines.store'), {
         preserveScroll: true,
@@ -118,14 +142,54 @@ function openEditStage(stage) {
     editingStage.value = stage;
     editStageForm.name = stage.name;
     editStageForm.clearErrors();
+    tunnelForm.clearErrors();
+    tunnelForm.from_stage_id = stage.id;
+    if (stage.tunnel) {
+        tunnelTargetPipelineId.value = String(stage.tunnel.to_pipeline_id);
+        tunnelForm.to_stage_id = String(stage.tunnel.to_stage_id);
+    } else {
+        tunnelTargetPipelineId.value = props.linkablePipelines[0]?.id
+            ? String(props.linkablePipelines[0].id)
+            : '';
+        tunnelForm.to_stage_id = '';
+    }
     showEditStageModal.value = true;
 }
+
+function onTunnelPipelineChange() {
+    tunnelForm.to_stage_id = '';
+}
+
+const submitStageTunnel = () => {
+    if (!editingStage.value || !tunnelForm.to_stage_id) {
+        return;
+    }
+    tunnelForm.from_stage_id = editingStage.value.id;
+    tunnelForm.post(route('stage-tunnels.store'), {
+        preserveScroll: true,
+        onSuccess: () => closeEditStageModal(),
+    });
+};
+
+const removeStageTunnel = () => {
+    const tunnel = editingStage.value?.tunnel;
+    if (!tunnel?.id) {
+        return;
+    }
+    router.delete(route('stage-tunnels.destroy', tunnel.id), {
+        preserveScroll: true,
+        onSuccess: () => closeEditStageModal(),
+    });
+};
 
 function closeEditStageModal() {
     showEditStageModal.value = false;
     editingStage.value = null;
     editStageForm.reset();
     editStageForm.clearErrors();
+    tunnelForm.reset();
+    tunnelForm.clearErrors();
+    tunnelTargetPipelineId.value = '';
 }
 
 const submitEditStage = () => {
@@ -483,6 +547,13 @@ function onDropStage(e, stageId) {
                                 >
                                     {{ stage.name }}
                                 </span>
+                                <span
+                                    v-if="stage.tunnel && !reorderMode"
+                                    class="shrink-0 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700"
+                                    :title="`→ ${stage.tunnel.to_pipeline_name}: ${stage.tunnel.to_stage_name}`"
+                                >
+                                    →
+                                </span>
                                 <template v-if="reorderMode">
                                     <button
                                         type="button"
@@ -535,7 +606,7 @@ function onDropStage(e, stageId) {
                                     <button
                                         type="button"
                                         class="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600"
-                                        title="Переименовать этап"
+                                        title="Настройки этапа"
                                         @click="openEditStage(stage)"
                                     >
                                         <svg
@@ -1002,7 +1073,7 @@ function onDropStage(e, stageId) {
         >
             <div class="p-6">
                 <h2 class="text-lg font-semibold text-gray-900">
-                    Переименовать этап
+                    Настройки этапа
                 </h2>
                 <form
                     class="mt-6 space-y-4"
@@ -1043,6 +1114,105 @@ function onDropStage(e, stageId) {
                         </PrimaryButton>
                     </div>
                 </form>
+
+                <div
+                    v-if="hasLinkablePipelines"
+                    class="mt-8 border-t border-slate-200 pt-6"
+                >
+                    <h3 class="text-sm font-semibold text-gray-900">
+                        Связка с другой воронкой
+                    </h3>
+                    <p class="mt-1 text-xs text-gray-500">
+                        При переносе сделки на этот этап она автоматически
+                        попадёт в выбранный этап другой воронки.
+                    </p>
+
+                    <div
+                        v-if="editingStage?.tunnel"
+                        class="mt-4 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-900 ring-1 ring-indigo-200"
+                    >
+                        <span class="font-medium">{{ editingStage.name }}</span>
+                        →
+                        <span class="font-medium">{{
+                            editingStage.tunnel.to_pipeline_name
+                        }}</span
+                        >:
+                        {{ editingStage.tunnel.to_stage_name }}
+                    </div>
+
+                    <div class="mt-4 space-y-3">
+                        <div>
+                            <InputLabel
+                                for="tunnel_pipeline"
+                                value="Воронка назначения"
+                            />
+                            <select
+                                id="tunnel_pipeline"
+                                v-model="tunnelTargetPipelineId"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                @change="onTunnelPipelineChange"
+                            >
+                                <option value="">— выберите воронку —</option>
+                                <option
+                                    v-for="p in linkablePipelines"
+                                    :key="p.id"
+                                    :value="p.id"
+                                >
+                                    {{ p.name }}
+                                </option>
+                            </select>
+                        </div>
+                        <div v-if="tunnelTargetPipelineId">
+                            <InputLabel
+                                for="tunnel_stage"
+                                value="Этап назначения"
+                            />
+                            <select
+                                id="tunnel_stage"
+                                v-model="tunnelForm.to_stage_id"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            >
+                                <option value="">— выберите этап —</option>
+                                <option
+                                    v-for="s in tunnelTargetStages"
+                                    :key="s.id"
+                                    :value="s.id"
+                                >
+                                    {{ s.name }}
+                                </option>
+                            </select>
+                            <InputError
+                                class="mt-2"
+                                :message="tunnelForm.errors.to_stage_id"
+                            />
+                        </div>
+                    </div>
+
+                    <div
+                        class="mt-4 flex flex-wrap gap-2"
+                    >
+                        <PrimaryButton
+                            type="button"
+                            :disabled="
+                                !tunnelForm.to_stage_id || tunnelForm.processing
+                            "
+                            @click="submitStageTunnel"
+                        >
+                            {{
+                                editingStage?.tunnel
+                                    ? 'Обновить связку'
+                                    : 'Создать связку'
+                            }}
+                        </PrimaryButton>
+                        <SecondaryButton
+                            v-if="editingStage?.tunnel"
+                            type="button"
+                            @click="removeStageTunnel"
+                        >
+                            Удалить связку
+                        </SecondaryButton>
+                    </div>
+                </div>
             </div>
         </Modal>
 
