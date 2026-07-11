@@ -1,6 +1,6 @@
 <script setup>
-import BrandLogo from '@/Components/BrandLogo.vue';
 import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
+import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
 import { Head, Link, usePage } from '@inertiajs/vue3';
 
 defineProps({
@@ -32,46 +32,11 @@ const branding = page.props.branding ?? {};
         />
 
         <div class="relative mx-auto max-w-6xl px-4 pb-20 pt-8 sm:px-6 lg:px-8">
-            <header
-                class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between"
-            >
-                <Link href="/">
-                    <BrandLogo
-                        light
-                        :name="branding.name ?? 'ErlanPro'"
-                        :domain="branding.domain ?? 'crm.erlanpro.kg'"
-                    />
-                </Link>
-
-                <nav
-                    v-if="canLogin"
-                    class="flex flex-wrap items-center gap-3 sm:justify-end"
-                >
-                    <Link
-                        v-if="$page.props.auth.user"
-                        :href="route('dashboard')"
-                        class="rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-400"
-                    >
-                        Перейти в CRM
-                    </Link>
-
-                    <template v-else>
-                        <Link
-                            :href="route('login')"
-                            class="rounded-lg px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:text-white"
-                        >
-                            Вход
-                        </Link>
-                        <Link
-                            v-if="canRegister"
-                            :href="route('register')"
-                            class="rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition hover:bg-indigo-400"
-                        >
-                            Создать аккаунт
-                        </Link>
-                    </template>
-                </nav>
-            </header>
+            <PublicSiteHeader
+                variant="dark"
+                :can-login="canLogin"
+                :can-register="canRegister"
+            />
 
             <main class="mt-16 sm:mt-24">
                 <div class="mx-auto max-w-3xl text-center">

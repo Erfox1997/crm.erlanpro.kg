@@ -1,7 +1,7 @@
 <script setup>
-import BrandLogo from '@/Components/BrandLogo.vue';
 import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
+import { Head, Link } from '@inertiajs/vue3';
 
 defineProps({
     appName: {
@@ -14,33 +14,13 @@ defineProps({
     },
 });
 
-const page = usePage();
-const branding = page.props.branding ?? {};
 </script>
 
 <template>
     <Head title="Политика конфиденциальности" />
 
     <div class="min-h-screen bg-slate-50 text-slate-800">
-        <header class="border-b border-slate-200 bg-white">
-            <div
-                class="mx-auto flex max-w-3xl items-center justify-between px-4 py-5 sm:px-6"
-            >
-                <Link href="/">
-                    <BrandLogo
-                        :name="branding.name ?? 'ErlanPro'"
-                        :domain="branding.domain ?? 'crm.erlanpro.kg'"
-                        icon-class="h-8 w-8"
-                    />
-                </Link>
-                <Link
-                    href="/login"
-                    class="text-sm font-medium text-indigo-600 hover:text-indigo-500"
-                >
-                    Вход
-                </Link>
-            </div>
-        </header>
+        <PublicSiteHeader />
 
         <main class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
             <h1 class="text-2xl font-bold text-slate-900">
