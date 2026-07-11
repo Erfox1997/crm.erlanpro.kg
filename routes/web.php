@@ -53,6 +53,13 @@ Route::get('/privacy', function () {
     ]);
 })->name('privacy');
 
+Route::get('/legal', function () {
+    return Inertia::render('Legal', [
+        'contactEmail' => config('mail.from.address', 'support@erlanpro.kg'),
+        'contactPhone' => '+996 702 300 339',
+    ]);
+})->name('legal');
+
 Route::get('/terms', function () {
     return Inertia::render('Terms', [
         'appName' => config('app.name'),

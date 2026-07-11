@@ -1,5 +1,6 @@
 <script setup>
 import BrandLogo from '@/Components/BrandLogo.vue';
+import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import { Head, Link, usePage } from '@inertiajs/vue3';
 
 defineProps({
@@ -64,12 +65,21 @@ const branding = page.props.branding ?? {};
                         Direct).
                     </p>
                     <p class="mt-3 text-slate-600">
-                        Оператор данных: ErlanPro. По вопросам конфиденциальности:
+                        Оператор данных:
+                        <strong>ИП АСАНАЛИЕВ ЭРЛАН МАЛИКОВИЧ</strong>
+                        (сервис ErlanPro, https://crm.erlanpro.kg). ПИН:
+                        21706199700221. По вопросам конфиденциальности:
                         <a
                             :href="`mailto:${contactEmail}`"
                             class="text-indigo-600 hover:underline"
                             >{{ contactEmail }}</a
                         >.
+                        <Link
+                            href="/legal"
+                            class="text-indigo-600 hover:underline"
+                        >
+                            Реквизиты ИП
+                        </Link>.
                     </p>
                 </section>
 
@@ -206,15 +216,6 @@ const branding = page.props.branding ?? {};
             </div>
         </main>
 
-        <footer class="border-t border-slate-200 bg-white py-6">
-            <p class="text-center text-xs text-slate-500">
-                © {{ new Date().getFullYear() }} ErlanPro ·
-                <Link href="/" class="hover:text-slate-700">На главную</Link>
-                ·
-                <Link href="/terms" class="hover:text-slate-700"
-                    >Пользовательское соглашение</Link
-                >
-            </p>
-        </footer>
+        <PublicSiteFooter />
     </div>
 </template>

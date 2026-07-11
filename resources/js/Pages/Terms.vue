@@ -1,5 +1,6 @@
 <script setup>
 import BrandLogo from '@/Components/BrandLogo.vue';
+import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import { Head, Link, usePage } from '@inertiajs/vue3';
 
 defineProps({
@@ -59,8 +60,9 @@ const branding = page.props.branding ?? {};
                         «Соглашение») регулирует использование сервиса
                         <strong>{{ appName }}</strong>, доступного по адресу
                         <strong>https://crm.erlanpro.kg</strong> (далее —
-                        «Сервис»), предоставляемого ErlanPro (далее —
-                        «Оператор»).
+                        «Сервис»), предоставляемого
+                        <strong>ИП АСАНАЛИЕВ ЭРЛАН МАЛИКОВИЧ</strong>
+                        (торговое обозначение ErlanPro) (далее — «Оператор»).
                     </p>
                     <p class="mt-3 text-slate-600">
                         Регистрируясь в Сервисе или используя его функции, вы
@@ -219,15 +221,6 @@ const branding = page.props.branding ?? {};
             </div>
         </main>
 
-        <footer class="border-t border-slate-200 bg-white py-6">
-            <p class="text-center text-xs text-slate-500">
-                © {{ new Date().getFullYear() }} ErlanPro ·
-                <Link href="/" class="hover:text-slate-700">На главную</Link>
-                ·
-                <Link href="/privacy" class="hover:text-slate-700"
-                    >Политика конфиденциальности</Link
-                >
-            </p>
-        </footer>
+        <PublicSiteFooter />
     </div>
 </template>

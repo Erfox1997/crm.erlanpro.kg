@@ -1,5 +1,6 @@
 <script setup>
 import BrandLogo from '@/Components/BrandLogo.vue';
+import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import { Head, Link, usePage } from '@inertiajs/vue3';
 
 defineProps({
@@ -228,21 +229,16 @@ const branding = page.props.branding ?? {};
                 </div>
             </main>
 
-            <footer class="mt-24 border-t border-white/10 pt-10 text-center">
-                <p class="text-sm text-slate-500">
-                    © {{ new Date().getFullYear() }} ErlanPro ·
-                    {{ branding.domain ?? 'crm.erlanpro.kg' }}
+            <footer class="mt-16 text-center">
+                <p class="text-sm font-medium text-slate-300">
+                    ИП АСАНАЛИЕВ ЭРЛАН МАЛИКОВИЧ
                 </p>
-                <p class="mt-2 text-xs text-slate-600">
-                    <Link href="/privacy" class="hover:text-slate-400">
-                        Конфиденциальность
-                    </Link>
-                    ·
-                    <Link href="/terms" class="hover:text-slate-400">
-                        Соглашение
-                    </Link>
+                <p class="mt-1 text-xs text-slate-500">
+                    Сервис CRM ErlanPro · {{ branding.domain ?? 'crm.erlanpro.kg' }}
                 </p>
             </footer>
+
+            <PublicSiteFooter variant="dark" />
         </div>
     </div>
 </template>
