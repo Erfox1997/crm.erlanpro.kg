@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Company;
+use App\Services\Comments\CommentsUnreadService;
 use App\Services\Messenger\MessengerUnreadService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -45,6 +46,7 @@ class HandleInertiaRequests extends Middleware
             'company' => fn () => $this->sharedCompany($request),
             'subscription' => fn () => $this->sharedSubscription($request),
             'messengerUnread' => fn () => $this->sharedMessengerUnread($request),
+            'commentsUnread' => fn () => $this->sharedCommentsUnread($request),
             'flash' => [
                 'success' => $request->session()->get('success'),
             ],
@@ -98,5 +100,15 @@ class HandleInertiaRequests extends Middleware
         }
 
         return app(MessengerUnreadService::class)->totalUnreadForCompany((int) $user->company_id);
+    }
+
+    private function sharedCommentsUnread(Request $request): int
+    {
+        $user = $request->user();
+        if (! $user?->company_id) {
+            return 0;
+        }
+
+        return app(CommentsUnreadService::class)->totalUnreadForCompany((int) $user->company_id);
     }
 }

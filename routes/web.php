@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\PaymentRequisiteController as AdminPaymentRequisi
 use App\Http\Controllers\Admin\TariffController as AdminTariffController;
 use App\Http\Controllers\ClientFieldDefinitionController;
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\CommentsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DealController;
 use App\Http\Controllers\FunnelController;
@@ -79,6 +80,9 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
 
     Route::get('/messenger', [MessengerController::class, 'index'])->name('messenger.index');
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
+    Route::get('/comments', [CommentsController::class, 'index'])->name('comments.index');
+    Route::post('/comments/sync', [CommentsController::class, 'sync'])->name('comments.sync');
+    Route::post('/comments/{comment}/reply', [CommentsController::class, 'reply'])->name('comments.reply');
     Route::get('/client-fields', [ClientFieldDefinitionController::class, 'index'])->name('client-fields.index');
     Route::post('/client-fields', [ClientFieldDefinitionController::class, 'store'])->name('client-fields.store');
     Route::post('/client-fields/batch', [ClientFieldDefinitionController::class, 'storeBatch'])->name('client-fields.store-batch');

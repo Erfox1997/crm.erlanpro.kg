@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Facebook\FacebookMessengerService;
+use App\Services\Instagram\InstagramCommentsService;
 use App\Services\Instagram\InstagramMessengerService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -12,6 +13,7 @@ class MetaWebhookController extends Controller
 {
     public function __construct(
         private InstagramMessengerService $instagram,
+        private InstagramCommentsService $instagramComments,
         private FacebookMessengerService $facebook,
     ) {}
 
@@ -36,6 +38,7 @@ class MetaWebhookController extends Controller
 
         try {
             $this->instagram->handleWebhookPayload($payload);
+            $this->instagramComments->handleWebhookPayload($payload);
             $this->facebook->handleWebhookPayload($payload);
         } catch (\Throwable $e) {
             Log::warning('Meta webhook processing failed', [

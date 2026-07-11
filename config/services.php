@@ -46,11 +46,11 @@ return [
         'oauth_provider' => env('META_OAUTH_PROVIDER', 'facebook'),
         'oauth_scopes' => env(
             'META_OAUTH_SCOPES',
-            'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_manage_messages',
+            'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_manage_messages,instagram_manage_comments',
         ),
         'oauth_scopes_instagram' => env(
             'META_OAUTH_SCOPES_INSTAGRAM',
-            'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_manage_messages',
+            'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_manage_messages,instagram_manage_comments',
         ),
         'oauth_scopes_facebook' => env(
             'META_OAUTH_SCOPES_FACEBOOK',
