@@ -94,6 +94,7 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::resource('clients', ClientController::class)->except(['show']);
 
     Route::get('/messenger', [MessengerController::class, 'index'])->name('messenger.index');
+    Route::get('/messenger/updates', [MessengerController::class, 'updates'])->name('messenger.updates');
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
     Route::post('/messenger/ai-improve', [MessengerController::class, 'improveWithAi'])->name('messenger.ai-improve');
     Route::get('/comments', [CommentsController::class, 'index'])->name('comments.index');

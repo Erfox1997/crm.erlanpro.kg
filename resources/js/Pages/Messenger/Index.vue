@@ -10,7 +10,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 const props = defineProps({
     instagramConnected: {
@@ -102,12 +102,29 @@ const props = defineProps({
 const page = usePage();
 
 const messagesEnd = ref(null);
+const messagesContainer = ref(null);
 const syncing = ref(false);
 const sellModalOpen = ref(false);
 const searchQuery = ref('');
 const slashActiveIndex = ref(0);
 const messageInput = ref(null);
 const imageInput = ref(null);
+const sendError = ref('');
+
+const localConversations = ref(
+    (props.conversations || []).map((conversation) => ({ ...conversation })),
+);
+const localMessages = ref((props.messages || []).map((message) => ({ ...message })));
+
+let pollSince = new Date(Date.now() - 15_000).toISOString();
+let pollTimer = null;
+let pollInFlight = false;
+let shouldStickToBottom = true;
+
+const jsonRequestHeaders = {
+    Accept: 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+};
 
 const sendForm = useForm({
     body: '',
@@ -176,7 +193,16 @@ const draftFilterStages = computed(() => {
 });
 
 const filteredConversations = computed(() => {
-    let list = props.conversations;
+    let list = [...localConversations.value].sort((a, b) => {
+        const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+        const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+
+        if (bTime !== aTime) {
+            return bTime - aTime;
+        }
+
+        return Number(b.id) - Number(a.id);
+    });
 
     if (funnelFilter.value.pipeline_id) {
         const pipelineId = Number(funnelFilter.value.pipeline_id);
@@ -209,6 +235,227 @@ const filteredConversations = computed(() => {
 
         return haystack.includes(q);
     });
+});
+
+function cloneList(items) {
+    return (items || []).map((item) => ({ ...item }));
+}
+
+function numericMessageId(id) {
+    const value = Number(id);
+
+    return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function lastKnownMessageId() {
+    let maxId = 0;
+
+    for (const message of localMessages.value) {
+        const id = numericMessageId(message.id);
+        if (id > maxId) {
+            maxId = id;
+        }
+    }
+
+    return maxId;
+}
+
+function isNearBottom() {
+    const el = messagesContainer.value;
+    if (!el) {
+        return true;
+    }
+
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+}
+
+function onMessagesScroll() {
+    shouldStickToBottom = isNearBottom();
+}
+
+function mergeConversations(updates) {
+    if (!Array.isArray(updates) || updates.length === 0) {
+        return;
+    }
+
+    const byId = new Map(localConversations.value.map((item) => [item.id, item]));
+
+    for (const update of updates) {
+        const current = byId.get(update.id);
+        const selectedId = props.selectedConversation?.id;
+        const merged = {
+            ...(current || {}),
+            ...update,
+            unread_count: selectedId === update.id
+                ? 0
+                : (update.unread_count ?? current?.unread_count ?? 0),
+        };
+        byId.set(update.id, merged);
+    }
+
+    localConversations.value = Array.from(byId.values());
+}
+
+function mergeMessages(updates, { scroll = true } = {}) {
+    if (!Array.isArray(updates) || updates.length === 0) {
+        return;
+    }
+
+    const byKey = new Map(
+        localMessages.value.map((message) => [String(message.id), message]),
+    );
+    let added = 0;
+
+    for (const update of updates) {
+        const key = String(update.id);
+        if (!byKey.has(key)) {
+            added += 1;
+        }
+        byKey.set(key, { ...byKey.get(key), ...update });
+    }
+
+    localMessages.value = Array.from(byKey.values()).sort((a, b) => {
+        const aTime = a.sent_at ? new Date(a.sent_at).getTime() : 0;
+        const bTime = b.sent_at ? new Date(b.sent_at).getTime() : 0;
+        if (aTime !== bTime) {
+            return aTime - bTime;
+        }
+
+        return numericMessageId(a.id) - numericMessageId(b.id);
+    });
+
+    if (scroll && added > 0 && shouldStickToBottom) {
+        scrollToBottom();
+    }
+}
+
+function touchConversationAfterSend(conversationUpdate, previewBody = '') {
+    if (!conversationUpdate?.id) {
+        return;
+    }
+
+    const existing = localConversations.value.find((item) => item.id === conversationUpdate.id);
+    mergeConversations([{
+        ...(existing || { id: conversationUpdate.id }),
+        ...conversationUpdate,
+        unread_count: 0,
+        last_message_preview: previewBody || existing?.last_message_preview,
+    }]);
+}
+
+async function pollUpdates() {
+    if (pollInFlight || document.hidden || !messengerConnected.value) {
+        return;
+    }
+
+    pollInFlight = true;
+
+    try {
+        const params = { since: pollSince };
+        if (props.selectedConversation?.id) {
+            params.conversation_id = props.selectedConversation.id;
+            params.after_message_id = lastKnownMessageId();
+        }
+
+        const { data } = await window.axios.get(route('messenger.updates'), {
+            params,
+            headers: jsonRequestHeaders,
+        });
+
+        if (data?.server_time) {
+            pollSince = data.server_time;
+        }
+
+        mergeConversations(data?.conversations || []);
+
+        if (props.selectedConversation?.id) {
+            mergeMessages(data?.messages || []);
+            mergeConversations([{
+                id: props.selectedConversation.id,
+                unread_count: 0,
+            }]);
+        }
+    } catch {
+        // Keep polling; transient network errors are fine.
+    } finally {
+        pollInFlight = false;
+    }
+}
+
+function startPolling() {
+    stopPolling();
+    pollTimer = window.setInterval(pollUpdates, 2500);
+}
+
+function stopPolling() {
+    if (pollTimer) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+    }
+}
+
+function onVisibilityChange() {
+    if (document.hidden) {
+        return;
+    }
+
+    pollUpdates();
+}
+
+watch(
+    () => props.conversations,
+    (conversations) => {
+        const pendingIds = new Set(
+            localMessages.value
+                .filter((message) => message.status === 'pending' || String(message.id).startsWith('tmp-'))
+                .map((message) => message.id),
+        );
+
+        if (pendingIds.size === 0) {
+            localConversations.value = cloneList(conversations);
+            return;
+        }
+
+        mergeConversations(conversations || []);
+    },
+    { deep: true },
+);
+
+watch(
+    () => [props.selectedConversation?.id, props.messages],
+    () => {
+        const pending = localMessages.value.filter(
+            (message) => message.status === 'pending' || String(message.id).startsWith('tmp-'),
+        );
+        const serverMessages = cloneList(props.messages);
+
+        if (pending.length === 0) {
+            localMessages.value = serverMessages;
+        } else {
+            const byId = new Map(serverMessages.map((message) => [String(message.id), message]));
+            for (const message of pending) {
+                if (!byId.has(String(message.id))) {
+                    byId.set(String(message.id), message);
+                }
+            }
+            localMessages.value = Array.from(byId.values());
+        }
+
+        shouldStickToBottom = true;
+        scrollToBottom();
+    },
+    { deep: true },
+);
+
+onMounted(() => {
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    startPolling();
+});
+
+onUnmounted(() => {
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    stopPolling();
+    clearImagePreview();
 });
 
 const slashQuickReplyQuery = computed(() => {
@@ -340,7 +587,7 @@ function syncConversations() {
     });
 }
 
-function applyQuickReply(reply) {
+async function applyQuickReply(reply) {
     if (!props.selectedConversation) {
         return;
     }
@@ -352,17 +599,56 @@ function applyQuickReply(reply) {
         return;
     }
 
-    router.post(
-        route('messenger.send-quick-reply', [props.selectedConversation.id, reply.id]),
-        {},
+    const clientId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const previewBody = reply.type === 'audio'
+        ? '🎤 Голосовое сообщение'
+        : (reply.body || '🖼 Изображение');
+
+    localMessages.value = [
+        ...localMessages.value,
         {
-            preserveScroll: true,
-            onSuccess: () => {
-                sendForm.reset('body');
-                scrollToBottom();
-            },
+            id: clientId,
+            client_id: clientId,
+            direction: 'outbound',
+            body: previewBody,
+            attachments: [],
+            status: 'pending',
+            sent_at: new Date().toISOString(),
         },
+    ];
+    sendForm.reset('body');
+    sendError.value = '';
+    shouldStickToBottom = true;
+    scrollToBottom();
+    touchConversationAfterSend(
+        { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
+        previewBody,
     );
+
+    try {
+        const { data } = await window.axios.post(
+            route('messenger.send-quick-reply', [props.selectedConversation.id, reply.id]),
+            {},
+            { headers: jsonRequestHeaders },
+        );
+
+        localMessages.value = localMessages.value.filter((message) => message.id !== clientId);
+        if (data?.message) {
+            mergeMessages([data.message]);
+        }
+        if (data?.conversation) {
+            touchConversationAfterSend(data.conversation, previewBody);
+        }
+    } catch (error) {
+        localMessages.value = localMessages.value.map((message) => (
+            message.id === clientId
+                ? { ...message, status: 'failed' }
+                : message
+        ));
+        sendError.value = error?.response?.data?.message
+            || error?.response?.data?.errors?.body?.[0]
+            || 'Не удалось отправить шаблон.';
+    }
 }
 
 function quickReplyPreview(reply) {
@@ -397,35 +683,96 @@ function onMessageInputKeydown(event) {
     }
 }
 
-function sendMessage() {
+async function sendMessage() {
     if (!props.selectedConversation || slashQuickRepliesOpen.value) {
         return;
     }
 
-    if (!sendForm.body.trim() && !sendForm.image) {
+    const body = sendForm.body.trim();
+    const imageFile = sendForm.image;
+
+    if (!body && !imageFile) {
         return;
     }
 
-    sendForm.transform((data) => ({
-        body: data.body,
-        audio: null,
-        image: data.image,
-    })).post(
-        route('messenger.send', props.selectedConversation.id),
+    const clientId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const previewUrl = imagePreviewUrl.value;
+    const optimisticAttachments = imageFile
+        ? [{
+            type: 'image',
+            url: previewUrl || '',
+            name: imageFile.name || 'image.jpg',
+            mime_type: imageFile.type || 'image/jpeg',
+        }]
+        : [];
+
+    localMessages.value = [
+        ...localMessages.value,
         {
-            preserveScroll: true,
-            forceFormData: true,
-            onSuccess: () => {
-                sendForm.reset('body', 'audio', 'image');
-                clearImagePreview();
-                scrollToBottom();
-            },
+            id: clientId,
+            client_id: clientId,
+            direction: 'outbound',
+            body,
+            attachments: optimisticAttachments,
+            status: 'pending',
+            sent_at: new Date().toISOString(),
         },
+    ];
+
+    const formData = new FormData();
+    formData.append('body', body);
+    if (imageFile) {
+        formData.append('image', imageFile);
+    }
+
+    sendForm.reset('body', 'audio', 'image');
+    imagePreviewUrl.value = null;
+    if (imageInput.value) {
+        imageInput.value.value = '';
+    }
+    sendError.value = '';
+    shouldStickToBottom = true;
+    scrollToBottom();
+    touchConversationAfterSend(
+        { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
+        body || '🖼 Изображение',
     );
+
+    try {
+        const { data } = await window.axios.post(
+            route('messenger.send', props.selectedConversation.id),
+            formData,
+            { headers: jsonRequestHeaders },
+        );
+
+        if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+        }
+
+        localMessages.value = localMessages.value.filter((message) => message.id !== clientId);
+        if (data?.message) {
+            mergeMessages([data.message]);
+        }
+        if (data?.conversation) {
+            touchConversationAfterSend(data.conversation, body);
+        }
+    } catch (error) {
+        localMessages.value = localMessages.value.map((message) => (
+            message.id === clientId
+                ? { ...message, status: 'failed' }
+                : message
+        ));
+        sendError.value = error?.response?.data?.message
+            || error?.response?.data?.errors?.body?.[0]
+            || 'Не удалось отправить сообщение.';
+        if (!sendForm.body && body) {
+            sendForm.body = body;
+        }
+    }
 }
 
 async function improveWithAi() {
-    if (!props.chatGptConnected || aiImproving.value || sendForm.processing || isRecording.value) {
+    if (!props.chatGptConnected || aiImproving.value || isRecording.value) {
         return;
     }
 
@@ -488,10 +835,6 @@ function openImageLightbox(url) {
 function closeImageLightbox() {
     lightboxImageUrl.value = null;
 }
-
-onUnmounted(() => {
-    clearImagePreview();
-});
 
 function prefillClientFieldValue(key) {
     const saved = props.linkedClient?.custom_fields?.[key];
@@ -662,7 +1005,7 @@ function pickRecorderMimeType(channel) {
 }
 
 async function startRecording() {
-    if (!props.selectedConversation || sendForm.processing || isRecording.value) {
+    if (!props.selectedConversation || isRecording.value) {
         return;
     }
 
@@ -731,7 +1074,7 @@ function stopRecording() {
     }
 }
 
-function sendVoiceMessage() {
+async function sendVoiceMessage() {
     if (!props.selectedConversation || audioChunks.length === 0) {
         return;
     }
@@ -745,27 +1088,66 @@ function sendVoiceMessage() {
             : (mimeType.includes('mp4') ? 'm4a' : 'webm');
     const blob = new Blob(audioChunks, { type: mimeType });
     const file = new File([blob], `voice.${extension}`, { type: mimeType });
+    const clientId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const localUrl = URL.createObjectURL(blob);
 
-    sendForm.transform(() => ({
-        body: '',
-        audio: file,
-    })).post(
-        route('messenger.send', props.selectedConversation.id),
+    audioChunks = [];
+    mediaRecorder = null;
+
+    localMessages.value = [
+        ...localMessages.value,
         {
-            preserveScroll: true,
-            forceFormData: true,
-            onSuccess: () => {
-                sendForm.reset('body', 'audio');
-                audioChunks = [];
-                mediaRecorder = null;
-                scrollToBottom();
-            },
-            onFinish: () => {
-                audioChunks = [];
-                mediaRecorder = null;
-            },
+            id: clientId,
+            client_id: clientId,
+            direction: 'outbound',
+            body: '',
+            attachments: [{
+                type: 'audio',
+                url: localUrl,
+                name: file.name,
+                mime_type: mimeType,
+            }],
+            status: 'pending',
+            sent_at: new Date().toISOString(),
         },
+    ];
+    sendError.value = '';
+    shouldStickToBottom = true;
+    scrollToBottom();
+    touchConversationAfterSend(
+        { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
+        '🎤 Голосовое сообщение',
     );
+
+    const formData = new FormData();
+    formData.append('body', '');
+    formData.append('audio', file);
+
+    try {
+        const { data } = await window.axios.post(
+            route('messenger.send', props.selectedConversation.id),
+            formData,
+            { headers: jsonRequestHeaders },
+        );
+
+        URL.revokeObjectURL(localUrl);
+        localMessages.value = localMessages.value.filter((message) => message.id !== clientId);
+        if (data?.message) {
+            mergeMessages([data.message]);
+        }
+        if (data?.conversation) {
+            touchConversationAfterSend(data.conversation, '🎤 Голосовое сообщение');
+        }
+    } catch (error) {
+        localMessages.value = localMessages.value.map((message) => (
+            message.id === clientId
+                ? { ...message, status: 'failed' }
+                : message
+        ));
+        sendError.value = error?.response?.data?.message
+            || error?.response?.data?.errors?.body?.[0]
+            || 'Не удалось отправить голосовое сообщение.';
+    }
 }
 
 function formatRecordingTime(seconds) {
@@ -860,7 +1242,7 @@ const messagesWithDateDividers = computed(() => {
     const items = [];
     let lastDateKey = null;
 
-    for (const message of props.messages) {
+    for (const message of localMessages.value) {
         const dateKey = messageDateKey(message.sent_at);
 
         if (dateKey !== lastDateKey) {
@@ -881,6 +1263,30 @@ const messagesWithDateDividers = computed(() => {
 
     return items;
 });
+
+function outboundTicks(message) {
+    if (message.status === 'failed') {
+        return '!';
+    }
+
+    if (message.status === 'pending') {
+        return '✓';
+    }
+
+    return '✓✓';
+}
+
+function outboundTicksClass(message) {
+    if (message.status === 'failed') {
+        return 'text-red-500';
+    }
+
+    if (message.status === 'pending') {
+        return 'text-[#667781]';
+    }
+
+    return 'text-[#53bdeb]';
+}
 
 function participantLabel(conversation) {
     return (
@@ -993,11 +1399,6 @@ function scrollToBottom() {
     });
 }
 
-watch(
-    () => props.messages,
-    () => scrollToBottom(),
-    { immediate: true },
-);
 </script>
 
 <template>
@@ -1352,8 +1753,10 @@ watch(
                     </div>
 
                     <div
+                        ref="messagesContainer"
                         class="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-y-contain bg-[#efeae2] px-2 py-2 sm:space-y-1 sm:px-4 sm:py-3"
                         style="background-image: url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23d9d0c3%22 fill-opacity=%220.35%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z/%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"
+                        @scroll="onMessagesScroll"
                     >
                         <div
                             v-if="messages.length === 0"
@@ -1382,9 +1785,12 @@ watch(
                             >
                             <div
                                 class="group relative max-w-[82%] rounded-lg px-2 py-1.5 text-[13px] leading-snug shadow-sm sm:max-w-[min(100%,28rem)] sm:px-3 sm:py-2 sm:text-sm"
-                                :class="item.message.direction === 'outbound'
-                                    ? 'rounded-tr-none bg-[#d9fdd3]'
-                                    : 'rounded-tl-none bg-white'"
+                                :class="[
+                                    item.message.direction === 'outbound'
+                                        ? 'rounded-tr-none bg-[#d9fdd3]'
+                                        : 'rounded-tl-none bg-white',
+                                    item.message.status === 'failed' ? 'ring-1 ring-red-300 opacity-80' : '',
+                                ]"
                             >
                                 <button
                                     v-if="canSaveAsQuickReply(item.message)"
@@ -1493,9 +1899,10 @@ watch(
                                     <span>{{ formatMessageTime(item.message.sent_at) }}</span>
                                     <span
                                         v-if="item.message.direction === 'outbound'"
-                                        class="text-[#53bdeb]"
+                                        :class="outboundTicksClass(item.message)"
+                                        :title="item.message.status === 'failed' ? 'Не отправлено' : ''"
                                     >
-                                        ✓✓
+                                        {{ outboundTicks(item.message) }}
                                     </span>
                                 </div>
                             </div>
@@ -1523,6 +1930,13 @@ watch(
                             >
                                 Отправить
                             </button>
+                        </div>
+
+                        <div
+                            v-if="sendError"
+                            class="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+                        >
+                            {{ sendError }}
                         </div>
 
                         <div
@@ -1564,7 +1978,7 @@ watch(
                             <button
                                 type="button"
                                 class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f0f2f5] text-[#54656f] transition hover:bg-[#e9edef] disabled:opacity-40 sm:h-10 sm:w-10"
-                                :disabled="sendForm.processing || isRecording"
+                                :disabled="isRecording"
                                 title="Прикрепить изображение"
                                 @click="imageInput?.click()"
                             >
@@ -1590,7 +2004,7 @@ watch(
                                 :class="aiImproving
                                     ? 'bg-[#10a37f] text-white'
                                     : 'bg-[#f0f2f5] text-[#10a37f] hover:bg-[#e6f6f1]'"
-                                :disabled="sendForm.processing || isRecording || aiImproving || !sendForm.body.trim()"
+                                :disabled="isRecording || aiImproving || !sendForm.body.trim()"
                                 title="Улучшить текст с ИИ"
                                 @click="improveWithAi"
                             >
@@ -1658,7 +2072,7 @@ watch(
                                     type="text"
                                     placeholder="Сообщение"
                                     class="w-full rounded-lg border-0 bg-white px-3 py-2 text-[13px] text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30 sm:px-4 sm:py-2.5 sm:text-sm"
-                                    :disabled="sendForm.processing || isRecording"
+                                    :disabled="isRecording"
                                     @keydown="onMessageInputKeydown"
                                 >
                             </div>
@@ -1667,7 +2081,7 @@ watch(
                                 v-if="(sendForm.body.trim() || sendForm.image) && !slashQuickRepliesOpen"
                                 type="submit"
                                 class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#008f6f] disabled:opacity-40 sm:h-10 sm:w-10"
-                                :disabled="sendForm.processing || isRecording"
+                                :disabled="isRecording"
                                 title="Отправить"
                             >
                                 <svg
@@ -1688,7 +2102,6 @@ watch(
                                 :class="isRecording
                                     ? 'bg-[#00a884] text-white shadow-md'
                                     : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'"
-                                :disabled="sendForm.processing"
                                 title="Голосовое сообщение"
                                 @click="isRecording ? stopRecording() : startRecording()"
                             >
@@ -1710,7 +2123,7 @@ watch(
                         </div>
                         <InputError
                             class="mt-2"
-                            :message="sendForm.errors.body || aiError"
+                            :message="sendError || sendForm.errors.body || aiError"
                         />
                     </form>
                     </div>

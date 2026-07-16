@@ -25,6 +25,7 @@ use App\Services\Meta\MetaMessagingSupport;
 use App\Services\Shop\ShopIntegrationService;
 use App\Services\Telegram\TelegramMessengerService;
 use App\Services\Wappi\WappiMessengerService;
+use Carbon\Carbon;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -91,28 +92,9 @@ class MessengerController extends Controller
 
         $messengerField = $this->clientFields->messengerFieldDefinition($companyId);
 
-        $conversations = $conversations->map(function (MessengerConversation $c) use ($messengerField) {
-                $deal = $c->client?->deals->first();
-
-                return [
-                    'id' => $c->id,
-                    'channel' => $c->channel,
-                    'channel_label' => IntegrationProvider::tryFrom($c->channel)?->label() ?? $c->channel,
-                    'participant_id' => $c->participant_id,
-                    'participant_name' => $c->participant_name,
-                    'participant_username' => $c->participant_username,
-                    'display_name' => $this->clientFields->resolveMessengerDisplayName($c, $c->client, $messengerField),
-                    'last_message_at' => $c->last_message_at?->toIso8601String(),
-                    'pipeline_name' => $deal?->pipeline?->name,
-                    'pipeline_id' => $deal?->pipeline_id,
-                    'stage_name' => $deal?->stage?->name,
-                    'stage_id' => $deal?->stage_id,
-                    'stage_color' => $deal?->stage?->color,
-                    'unread_count' => $this->unread->unreadCountForConversation($c),
-                    'assigned_user_id' => $c->assigned_user_id,
-                    'assigned_user_name' => $c->assignee?->name,
-                ];
-            });
+        $conversations = $conversations->map(
+            fn (MessengerConversation $c) => $this->serializeConversation($c, $messengerField),
+        );
 
         $filterPipelines = Pipeline::query()
             ->where('company_id', $companyId)
@@ -213,14 +195,7 @@ class MessengerController extends Controller
                     ->orderBy('sent_at')
                     ->orderBy('id')
                     ->get()
-                    ->map(fn (MessengerMessage $m) => [
-                        'id' => $m->id,
-                        'direction' => $m->direction,
-                        'body' => $m->body,
-                        'attachments' => $this->mapAttachmentsForFrontend($m, $conversation->channel),
-                        'status' => $m->status,
-                        'sent_at' => $m->sent_at?->toIso8601String(),
-                    ]);
+                    ->map(fn (MessengerMessage $m) => $this->serializeMessage($m, $conversation->channel));
             }
         }
 
@@ -260,6 +235,98 @@ class MessengerController extends Controller
             'shopConnected' => $this->shop->isConnected($companyId),
             'webhookUrl' => url('/webhooks/meta'),
             'wappiWebhookUrl' => route('webhooks.wappi.handle'),
+        ]);
+    }
+
+    public function updates(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
+
+        $validated = $request->validate([
+            'since' => ['required', 'date'],
+            'conversation_id' => ['nullable', 'integer'],
+            'after_message_id' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $since = Carbon::parse($validated['since']);
+        $serverTime = now()->toIso8601String();
+        $messengerField = $this->clientFields->messengerFieldDefinition($companyId);
+
+        $instagramIntegration = $this->instagram->integrationForCompany($companyId);
+        $facebookIntegration = $this->facebook->integrationForCompany($companyId);
+        $wappiIntegration = $this->wappi->integrationForCompany($companyId);
+        $telegramIntegration = $this->telegram->integrationForCompany($companyId);
+
+        $channels = array_values(array_filter([
+            $instagramIntegration ? IntegrationProvider::Instagram->value : null,
+            $facebookIntegration ? IntegrationProvider::Facebook->value : null,
+            $wappiIntegration ? IntegrationProvider::Wappi->value : null,
+            $telegramIntegration ? IntegrationProvider::Telegram->value : null,
+        ]));
+
+        $conversationRows = MessengerConversation::query()
+            ->where('company_id', $companyId)
+            ->when($channels !== [], fn ($q) => $q->whereIn('channel', $channels))
+            ->tap(fn ($q) => $this->chatDistribution->scopeVisibleTo($q, $user))
+            ->where(function ($query) use ($since) {
+                $query->where('last_message_at', '>', $since)
+                    ->orWhere('updated_at', '>', $since)
+                    ->orWhere('created_at', '>', $since);
+            })
+            ->with([
+                'assignee:id,name',
+                'client.deals' => fn ($q) => $q
+                    ->with(['pipeline', 'stage'])
+                    ->orderByDesc('id')
+                    ->limit(1),
+            ])
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (MessengerConversation $c) => $this->serializeConversation($c, $messengerField))
+            ->values();
+
+        $messages = [];
+        $conversationId = isset($validated['conversation_id']) ? (int) $validated['conversation_id'] : null;
+
+        if ($conversationId) {
+            $conversation = MessengerConversation::query()
+                ->where('company_id', $companyId)
+                ->whereKey($conversationId)
+                ->first();
+
+            if ($conversation && $this->chatDistribution->userCanViewConversation($user, $conversation)) {
+                $afterMessageId = (int) ($validated['after_message_id'] ?? 0);
+
+                $messageModels = $conversation->messages()
+                    ->where(function ($query) use ($afterMessageId, $since) {
+                        $query->where('id', '>', $afterMessageId)
+                            ->orWhere('updated_at', '>', $since);
+                    })
+                    ->orderBy('sent_at')
+                    ->orderBy('id')
+                    ->get();
+
+                $messages = $messageModels
+                    ->map(fn (MessengerMessage $m) => $this->serializeMessage($m, $conversation->channel))
+                    ->values()
+                    ->all();
+
+                $hasNewInbound = $messageModels->contains(
+                    fn (MessengerMessage $m) => $m->direction === 'inbound' && $m->id > $afterMessageId,
+                );
+
+                if ($hasNewInbound) {
+                    $this->unread->markConversationRead($conversation);
+                }
+            }
+        }
+
+        return response()->json([
+            'server_time' => $serverTime,
+            'conversations' => $conversationRows,
+            'messages' => $messages,
         ]);
     }
 
@@ -467,7 +534,7 @@ class MessengerController extends Controller
             ->with('success', __('Этап воронки обновлён.'));
     }
 
-    public function send(Request $request, MessengerConversation $conversation): RedirectResponse
+    public function send(Request $request, MessengerConversation $conversation): RedirectResponse|JsonResponse
     {
         $user = $request->user();
         $companyId = (int) $user->company_id;
@@ -483,14 +550,17 @@ class MessengerController extends Controller
         if (! $request->hasFile('audio')
             && ! $request->hasFile('image')
             && trim((string) ($validated['body'] ?? '')) === '') {
-            return back()->withErrors(['body' => __('Введите текст, прикрепите изображение или запишите голосовое сообщение.')]);
+            return $this->messengerSendError(
+                $request,
+                __('Введите текст, прикрепите изображение или запишите голосовое сообщение.'),
+            );
         }
 
         try {
             if ($conversation->channel === IntegrationProvider::Wappi->value) {
                 $integration = $this->wappi->integrationForCompany($companyId);
                 if (! $integration) {
-                    return back()->withErrors(['body' => __('WhatsApp (Wappi) не подключён.')]);
+                    return $this->messengerSendError($request, __('WhatsApp (Wappi) не подключён.'));
                 }
 
                 if ($request->hasFile('image')) {
@@ -500,7 +570,7 @@ class MessengerController extends Controller
                     $path = $audio->getRealPath();
 
                     if (! is_string($path) || $path === '') {
-                        return back()->withErrors(['body' => __('Не удалось прочитать аудиофайл.')]);
+                        return $this->messengerSendError($request, __('Не удалось прочитать аудиофайл.'));
                     }
 
                     $this->wappi->sendAudioMessage(
@@ -516,7 +586,7 @@ class MessengerController extends Controller
             } elseif ($conversation->channel === IntegrationProvider::Facebook->value) {
                 $integration = $this->facebook->integrationForCompany($companyId);
                 if (! $integration) {
-                    return back()->withErrors(['body' => __('Facebook не подключён.')]);
+                    return $this->messengerSendError($request, __('Facebook не подключён.'));
                 }
 
                 if ($request->hasFile('image')) {
@@ -529,7 +599,7 @@ class MessengerController extends Controller
             } elseif ($conversation->channel === IntegrationProvider::Instagram->value) {
                 $integration = $this->instagram->integrationForCompany($companyId);
                 if (! $integration) {
-                    return back()->withErrors(['body' => __('Instagram не подключён.')]);
+                    return $this->messengerSendError($request, __('Instagram не подключён.'));
                 }
 
                 if ($request->hasFile('image')) {
@@ -542,7 +612,7 @@ class MessengerController extends Controller
             } elseif ($conversation->channel === IntegrationProvider::Telegram->value) {
                 $integration = $this->telegram->integrationForCompany($companyId);
                 if (! $integration) {
-                    return back()->withErrors(['body' => __('Telegram не подключён.')]);
+                    return $this->messengerSendError($request, __('Telegram не подключён.'));
                 }
 
                 if ($request->hasFile('image')) {
@@ -553,15 +623,13 @@ class MessengerController extends Controller
                     $this->telegram->sendMessage($integration, $conversation, (string) $validated['body']);
                 }
             } else {
-                return back()->withErrors(['body' => __('Канал не поддерживается.')]);
+                return $this->messengerSendError($request, __('Канал не поддерживается.'));
             }
 
             $this->chatDistribution->claimIfNeeded($conversation, $user);
             $conversation->update(['last_message_at' => now()]);
 
-            return redirect()
-                ->route('messenger.index', ['conversation' => $conversation->id])
-                ->with('success', __('Сообщение отправлено.'));
+            return $this->messengerSendSuccess($request, $conversation);
         } catch (RequestException $e) {
             $error = match ($conversation->channel) {
                 IntegrationProvider::Wappi->value => $this->formatWappiRequestError($e),
@@ -569,9 +637,9 @@ class MessengerController extends Controller
                 default => MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage()),
             };
 
-            return back()->withErrors(['body' => $error]);
+            return $this->messengerSendError($request, $error);
         } catch (\Throwable $e) {
-            return back()->withErrors(['body' => $e->getMessage()]);
+            return $this->messengerSendError($request, $e->getMessage());
         }
     }
 
@@ -579,7 +647,7 @@ class MessengerController extends Controller
         Request $request,
         MessengerConversation $conversation,
         MessengerQuickReply $quickReply,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
         $user = $request->user();
         $companyId = (int) $user->company_id;
         abort_unless($conversation->company_id === $companyId, 403);
@@ -590,7 +658,7 @@ class MessengerController extends Controller
             if ($conversation->channel === IntegrationProvider::Wappi->value) {
                 $integration = $this->wappi->integrationForCompany($companyId);
                 if (! $integration) {
-                    return back()->withErrors(['body' => __('WhatsApp (Wappi) не подключён.')]);
+                    return $this->messengerSendError($request, __('WhatsApp (Wappi) не подключён.'));
                 }
 
                 if ($quickReply->type === 'text') {
@@ -598,26 +666,26 @@ class MessengerController extends Controller
                 } elseif (in_array($quickReply->type, ['audio', 'image'], true)) {
                     $this->dispatchWappiQuickReply($integration, $conversation, $quickReply);
                 } else {
-                    return back()->withErrors(['body' => __('Медиа-шаблоны для WhatsApp пока не поддерживаются.')]);
+                    return $this->messengerSendError($request, __('Медиа-шаблоны для WhatsApp пока не поддерживаются.'));
                 }
             } elseif ($conversation->channel === IntegrationProvider::Facebook->value) {
                 $integration = $this->facebook->integrationForCompany($companyId);
                 if (! $integration) {
-                    return back()->withErrors(['body' => __('Facebook не подключён.')]);
+                    return $this->messengerSendError($request, __('Facebook не подключён.'));
                 }
 
                 $this->dispatchQuickReply($this->facebook, $integration, $conversation, $quickReply);
             } elseif ($conversation->channel === IntegrationProvider::Instagram->value) {
                 $integration = $this->instagram->integrationForCompany($companyId);
                 if (! $integration) {
-                    return back()->withErrors(['body' => __('Instagram не подключён.')]);
+                    return $this->messengerSendError($request, __('Instagram не подключён.'));
                 }
 
                 $this->dispatchQuickReply($this->instagram, $integration, $conversation, $quickReply);
             } elseif ($conversation->channel === IntegrationProvider::Telegram->value) {
                 $integration = $this->telegram->integrationForCompany($companyId);
                 if (! $integration) {
-                    return back()->withErrors(['body' => __('Telegram не подключён.')]);
+                    return $this->messengerSendError($request, __('Telegram не подключён.'));
                 }
 
                 if ($quickReply->type === 'text') {
@@ -625,18 +693,16 @@ class MessengerController extends Controller
                 } elseif (in_array($quickReply->type, ['audio', 'image'], true)) {
                     $this->dispatchTelegramQuickReply($integration, $conversation, $quickReply);
                 } else {
-                    return back()->withErrors(['body' => __('Медиа-шаблоны для Telegram пока не поддерживаются.')]);
+                    return $this->messengerSendError($request, __('Медиа-шаблоны для Telegram пока не поддерживаются.'));
                 }
             } else {
-                return back()->withErrors(['body' => __('Канал не поддерживается.')]);
+                return $this->messengerSendError($request, __('Канал не поддерживается.'));
             }
 
             $this->chatDistribution->claimIfNeeded($conversation, $user);
             $conversation->update(['last_message_at' => now()]);
 
-            return redirect()
-                ->route('messenger.index', ['conversation' => $conversation->id])
-                ->with('success', __('Сообщение отправлено.'));
+            return $this->messengerSendSuccess($request, $conversation);
         } catch (RequestException $e) {
             $error = match ($conversation->channel) {
                 IntegrationProvider::Wappi->value => $this->formatWappiRequestError($e),
@@ -644,10 +710,94 @@ class MessengerController extends Controller
                 default => MetaMessagingSupport::formatGraphError($e->response?->json(), $e->getMessage()),
             };
 
-            return back()->withErrors(['body' => $error]);
+            return $this->messengerSendError($request, $error);
         } catch (\Throwable $e) {
-            return back()->withErrors(['body' => $e->getMessage()]);
+            return $this->messengerSendError($request, $e->getMessage());
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function serializeConversation(MessengerConversation $conversation, mixed $messengerField = null): array
+    {
+        $deal = $conversation->client?->deals?->first();
+
+        return [
+            'id' => $conversation->id,
+            'channel' => $conversation->channel,
+            'channel_label' => IntegrationProvider::tryFrom($conversation->channel)?->label() ?? $conversation->channel,
+            'participant_id' => $conversation->participant_id,
+            'participant_name' => $conversation->participant_name,
+            'participant_username' => $conversation->participant_username,
+            'display_name' => $this->clientFields->resolveMessengerDisplayName(
+                $conversation,
+                $conversation->client,
+                $messengerField,
+            ),
+            'last_message_at' => $conversation->last_message_at?->toIso8601String(),
+            'pipeline_name' => $deal?->pipeline?->name,
+            'pipeline_id' => $deal?->pipeline_id,
+            'stage_name' => $deal?->stage?->name,
+            'stage_id' => $deal?->stage_id,
+            'stage_color' => $deal?->stage?->color,
+            'unread_count' => $this->unread->unreadCountForConversation($conversation),
+            'assigned_user_id' => $conversation->assigned_user_id,
+            'assigned_user_name' => $conversation->assignee?->name,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function serializeMessage(MessengerMessage $message, ?string $channel = null): array
+    {
+        return [
+            'id' => $message->id,
+            'direction' => $message->direction,
+            'body' => $message->body,
+            'attachments' => $this->mapAttachmentsForFrontend($message, $channel),
+            'status' => $message->status,
+            'sent_at' => $message->sent_at?->toIso8601String(),
+        ];
+    }
+
+    protected function messengerSendSuccess(Request $request, MessengerConversation $conversation): RedirectResponse|JsonResponse
+    {
+        $conversation->refresh();
+
+        $message = $conversation->messages()
+            ->orderByDesc('id')
+            ->first();
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $message
+                    ? $this->serializeMessage($message, $conversation->channel)
+                    : null,
+                'conversation' => [
+                    'id' => $conversation->id,
+                    'last_message_at' => $conversation->last_message_at?->toIso8601String(),
+                    'unread_count' => 0,
+                ],
+            ]);
+        }
+
+        return redirect()
+            ->route('messenger.index', ['conversation' => $conversation->id])
+            ->with('success', __('Сообщение отправлено.'));
+    }
+
+    protected function messengerSendError(Request $request, string $message): RedirectResponse|JsonResponse
+    {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'errors' => ['body' => [$message]],
+            ], 422);
+        }
+
+        return back()->withErrors(['body' => $message]);
     }
 
     /**
