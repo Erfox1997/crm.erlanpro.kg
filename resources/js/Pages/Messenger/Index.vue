@@ -110,6 +110,7 @@ const slashActiveIndex = ref(0);
 const messageInput = ref(null);
 const imageInput = ref(null);
 const sendError = ref('');
+const quickReplyTargetId = ref(null);
 
 const localConversations = ref(
     (props.conversations || []).map((conversation) => ({ ...conversation })),
@@ -537,11 +538,96 @@ function stageBadgeStyle(color) {
 }
 
 function openConversation(id) {
+    quickReplyTargetId.value = null;
     router.get(
         route('messenger.index'),
         { conversation: id },
         { preserveState: true, preserveScroll: true },
     );
+}
+
+function toggleQuickReplyTarget(messageId) {
+    const message = localMessages.value.find((item) => item.id === messageId);
+    if (!message || !canSaveAsQuickReply(message)) {
+        quickReplyTargetId.value = null;
+        return;
+    }
+
+    quickReplyTargetId.value = quickReplyTargetId.value === messageId ? null : messageId;
+}
+
+function onSalePending({ clientId, total, currency: saleCurrency }) {
+    const totalLabel = Number(total || 0).toLocaleString('ru-RU', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+    });
+
+    localMessages.value = [
+        ...localMessages.value,
+        {
+            id: clientId,
+            client_id: clientId,
+            direction: 'outbound',
+            body: '',
+            attachments: [{
+                type: 'image',
+                url: '',
+                name: 'Чек',
+                mime_type: 'image/png',
+                loading: true,
+            }],
+            status: 'pending',
+            pending_kind: 'receipt',
+            sent_at: new Date().toISOString(),
+            loading_label: `Чек · ${totalLabel} ${saleCurrency || ''}`.trim(),
+        },
+    ];
+    shouldStickToBottom = true;
+    scrollToBottom();
+    touchConversationAfterSend(
+        { id: props.selectedConversation?.id, last_message_at: new Date().toISOString() },
+        'Чек',
+    );
+}
+
+async function onSaleFinished({ clientId, ok, message, warning }) {
+    if (ok) {
+        localMessages.value = localMessages.value.filter((item) => item.id !== clientId);
+        sendError.value = warning || '';
+        await pollUpdates();
+        shouldStickToBottom = true;
+        scrollToBottom();
+        return;
+    }
+
+    localMessages.value = localMessages.value.map((item) => (
+        item.id === clientId
+            ? {
+                ...item,
+                status: 'failed',
+                body: message || 'Не удалось создать продажу',
+                attachments: [{
+                    type: 'image',
+                    url: '',
+                    name: 'Чек',
+                    loading: false,
+                    failed: true,
+                }],
+            }
+            : item
+    ));
+    sendError.value = message || 'Не удалось создать продажу.';
+}
+
+async function onQuoteFinished({ ok, message }) {
+    if (ok) {
+        await pollUpdates();
+        shouldStickToBottom = true;
+        scrollToBottom();
+        return;
+    }
+
+    sendError.value = message || 'Не удалось отправить расчёт.';
 }
 
 function openFilterModal() {
@@ -1333,6 +1419,15 @@ function messageHasContent(message) {
 }
 
 function canSaveAsQuickReply(message) {
+    if (
+        String(message.id).startsWith('tmp-')
+        || message.status === 'pending'
+        || message.status === 'failed'
+        || message.attachments?.[0]?.loading
+    ) {
+        return false;
+    }
+
     if (message.body?.trim()) {
         return true;
     }
@@ -1791,11 +1886,13 @@ function scrollToBottom() {
                                         : 'rounded-tl-none bg-white',
                                     item.message.status === 'failed' ? 'ring-1 ring-red-300 opacity-80' : '',
                                 ]"
+                                @click="toggleQuickReplyTarget(item.message.id)"
                             >
                                 <button
                                     v-if="canSaveAsQuickReply(item.message)"
                                     type="button"
-                                    class="absolute -top-2 right-1 z-10 rounded-full bg-white p-1 text-[#54656f] opacity-100 shadow-sm ring-1 ring-[#d1d7db] transition hover:bg-[#f0f2f5] hover:text-[#008069] sm:opacity-0 sm:group-hover:opacity-100"
+                                    class="absolute -top-2 right-1 z-10 rounded-full bg-white p-1 text-[#54656f] opacity-0 shadow-sm ring-1 ring-[#d1d7db] transition hover:bg-[#f0f2f5] hover:text-[#008069] sm:group-hover:opacity-100"
+                                    :class="{ 'opacity-100': quickReplyTargetId === item.message.id }"
                                     title="В быстрые ответы"
                                     @click.stop="openSaveQuickReplyModal(item.message)"
                                 >
@@ -1851,13 +1948,33 @@ function scrollToBottom() {
                                             </span>
                                         </p>
 
+                                        <div
+                                            v-else-if="attachment.type === 'image' && attachment.loading"
+                                            class="flex h-40 w-44 flex-col items-center justify-center gap-3 rounded-md bg-white/70 sm:h-48 sm:w-52"
+                                        >
+                                            <span
+                                                class="inline-block h-9 w-9 animate-spin rounded-full border-[3px] border-[#00a884] border-t-transparent"
+                                                aria-hidden="true"
+                                            />
+                                            <span class="px-2 text-center text-xs text-[#54656f]">
+                                                {{ item.message.loading_label || 'Чек загружается…' }}
+                                            </span>
+                                        </div>
+
                                         <img
                                             v-else-if="attachment.type === 'image' && attachment.url"
                                             :src="attachment.url"
                                             :alt="attachment.name || attachmentLabel(attachment.type)"
                                             class="max-h-48 max-w-full cursor-zoom-in rounded-md object-contain transition hover:opacity-90 sm:max-h-72"
-                                            @click="openImageLightbox(attachment.url)"
+                                            @click.stop="openImageLightbox(attachment.url)"
                                         >
+
+                                        <p
+                                            v-else-if="attachment.type === 'image' && attachment.failed"
+                                            class="text-xs text-red-600"
+                                        >
+                                            Не удалось загрузить чек
+                                        </p>
 
                                         <p
                                             v-else-if="attachment.type === 'image'"
@@ -2419,6 +2536,9 @@ function scrollToBottom() {
             :quote-url="route('shop-sales.quote', selectedConversation.id)"
             :draft-url="route('shop-sales.draft.show', selectedConversation.id)"
             @close="sellModalOpen = false"
+            @sale-pending="onSalePending"
+            @sale-finished="onSaleFinished"
+            @quote-finished="onQuoteFinished"
         />
 
         <p

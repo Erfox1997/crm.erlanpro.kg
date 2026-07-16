@@ -131,7 +131,7 @@ class ShopSaleController extends Controller
         return response()->json($catalog);
     }
 
-    public function store(Request $request, MessengerConversation $conversation): RedirectResponse
+    public function store(Request $request, MessengerConversation $conversation): RedirectResponse|JsonResponse
     {
         $user = $request->user();
         $companyId = (int) $user->company_id;
@@ -139,7 +139,9 @@ class ShopSaleController extends Controller
         abort_unless($this->chatDistribution->userCanViewConversation($user, $conversation), 403);
 
         $integration = $this->shop->integrationForCompany($companyId);
-        abort_unless($integration && $this->shop->isConnected($companyId), 422, __('Магазин не подключён.'));
+        if (! $integration || ! $this->shop->isConnected($companyId)) {
+            return $this->shopSaleError($request, __('Магазин не подключён.'));
+        }
 
         $data = $this->validatedSalePayload($request, requireFullPayment: true);
         $clientMeta = $this->clientMeta($conversation, $data);
@@ -147,6 +149,13 @@ class ShopSaleController extends Controller
         try {
             $response = $this->shop->createSale($integration, array_merge($data, $clientMeta));
         } catch (ValidationException $e) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => collect($e->errors())->flatten()->first() ?: __('Ошибка продажи.'),
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+
             return back()->withErrors($e->errors());
         }
 
@@ -177,9 +186,24 @@ class ShopSaleController extends Controller
                 ['shop_name' => $integration->metadata['shop_name'] ?? null],
             );
         } catch (\Throwable $e) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'ok' => true,
+                    'sale_id' => $shopSale->id,
+                    'warning' => __('Продажа создана, но чек не отправлен: :msg', ['msg' => $e->getMessage()]),
+                ]);
+            }
+
             return redirect()
                 ->route('messenger.index', ['conversation' => $conversation->id])
                 ->with('success', __('Продажа создана, но чек не отправлен: :msg', ['msg' => $e->getMessage()]));
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'sale_id' => $shopSale->id,
+            ]);
         }
 
         return redirect()
@@ -189,7 +213,7 @@ class ShopSaleController extends Controller
     /**
      * Send a text-only quote (not a sale, no image, no shop document).
      */
-    public function quote(Request $request, MessengerConversation $conversation): RedirectResponse
+    public function quote(Request $request, MessengerConversation $conversation): RedirectResponse|JsonResponse
     {
         $user = $request->user();
         $companyId = (int) $user->company_id;
@@ -215,11 +239,34 @@ class ShopSaleController extends Controller
                 $this->receipts->formatQuoteText($data['items'], $total),
             );
         } catch (\Throwable $e) {
-            return back()->withErrors(['quote' => __('Не удалось отправить расчёт: :msg', ['msg' => $e->getMessage()])]);
+            return $this->shopSaleError(
+                $request,
+                __('Не удалось отправить расчёт: :msg', ['msg' => $e->getMessage()]),
+                'quote',
+            );
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true]);
         }
 
         return redirect()
             ->route('messenger.index', ['conversation' => $conversation->id]);
+    }
+
+    protected function shopSaleError(
+        Request $request,
+        string $message,
+        string $key = 'shop',
+    ): RedirectResponse|JsonResponse {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'errors' => [$key => [$message]],
+            ], 422);
+        }
+
+        return back()->withErrors([$key => $message]);
     }
 
     public function showDraft(Request $request, MessengerConversation $conversation): JsonResponse

@@ -179,7 +179,9 @@ class ShopIntegrationService
             ])
             // Avoid http→https redirects that drop the Authorization header.
             ->withOptions(['allow_redirects' => false])
-            ->timeout(45);
+            // DNS/connect can be slow from some hosts; default connect timeout is 10s.
+            ->connectTimeout(30)
+            ->timeout(60);
     }
 
     public function normalizeShopUrl(string $url): string

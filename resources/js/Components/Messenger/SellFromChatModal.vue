@@ -4,7 +4,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import Modal from '@/Components/Modal.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
-import { router, useForm } from '@inertiajs/vue3';
+import { useForm } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -18,7 +18,7 @@ const props = defineProps({
     draftUrl: { type: String, required: true },
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'sale-pending', 'sale-finished', 'quote-finished']);
 
 const loading = ref(false);
 const loadError = ref('');
@@ -40,6 +40,8 @@ const draftSaving = ref(false);
 const draftStatus = ref('');
 const hasDraft = ref(false);
 const actionError = ref('');
+const submittingSale = ref(false);
+const submittingQuote = ref(false);
 
 const form = useForm({
     warehouse_id: null,
@@ -49,9 +51,10 @@ const form = useForm({
     payments: {},
 });
 
-const quoteForm = useForm({
-    items: [],
-});
+const jsonHeaders = {
+    Accept: 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+};
 
 const categoryCards = computed(() => {
     const counts = {};
@@ -142,7 +145,6 @@ watch(
         }
 
         form.clearErrors();
-        quoteForm.clearErrors();
         actionError.value = '';
         draftStatus.value = '';
         search.value = '';
@@ -452,32 +454,38 @@ function buildPaymentPayload() {
     return paymentPayload;
 }
 
-function submitQuote() {
-    if (cart.value.length === 0) {
+async function submitQuote() {
+    if (cart.value.length === 0 || submittingQuote.value) {
         return;
     }
 
     actionError.value = '';
-    quoteForm.items = cart.value.map((line) => ({
+    submittingQuote.value = true;
+
+    const items = cart.value.map((line) => ({
         name: line.name,
         quantity: line.quantity,
         price: line.price,
     }));
 
-    quoteForm.post(props.quoteUrl, {
-        preserveScroll: true,
-        onSuccess: () => {
-            close();
-            router.reload({ only: ['messages', 'conversations', 'selectedConversation'] });
-        },
-        onError: (errors) => {
-            actionError.value = errors.quote || Object.values(errors)[0] || 'Не удалось отправить расчёт';
-        },
-    });
+    close();
+
+    try {
+        await window.axios.post(props.quoteUrl, { items }, { headers: jsonHeaders });
+        emit('quote-finished', { ok: true });
+    } catch (error) {
+        const message = error?.response?.data?.message
+            || error?.response?.data?.errors?.quote?.[0]
+            || Object.values(error?.response?.data?.errors || {})[0]?.[0]
+            || 'Не удалось отправить расчёт';
+        emit('quote-finished', { ok: false, message });
+    } finally {
+        submittingQuote.value = false;
+    }
 }
 
-function submit() {
-    if (! warehouseId.value || cart.value.length === 0) {
+async function submit() {
+    if (! warehouseId.value || cart.value.length === 0 || submittingSale.value) {
         return;
     }
 
@@ -493,23 +501,51 @@ function submit() {
     }
 
     actionError.value = '';
-    form.warehouse_id = warehouseId.value;
-    form.items = cart.value.map((line) => ({
-        product_id: line.product_id,
-        quantity: line.quantity,
-        price: line.price,
-        unit_type: line.unit_type || 'primary',
-    }));
-    form.payments = paymentPayload;
+    submittingSale.value = true;
 
-    form.post(props.submitUrl, {
-        preserveScroll: true,
-        onSuccess: () => {
-            hasDraft.value = false;
-            close();
-            router.reload({ only: ['messages', 'conversations', 'selectedConversation'] });
-        },
+    const clientId = `tmp-receipt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const total = cartTotal.value;
+    const payload = {
+        warehouse_id: warehouseId.value,
+        client_name: form.client_name,
+        client_phone: form.client_phone,
+        items: cart.value.map((line) => ({
+            product_id: line.product_id,
+            quantity: line.quantity,
+            price: line.price,
+            unit_type: line.unit_type || 'primary',
+        })),
+        payments: paymentPayload,
+    };
+
+    emit('sale-pending', {
+        clientId,
+        total,
+        currency: currency.value,
     });
+    hasDraft.value = false;
+    close();
+
+    try {
+        const { data } = await window.axios.post(props.submitUrl, payload, { headers: jsonHeaders });
+        emit('sale-finished', {
+            clientId,
+            ok: true,
+            warning: data?.warning || '',
+        });
+    } catch (error) {
+        const message = error?.response?.data?.message
+            || error?.response?.data?.errors?.shop?.[0]
+            || Object.values(error?.response?.data?.errors || {})[0]?.[0]
+            || 'Не удалось создать продажу.';
+        emit('sale-finished', {
+            clientId,
+            ok: false,
+            message,
+        });
+    } finally {
+        submittingSale.value = false;
+    }
 }
 
 function roundMoney(value) {
@@ -842,7 +878,7 @@ function money(value) {
                     </div>
 
                     <InputError
-                        :message="actionError || form.errors.payments || form.errors.shop || form.errors.items || form.errors.client_phone || quoteForm.errors.quote"
+                        :message="actionError || form.errors.payments || form.errors.shop || form.errors.items || form.errors.client_phone"
                     />
                 </template>
             </div>
@@ -860,7 +896,7 @@ function money(value) {
                     <SecondaryButton
                         type="button"
                         class="flex-1 justify-center !border-sky-300 !text-sky-800"
-                        :disabled="quoteForm.processing || !cart.length || loading"
+                        :disabled="submittingQuote || submittingSale || !cart.length || loading"
                         @click="submitQuote"
                     >
                         Посчитать
@@ -873,7 +909,7 @@ function money(value) {
                     <PrimaryButton
                         type="button"
                         class="flex-1 justify-center !bg-amber-600 hover:!bg-amber-500"
-                        :disabled="form.processing || !cart.length || !warehouseId || loading || !isFullyPaid"
+                        :disabled="submittingSale || submittingQuote || !cart.length || !warehouseId || loading || !isFullyPaid"
                         @click="submit"
                     >
                         Продать {{ cart.length ? `· ${money(cartTotal)}` : '' }}
