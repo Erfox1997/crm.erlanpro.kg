@@ -5,11 +5,13 @@ use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\PaymentRequisiteController as AdminPaymentRequisiteController;
 use App\Http\Controllers\Admin\TariffController as AdminTariffController;
 use App\Http\Controllers\BroadcastController;
+use App\Http\Controllers\ChatDistributionController;
 use App\Http\Controllers\ClientFieldDefinitionController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CommentsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DealController;
+use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\FunnelController;
 use App\Http\Controllers\IntegrationController;
 use App\Http\Controllers\MessengerController;
@@ -18,6 +20,7 @@ use App\Http\Controllers\MetaOAuthController;
 use App\Http\Controllers\MetaWebhookController;
 use App\Http\Controllers\PipelineController;
 use App\Http\Controllers\PipelineTunnelController;
+use App\Http\Controllers\PositionController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StageController;
 use App\Http\Controllers\StageTunnelController;
@@ -81,13 +84,14 @@ Route::middleware(['auth', 'verified', 'platform.admin'])
         Route::post('payment-requisites', [AdminPaymentRequisiteController::class, 'update'])->name('payment-requisites.update');
     });
 
-Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () {
+Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
     Route::resource('clients', ClientController::class)->except(['show']);
 
     Route::get('/messenger', [MessengerController::class, 'index'])->name('messenger.index');
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
+    Route::post('/messenger/ai-improve', [MessengerController::class, 'improveWithAi'])->name('messenger.ai-improve');
     Route::get('/comments', [CommentsController::class, 'index'])->name('comments.index');
     Route::post('/comments/sync', [CommentsController::class, 'sync'])->name('comments.sync');
     Route::post('/comments/{comment}/reply', [CommentsController::class, 'reply'])->name('comments.reply');
@@ -139,6 +143,21 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
     Route::put('/integrations/{provider}', [IntegrationController::class, 'update'])->name('integrations.update');
     Route::delete('/integrations/{provider}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
     Route::get('/tariffs', [TariffController::class, 'index'])->name('tariffs.index');
+
+    Route::get('/positions', [PositionController::class, 'index'])->name('positions.index');
+    Route::post('/positions', [PositionController::class, 'store'])->name('positions.store');
+    Route::put('/positions/{position}', [PositionController::class, 'update'])->name('positions.update');
+    Route::delete('/positions/{position}', [PositionController::class, 'destroy'])->name('positions.destroy');
+
+    Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
+    Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
+    Route::post('/employees/import', [EmployeeController::class, 'import'])->name('employees.import');
+    Route::get('/employees/sample', [EmployeeController::class, 'sample'])->name('employees.sample');
+    Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');
+    Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
+
+    Route::get('/chat-distribution', [ChatDistributionController::class, 'index'])->name('chat-distribution.index');
+    Route::put('/chat-distribution', [ChatDistributionController::class, 'update'])->name('chat-distribution.update');
 
     Route::get('/deals', function (Request $request) {
         return redirect()->route('funnels.index', $request->query());

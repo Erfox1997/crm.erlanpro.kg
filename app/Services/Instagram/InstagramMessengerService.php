@@ -8,6 +8,7 @@ use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Services\Meta\MetaAttachmentService;
 use App\Services\Meta\MetaMessagingSupport;
+use App\Services\Messenger\ChatDistributionService;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
@@ -17,6 +18,7 @@ class InstagramMessengerService
 {
     public function __construct(
         private MetaAttachmentService $metaAttachments,
+        private ChatDistributionService $chatDistribution,
     ) {}
 
     public function graphVersion(): string
@@ -616,6 +618,8 @@ class InstagramMessengerService
             ],
         );
 
+        $this->chatDistribution->assignIfNew($conversation);
+
         $externalId = (string) ($conversationData['id'] ?? '');
         if ($externalId === '') {
             return;
@@ -1025,6 +1029,8 @@ class InstagramMessengerService
                 'participant_username' => null,
             ],
         );
+
+        $this->chatDistribution->assignIfNew($conversation);
 
         $externalId = (string) $message['mid'];
         $existing = MessengerMessage::query()

@@ -42,6 +42,11 @@ class Company extends Model
         return $this->hasOne(User::class)->where('company_role', 'owner');
     }
 
+    public function positions(): HasMany
+    {
+        return $this->hasMany(Position::class)->orderBy('name');
+    }
+
     public function clients(): HasMany
     {
         return $this->hasMany(Client::class);

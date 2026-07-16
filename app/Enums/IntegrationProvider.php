@@ -8,6 +8,7 @@ enum IntegrationProvider: string
     case Instagram = 'instagram';
     case Telegram = 'telegram';
     case Facebook = 'facebook';
+    case ChatGpt = 'chatgpt';
 
     public function label(): string
     {
@@ -16,6 +17,7 @@ enum IntegrationProvider: string
             self::Instagram => 'Instagram',
             self::Telegram => 'Telegram',
             self::Facebook => 'Facebook',
+            self::ChatGpt => 'ChatGPT',
         };
     }
 
@@ -26,6 +28,15 @@ enum IntegrationProvider: string
             self::Instagram => 'Direct-сообщения Instagram.',
             self::Telegram => 'Telegram-бот для личных сообщений клиентов.',
             self::Facebook => 'Messenger страницы Facebook.',
+            self::ChatGpt => 'ИИ-помощник в мессенджере: поправляет текст и добавляет эмодзи.',
+        };
+    }
+
+    public function isMessagingChannel(): bool
+    {
+        return match ($this) {
+            self::ChatGpt => false,
+            default => true,
         };
     }
 
@@ -35,6 +46,17 @@ enum IntegrationProvider: string
     public static function values(): array
     {
         return array_column(self::cases(), 'value');
+    }
+
+    /**
+     * @return list<self>
+     */
+    public static function messagingChannels(): array
+    {
+        return array_values(array_filter(
+            self::cases(),
+            fn (self $provider) => $provider->isMessagingChannel(),
+        ));
     }
 
     public static function tryFromSlug(string $slug): ?self

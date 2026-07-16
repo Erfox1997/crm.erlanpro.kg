@@ -7,6 +7,7 @@ use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Services\Meta\MetaAttachmentService;
+use App\Services\Messenger\ChatDistributionService;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
@@ -19,6 +20,7 @@ class TelegramMessengerService
     public function __construct(
         private TelegramApiClient $api,
         private MetaAttachmentService $metaAttachments,
+        private ChatDistributionService $chatDistribution,
     ) {}
 
     public function integrationForCompany(int $companyId): ?CompanyIntegration
@@ -346,6 +348,8 @@ class TelegramMessengerService
                 'participant_username' => $message['from']['username'] ?? null,
             ],
         );
+
+        $this->chatDistribution->assignIfNew($conversation);
 
         $this->updateConversationMeta($conversation, $message, $chat);
 

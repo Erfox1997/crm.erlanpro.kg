@@ -7,6 +7,7 @@ use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Services\Meta\MetaAttachmentService;
+use App\Services\Messenger\ChatDistributionService;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
@@ -18,6 +19,7 @@ class WappiMessengerService
     public function __construct(
         private WappiApiClient $api,
         private MetaAttachmentService $metaAttachments,
+        private ChatDistributionService $chatDistribution,
     ) {}
 
     public function integrationForCompany(int $companyId): ?CompanyIntegration
@@ -700,6 +702,8 @@ class WappiMessengerService
             ],
         );
 
+        $this->chatDistribution->assignIfNew($conversation);
+
         $this->updateConversationMeta($conversation, $message, $chatId);
 
         $existing = MessengerMessage::query()
@@ -763,6 +767,8 @@ class WappiMessengerService
                 'participant_username' => $this->chatPhone($chat),
             ],
         );
+
+        $this->chatDistribution->assignIfNew($conversation);
 
         foreach ($messages as $message) {
             if (! is_array($message)) {

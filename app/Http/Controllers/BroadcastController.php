@@ -263,7 +263,7 @@ class BroadcastController extends Controller
             ->get()
             ->keyBy('provider');
 
-        return collect(IntegrationProvider::cases())
+        return collect(IntegrationProvider::messagingChannels())
             ->map(function (IntegrationProvider $provider) use ($stored) {
                 $record = $stored->get($provider->value);
                 $connected = match ($provider) {

@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'company' => \App\Http\Middleware\EnsureUserHasCompany::class,
             'tenant' => \App\Http\Middleware\EnsureTenantAccess::class,
             'platform.admin' => \App\Http\Middleware\EnsurePlatformAdmin::class,
+            'page.access' => \App\Http\Middleware\EnsurePageAccess::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [

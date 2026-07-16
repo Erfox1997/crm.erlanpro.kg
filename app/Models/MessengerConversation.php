@@ -16,6 +16,7 @@ class MessengerConversation extends Model
         'participant_name',
         'participant_username',
         'client_id',
+        'assigned_user_id',
         'last_message_at',
         'last_read_at',
     ];
@@ -36,6 +37,11 @@ class MessengerConversation extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
+    }
+
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_user_id');
     }
 
     public function messages(): HasMany

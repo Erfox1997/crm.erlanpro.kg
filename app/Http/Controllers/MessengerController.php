@@ -11,11 +11,13 @@ use App\Models\MessengerMessage;
 use App\Models\MessengerQuickReply;
 use App\Models\Pipeline;
 use App\Models\Stage;
+use App\Services\ChatGpt\ChatGptService;
 use App\Services\Client\ClientFieldService;
 use App\Services\Deal\DealStageService;
-use App\Services\Messenger\MessengerFunnelService;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
+use App\Services\Messenger\ChatDistributionService;
+use App\Services\Messenger\MessengerFunnelService;
 use App\Services\Messenger\MessengerSyncService;
 use App\Services\Messenger\MessengerUnreadService;
 use App\Services\Meta\MetaAttachmentService;
@@ -23,6 +25,7 @@ use App\Services\Meta\MetaMessagingSupport;
 use App\Services\Telegram\TelegramMessengerService;
 use App\Services\Wappi\WappiMessengerService;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -39,17 +42,20 @@ class MessengerController extends Controller
         private FacebookMessengerService $facebook,
         private WappiMessengerService $wappi,
         private TelegramMessengerService $telegram,
+        private ChatGptService $chatGpt,
         private MetaAttachmentService $metaAttachments,
         private MessengerSyncService $messengerSync,
         private MessengerUnreadService $unread,
         private ClientFieldService $clientFields,
         private MessengerFunnelService $messengerFunnel,
         private DealStageService $dealStages,
+        private ChatDistributionService $chatDistribution,
     ) {}
 
     public function index(Request $request): Response
     {
-        $companyId = (int) $request->user()->company_id;
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
 
         CreateDefaultPipelineForCompany::ensure(Company::query()->findOrFail($companyId));
 
@@ -57,6 +63,7 @@ class MessengerController extends Controller
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
         $wappiIntegration = $this->wappi->integrationForCompany($companyId);
         $telegramIntegration = $this->telegram->integrationForCompany($companyId);
+        $chatGptIntegration = $this->chatGpt->integrationForCompany($companyId);
 
         $channels = array_values(array_filter([
             $instagramIntegration ? IntegrationProvider::Instagram->value : null,
@@ -68,9 +75,11 @@ class MessengerController extends Controller
         $conversations = MessengerConversation::query()
             ->where('company_id', $companyId)
             ->when($channels !== [], fn ($q) => $q->whereIn('channel', $channels))
+            ->tap(fn ($q) => $this->chatDistribution->scopeVisibleTo($q, $user))
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
             ->with([
+                'assignee:id,name',
                 'client.deals' => fn ($q) => $q
                     ->with(['pipeline', 'stage'])
                     ->orderByDesc('id')
@@ -98,6 +107,8 @@ class MessengerController extends Controller
                     'stage_id' => $deal?->stage_id,
                     'stage_color' => $deal?->stage?->color,
                     'unread_count' => $this->unread->unreadCountForConversation($c),
+                    'assigned_user_id' => $c->assigned_user_id,
+                    'assigned_user_name' => $c->assignee?->name,
                 ];
             });
 
@@ -156,8 +167,12 @@ class MessengerController extends Controller
             $conversation = MessengerConversation::query()
                 ->where('company_id', $companyId)
                 ->whereKey((int) $selectedId)
-                ->with('client')
+                ->with(['client', 'assignee:id,name'])
                 ->first();
+
+            if ($conversation && ! $this->chatDistribution->userCanViewConversation($user, $conversation)) {
+                $conversation = null;
+            }
 
             if ($conversation) {
                 $this->unread->markConversationRead($conversation);
@@ -175,6 +190,8 @@ class MessengerController extends Controller
                         $conversation->client,
                         $messengerField,
                     ),
+                    'assigned_user_id' => $conversation->assigned_user_id,
+                    'assigned_user_name' => $conversation->assignee?->name,
                 ];
 
                 $funnelDeal = $this->messengerFunnel->dealPayloadForConversation($conversation);
@@ -209,6 +226,7 @@ class MessengerController extends Controller
             'facebookConnected' => $facebookIntegration !== null,
             'wappiConnected' => $wappiIntegration !== null,
             'telegramConnected' => $telegramIntegration !== null,
+            'chatGptConnected' => $chatGptIntegration !== null,
             'instagramAccount' => $instagramIntegration ? [
                 'username' => $instagramIntegration->metadata['username'] ?? null,
                 'name' => $instagramIntegration->metadata['name'] ?? null,
@@ -238,6 +256,34 @@ class MessengerController extends Controller
             'funnelDeal' => $funnelDeal,
             'webhookUrl' => url('/webhooks/meta'),
             'wappiWebhookUrl' => route('webhooks.wappi.handle'),
+        ]);
+    }
+
+    public function improveWithAi(Request $request): JsonResponse
+    {
+        $companyId = (int) $request->user()->company_id;
+
+        $validated = $request->validate([
+            'body' => 'required|string|max:5000',
+        ]);
+
+        $integration = $this->chatGpt->integrationForCompany($companyId);
+        if (! $integration) {
+            return response()->json([
+                'message' => __('Подключите ChatGPT в разделе «Интеграции».'),
+            ], 422);
+        }
+
+        try {
+            $improved = $this->chatGpt->improveMessage($integration, $validated['body']);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'body' => $improved,
         ]);
     }
 
@@ -419,8 +465,10 @@ class MessengerController extends Controller
 
     public function send(Request $request, MessengerConversation $conversation): RedirectResponse
     {
-        $companyId = (int) $request->user()->company_id;
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
         abort_unless($conversation->company_id === $companyId, 403);
+        abort_unless($this->chatDistribution->userCanViewConversation($user, $conversation), 403);
 
         $validated = $request->validate([
             'body' => 'nullable|string|max:2000',
@@ -504,6 +552,7 @@ class MessengerController extends Controller
                 return back()->withErrors(['body' => __('Канал не поддерживается.')]);
             }
 
+            $this->chatDistribution->claimIfNeeded($conversation, $user);
             $conversation->update(['last_message_at' => now()]);
 
             return redirect()
@@ -527,9 +576,11 @@ class MessengerController extends Controller
         MessengerConversation $conversation,
         MessengerQuickReply $quickReply,
     ): RedirectResponse {
-        $companyId = (int) $request->user()->company_id;
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
         abort_unless($conversation->company_id === $companyId, 403);
         abort_unless($quickReply->company_id === $companyId, 403);
+        abort_unless($this->chatDistribution->userCanViewConversation($user, $conversation), 403);
 
         try {
             if ($conversation->channel === IntegrationProvider::Wappi->value) {
@@ -576,6 +627,7 @@ class MessengerController extends Controller
                 return back()->withErrors(['body' => __('Канал не поддерживается.')]);
             }
 
+            $this->chatDistribution->claimIfNeeded($conversation, $user);
             $conversation->update(['last_message_at' => now()]);
 
             return redirect()

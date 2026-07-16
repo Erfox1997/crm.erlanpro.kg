@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\IntegrationProvider;
 use App\Models\CompanyIntegration;
+use App\Services\ChatGpt\ChatGptService;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Meta\MetaMessagingSupport;
@@ -84,6 +85,12 @@ class IntegrationController extends Controller
                 $item['webhook_url'] = filled($record->metadata['webhook_secret'] ?? null)
                     ? route('webhooks.telegram.handle', ['secret' => $record->metadata['webhook_secret']])
                     : null;
+            }
+
+            if ($provider === IntegrationProvider::ChatGpt && $hasToken) {
+                $item['account'] = [
+                    'name' => $record->metadata['model'] ?? config('services.openai.model', 'gpt-4o-mini'),
+                ];
             }
 
             return $item;
@@ -180,6 +187,31 @@ class IntegrationController extends Controller
             } catch (\Throwable $e) {
                 return back()->withErrors([
                     'api_token' => __('Telegram API отклонил токен: :msg', [
+                        'msg' => $e->getMessage(),
+                    ]),
+                ]);
+            }
+
+            $attributes = [
+                'api_token' => $connection['api_token'],
+                'metadata' => $connection['metadata'],
+            ];
+        }
+
+        if ($integrationProvider === IntegrationProvider::ChatGpt) {
+            $existing = CompanyIntegration::query()
+                ->where('company_id', $companyId)
+                ->where('provider', $integrationProvider->value)
+                ->first();
+
+            try {
+                $connection = app(ChatGptService::class)->connectFromToken(
+                    $apiToken,
+                    $existing?->metadata,
+                );
+            } catch (\Throwable $e) {
+                return back()->withErrors([
+                    'api_token' => __('OpenAI отклонил ключ: :msg', [
                         'msg' => $e->getMessage(),
                     ]),
                 ]);

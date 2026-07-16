@@ -164,7 +164,7 @@ class BroadcastCampaignService
     protected function assertChannelConnected(int $companyId, string $channel): void
     {
         $provider = IntegrationProvider::tryFrom($channel);
-        if (! $provider) {
+        if (! $provider || ! $provider->isMessagingChannel()) {
             throw ValidationException::withMessages([
                 'channel' => __('Канал не поддерживается.'),
             ]);

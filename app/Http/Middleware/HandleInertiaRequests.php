@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Company;
 use App\Services\Comments\CommentsUnreadService;
 use App\Services\Messenger\MessengerUnreadService;
+use App\Support\CrmPageCatalog;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -37,6 +38,7 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'pagePermissions' => fn () => $this->sharedPagePermissions($request),
             'branding' => [
                 'appName' => config('app.name'),
                 'name' => 'ErlanPro',
@@ -99,7 +101,7 @@ class HandleInertiaRequests extends Middleware
             return 0;
         }
 
-        return app(MessengerUnreadService::class)->totalUnreadForCompany((int) $user->company_id);
+        return app(MessengerUnreadService::class)->totalUnreadForCompany((int) $user->company_id, $user);
     }
 
     private function sharedCommentsUnread(Request $request): int
@@ -110,5 +112,21 @@ class HandleInertiaRequests extends Middleware
         }
 
         return app(CommentsUnreadService::class)->totalUnreadForCompany((int) $user->company_id);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function sharedPagePermissions(Request $request): array
+    {
+        $user = $request->user();
+
+        if ($user === null || ! $user->company_id) {
+            return [];
+        }
+
+        $user->loadMissing('position');
+
+        return CrmPageCatalog::allowedPagesFor($user);
     }
 }

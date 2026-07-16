@@ -63,6 +63,7 @@ const providerAccent = {
     instagram: 'border-pink-200 bg-pink-50/40',
     telegram: 'border-sky-200 bg-sky-50/40',
     facebook: 'border-blue-200 bg-blue-50/40',
+    chatgpt: 'border-teal-200 bg-teal-50/40',
 };
 
 function saveToken(provider) {
@@ -131,6 +132,10 @@ function isWappiProvider(provider) {
 
 function isTelegramProvider(provider) {
     return provider === 'telegram';
+}
+
+function isChatGptProvider(provider) {
+    return provider === 'chatgpt';
 }
 
 function wappiCanSave() {
@@ -403,6 +408,64 @@ function wappiCanSave() {
                                     :disabled="
                                         forms.telegram.processing ||
                                         !tokenInputs.telegram?.trim()
+                                    "
+                                >
+                                    Сохранить
+                                </PrimaryButton>
+                                <SecondaryButton
+                                    v-if="item.has_token"
+                                    type="button"
+                                    @click="disconnect(item.provider)"
+                                >
+                                    Отключить
+                                </SecondaryButton>
+                            </div>
+                        </form>
+
+                        <form
+                            v-else-if="isChatGptProvider(item.provider)"
+                            class="mt-5 space-y-4"
+                            @submit.prevent="saveToken(item.provider)"
+                        >
+                            <div>
+                                <InputLabel
+                                    for="chatgpt_api_token"
+                                    value="API-ключ OpenAI"
+                                />
+                                <TextInput
+                                    id="chatgpt_api_token"
+                                    v-model="tokenInputs.chatgpt"
+                                    type="password"
+                                    class="mt-1 block w-full font-mono text-sm"
+                                    :placeholder="
+                                        item.has_token
+                                            ? 'Новый API-ключ'
+                                            : 'sk-...'
+                                    "
+                                    autocomplete="off"
+                                />
+                                <p class="mt-2 text-xs text-slate-500">
+                                    Ключ из
+                                    <a
+                                        href="https://platform.openai.com/api-keys"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        class="text-teal-700 underline"
+                                    >platform.openai.com</a>.
+                                    В мессенджере появится кнопка ИИ для правки ответа.
+                                </p>
+                                <InputError
+                                    class="mt-2"
+                                    :message="forms.chatgpt.errors.api_token"
+                                />
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                <PrimaryButton
+                                    type="submit"
+                                    :disabled="
+                                        forms.chatgpt.processing ||
+                                        !tokenInputs.chatgpt?.trim()
                                     "
                                 >
                                     Сохранить

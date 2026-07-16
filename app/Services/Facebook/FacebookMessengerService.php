@@ -9,6 +9,7 @@ use App\Models\MessengerMessage;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Meta\MetaAttachmentService;
 use App\Services\Meta\MetaMessagingSupport;
+use App\Services\Messenger\ChatDistributionService;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
 
@@ -17,6 +18,7 @@ class FacebookMessengerService
     public function __construct(
         private InstagramMessengerService $attachments,
         private MetaAttachmentService $metaAttachments,
+        private ChatDistributionService $chatDistribution,
     ) {}
 
     public function integrationForCompany(int $companyId): ?CompanyIntegration
@@ -166,6 +168,8 @@ class FacebookMessengerService
                 'participant_username' => $participant['username'],
             ],
         );
+
+        $this->chatDistribution->assignIfNew($conversation);
 
         $externalId = (string) ($conversationData['id'] ?? '');
         if ($externalId === '') {
@@ -505,6 +509,8 @@ class FacebookMessengerService
                 'participant_username' => null,
             ],
         );
+
+        $this->chatDistribution->assignIfNew($conversation);
 
         $externalId = (string) $message['mid'];
         if (
