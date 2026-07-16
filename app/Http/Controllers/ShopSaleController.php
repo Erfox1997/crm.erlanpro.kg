@@ -28,15 +28,35 @@ class ShopSaleController extends Controller
     {
         $companyId = (int) $request->user()->company_id;
 
-        $sales = ShopSale::query()
+        $validated = $request->validate([
+            'date' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $date = $validated['date'] ?? now()->toDateString();
+        $dayStart = \Carbon\Carbon::createFromFormat('Y-m-d', $date)->startOfDay();
+        $dayEnd = $dayStart->copy()->endOfDay();
+
+        $salesQuery = ShopSale::query()
             ->where('company_id', $companyId)
+            ->whereBetween('created_at', [$dayStart, $dayEnd]);
+
+        $totalAmount = (clone $salesQuery)
+            ->where('status', '!=', ShopSale::STATUS_CANCELLED)
+            ->sum('total_amount');
+
+        $sales = $salesQuery
             ->with(['user:id,name', 'client:id,name,phone', 'conversation:id,participant_name,channel'])
             ->orderByDesc('id')
             ->paginate(30)
+            ->withQueryString()
             ->through(fn (ShopSale $sale) => $this->serializeSale($sale));
 
         return Inertia::render('ShopSales/Index', [
             'sales' => $sales,
+            'date' => $date,
+            'totals' => [
+                'total_amount' => round((float) $totalAmount, 2),
+            ],
             'shopConnected' => $this->shop->isConnected($companyId),
             'pageTitle' => 'История продаж',
         ]);

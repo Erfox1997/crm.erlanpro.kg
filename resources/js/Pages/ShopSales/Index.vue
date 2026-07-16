@@ -8,6 +8,8 @@ import { computed, ref } from 'vue';
 
 const props = defineProps({
     sales: { type: Object, required: true },
+    date: { type: String, required: true },
+    totals: { type: Object, required: true },
     shopConnected: { type: Boolean, default: false },
     pageTitle: { type: String, default: 'История продаж' },
 });
@@ -22,6 +24,13 @@ const editForm = useForm({
 });
 
 const rows = computed(() => props.sales.data || []);
+
+function onDateChange(event) {
+    router.get(route('shop-sales.index'), { date: event.target.value }, {
+        preserveState: true,
+        replace: true,
+    });
+}
 
 function openEdit(sale) {
     const payload = sale.payload || {};
@@ -119,6 +128,22 @@ function statusClass(status) {
                     <Link :href="route('integrations.index')" class="font-medium underline">Интеграции</Link>
                 </div>
 
+                <div class="mb-4 flex flex-wrap items-end justify-between gap-4 rounded-xl border bg-white p-4 shadow-sm">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700">Дата</label>
+                        <input
+                            type="date"
+                            class="mt-1 rounded-md border-slate-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                            :value="date"
+                            @change="onDateChange"
+                        >
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xs text-slate-500">Сумма за день</p>
+                        <p class="mt-1 text-2xl font-semibold text-slate-900">{{ money(totals.total_amount) }}</p>
+                    </div>
+                </div>
+
                 <div class="overflow-hidden rounded-xl border bg-white shadow-sm">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-200 text-sm">
@@ -169,7 +194,7 @@ function statusClass(status) {
                                 </tr>
                                 <tr v-if="rows.length === 0">
                                     <td colspan="7" class="px-4 py-10 text-center text-slate-500">
-                                        Продаж пока нет. Оформите первую из мессенджера.
+                                        Нет продаж за выбранную дату.
                                     </td>
                                 </tr>
                             </tbody>
