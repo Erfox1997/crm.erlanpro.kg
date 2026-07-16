@@ -53,3 +53,13 @@ tail -f storage/logs/messenger-sync.log
 3. Авто-синхронизация по cron (каждые 10 мин):
 
 */10 * * * * cd /var/www/web/sites/crm.erlanpro.kg && php artisan messenger:sync --all --days=1 >> storage/logs/messenger-sync.log 2>&1
+
+4. Рассылки — очередь и планировщик (обязательно на проде):
+
+# Worker должен крутиться постоянно, иначе сообщения не уйдут:
+php artisan queue:work --tries=2 --timeout=120
+
+# Планировщик для отложенных рассылок (каждую минуту):
+* * * * * cd /var/www/web/sites/crm.erlanpro.kg && php artisan schedule:run >> /dev/null 2>&1
+
+# Локально: composer run dev уже поднимает queue:listen.

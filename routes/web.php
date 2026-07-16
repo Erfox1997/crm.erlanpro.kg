@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\CompanyController as AdminCompanyController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\PaymentRequisiteController as AdminPaymentRequisiteController;
 use App\Http\Controllers\Admin\TariffController as AdminTariffController;
+use App\Http\Controllers\BroadcastController;
 use App\Http\Controllers\ClientFieldDefinitionController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CommentsController;
@@ -122,6 +123,12 @@ Route::middleware(['auth', 'verified', 'company', 'tenant'])->group(function () 
     Route::delete('/stage-tunnels/{stage_tunnel}', [StageTunnelController::class, 'destroy'])->name('stage-tunnels.destroy');
     Route::post('/pipeline-tunnels', [PipelineTunnelController::class, 'store'])->name('pipeline-tunnels.store');
     Route::delete('/pipeline-tunnels/{pipeline_tunnel}', [PipelineTunnelController::class, 'destroy'])->name('pipeline-tunnels.destroy');
+    Route::get('/broadcasts', [BroadcastController::class, 'index'])->name('broadcasts.index');
+    Route::post('/broadcasts', [BroadcastController::class, 'store'])->name('broadcasts.store');
+    Route::post('/broadcasts/preview', [BroadcastController::class, 'preview'])->name('broadcasts.preview');
+    Route::get('/broadcasts/{broadcastCampaign}', [BroadcastController::class, 'show'])->name('broadcasts.show');
+    Route::post('/broadcasts/{broadcastCampaign}/cancel', [BroadcastController::class, 'cancel'])->name('broadcasts.cancel');
+
     Route::get('/integrations', [IntegrationController::class, 'index'])->name('integrations.index');
     Route::get('/integrations/instagram/oauth', [MetaOAuthController::class, 'redirect'])->defaults('provider', 'instagram')->name('integrations.instagram.oauth');
     Route::get('/integrations/instagram/oauth/callback', [MetaOAuthController::class, 'callback'])->defaults('provider', 'instagram')->name('integrations.instagram.callback');
