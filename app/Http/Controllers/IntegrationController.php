@@ -87,10 +87,15 @@ class IntegrationController extends Controller
                     : null;
             }
 
-            if ($provider === IntegrationProvider::ChatGpt && $hasToken) {
-                $item['account'] = [
-                    'name' => $record->metadata['model'] ?? config('services.openai.model', 'gpt-4o-mini'),
-                ];
+            if ($provider === IntegrationProvider::ChatGpt) {
+                $item['model'] = $record?->metadata['model']
+                    ?? config('services.openai.model', 'gpt-4.1-mini');
+
+                if ($hasToken) {
+                    $item['account'] = [
+                        'name' => $item['model'],
+                    ];
+                }
             }
 
             return $item;
@@ -100,6 +105,7 @@ class IntegrationController extends Controller
             'integrations' => $integrations,
             'pageTitle' => 'Интеграции',
             'wappiWebhookUrl' => route('webhooks.wappi.handle'),
+            'chatGptModels' => app(ChatGptService::class)->preferredModels(),
         ]);
     }
 
@@ -114,13 +120,20 @@ class IntegrationController extends Controller
             'api_token' => 'required|string|max:2000',
         ];
 
+        if ($integrationProvider === IntegrationProvider::ChatGpt) {
+            $rules = [
+                'api_token' => 'nullable|string|max:2000',
+                'model' => 'nullable|string|max:100',
+            ];
+        }
+
         if ($integrationProvider === IntegrationProvider::Wappi) {
             $rules['profile_id'] = 'required|string|max:255';
         }
 
         $validated = $request->validate($rules);
 
-        $apiToken = $validated['api_token'];
+        $apiToken = (string) ($validated['api_token'] ?? '');
         $attributes = ['api_token' => $apiToken];
 
         if ($integrationProvider === IntegrationProvider::Wappi) {
@@ -204,10 +217,22 @@ class IntegrationController extends Controller
                 ->where('provider', $integrationProvider->value)
                 ->first();
 
+            $apiToken = trim((string) ($validated['api_token'] ?? ''));
+            if ($apiToken === '') {
+                $apiToken = (string) ($existing?->api_token ?? '');
+            }
+
+            if ($apiToken === '') {
+                return back()->withErrors([
+                    'api_token' => __('Укажите API-ключ OpenAI.'),
+                ]);
+            }
+
             try {
                 $connection = app(ChatGptService::class)->connectFromToken(
                     $apiToken,
                     $existing?->metadata,
+                    $validated['model'] ?? null,
                 );
             } catch (\Throwable $e) {
                 return back()->withErrors([

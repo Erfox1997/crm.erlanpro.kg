@@ -70,7 +70,7 @@ return [
 
     'openai' => [
         'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
-        'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        'model' => env('OPENAI_MODEL', 'gpt-4.1-mini'),
         'timeout' => (int) env('OPENAI_TIMEOUT', 30),
     ],
 

@@ -22,6 +22,18 @@ const props = defineProps({
         type: String,
         default: '',
     },
+    chatGptModels: {
+        type: Array,
+        default: () => [
+            'gpt-4.1-mini',
+            'gpt-4.1',
+            'gpt-4o-mini',
+            'gpt-4o',
+            'gpt-4-turbo',
+            'o4-mini',
+            'gpt-3.5-turbo',
+        ],
+    },
 });
 
 const page = usePage();
@@ -45,6 +57,12 @@ const profileIdInputs = reactive(
     ),
 );
 
+const chatGptModelInput = reactive({
+    chatgpt: props.integrations.find((item) => item.provider === 'chatgpt')?.model
+        || props.chatGptModels[0]
+        || 'gpt-4.1-mini',
+});
+
 const forms = reactive(
     Object.fromEntries(
         props.integrations.map((item) => [
@@ -52,7 +70,9 @@ const forms = reactive(
             useForm(
                 item.provider === 'wappi'
                     ? { api_token: '', profile_id: '' }
-                    : { api_token: '' },
+                    : item.provider === 'chatgpt'
+                        ? { api_token: '', model: item.model || '' }
+                        : { api_token: '' },
             ),
         ]),
     ),
@@ -69,6 +89,9 @@ const providerAccent = {
 function saveToken(provider) {
     const form = forms[provider];
     form.api_token = tokenInputs[provider];
+    if (provider === 'chatgpt') {
+        form.model = chatGptModelInput.chatgpt;
+    }
     form.put(route('integrations.update', provider), {
         preserveScroll: true,
         onSuccess: () => {
@@ -76,6 +99,16 @@ function saveToken(provider) {
             form.reset('api_token');
         },
     });
+}
+
+function chatGptCanSave(item) {
+    const form = forms.chatgpt;
+
+    return (
+        !form.processing &&
+        !!chatGptModelInput.chatgpt?.trim() &&
+        (!!tokenInputs.chatgpt?.trim() || item.has_token)
+    );
 }
 
 function saveWappi() {
@@ -439,7 +472,7 @@ function wappiCanSave() {
                                     class="mt-1 block w-full font-mono text-sm"
                                     :placeholder="
                                         item.has_token
-                                            ? 'Новый API-ключ'
+                                            ? 'Оставьте пустым, чтобы не менять ключ'
                                             : 'sk-...'
                                     "
                                     autocomplete="off"
@@ -460,13 +493,44 @@ function wappiCanSave() {
                                 />
                             </div>
 
+                            <div>
+                                <InputLabel
+                                    for="chatgpt_model"
+                                    value="Модель"
+                                />
+                                <select
+                                    id="chatgpt_model"
+                                    v-model="chatGptModelInput.chatgpt"
+                                    class="mt-1 block w-full rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                >
+                                    <option
+                                        v-for="model in chatGptModels"
+                                        :key="model"
+                                        :value="model"
+                                    >
+                                        {{ model }}
+                                    </option>
+                                    <option
+                                        v-if="item.model && !chatGptModels.includes(item.model)"
+                                        :value="item.model"
+                                    >
+                                        {{ item.model }}
+                                    </option>
+                                </select>
+                                <p class="mt-2 text-xs text-slate-500">
+                                    Если модель недоступна в Limits проекта OpenAI — выберите другую
+                                    или разрешите её в настройках проекта.
+                                </p>
+                                <InputError
+                                    class="mt-2"
+                                    :message="forms.chatgpt.errors.model"
+                                />
+                            </div>
+
                             <div class="flex flex-wrap gap-2">
                                 <PrimaryButton
                                     type="submit"
-                                    :disabled="
-                                        forms.chatgpt.processing ||
-                                        !tokenInputs.chatgpt?.trim()
-                                    "
+                                    :disabled="!chatGptCanSave(item)"
                                 >
                                     Сохранить
                                 </PrimaryButton>
