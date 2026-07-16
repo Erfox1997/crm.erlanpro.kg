@@ -30,6 +30,10 @@ const props = defineProps({
         type: String,
         default: 'Сотрудники',
     },
+    managerBotUsername: {
+        type: String,
+        default: '',
+    },
 });
 
 const limitLabel = computed(() => {
@@ -53,6 +57,7 @@ const createForm = useForm({
     password: '',
     password_confirmation: '',
     position_id: '',
+    telegram_username: '',
 });
 
 const editForm = useForm({
@@ -61,6 +66,7 @@ const editForm = useForm({
     password: '',
     password_confirmation: '',
     position_id: '',
+    telegram_username: '',
 });
 
 const importForm = useForm({
@@ -74,7 +80,7 @@ const filteredEmployees = computed(() => {
     }
 
     return props.employees.filter((employee) => {
-        return [employee.name, employee.email, employee.position_name]
+        return [employee.name, employee.email, employee.position_name, employee.telegram_username]
             .filter(Boolean)
             .some((value) => String(value).toLowerCase().includes(q));
     });
@@ -98,6 +104,7 @@ function openEditModal(employee) {
     editForm.password = '';
     editForm.password_confirmation = '';
     editForm.position_id = employee.position_id ?? '';
+    editForm.telegram_username = employee.telegram_username || '';
     editForm.clearErrors();
     showEditModal.value = true;
 }
@@ -177,6 +184,18 @@ function onImportChange(event) {
                         </p>
                         <p class="mt-1 text-sm font-medium text-slate-700">
                             По тарифу: {{ limitLabel }}
+                        </p>
+                        <p v-if="managerBotUsername" class="mt-1 text-sm text-slate-500">
+                            Telegram Mini App:
+                            <a
+                                :href="`https://t.me/${managerBotUsername}`"
+                                target="_blank"
+                                rel="noopener"
+                                class="font-medium text-sky-700 underline"
+                            >@{{ managerBotUsername }}</a>
+                            — укажите Telegram username сотрудника (без @).
+                            Доступ только у привязанных аккаунтов: сотрудник открывает бота → /start → «Открыть мессенджер».
+                            Владелец компании указывает свой Telegram в профиле.
                         </p>
                     </div>
                 </div>
@@ -276,6 +295,7 @@ function onImportChange(event) {
                                 <tr>
                                     <th class="px-5 py-3">ФИО</th>
                                     <th class="px-5 py-3">Почта</th>
+                                    <th class="px-5 py-3">Telegram</th>
                                     <th class="px-5 py-3">Должность</th>
                                     <th class="px-5 py-3">Создан</th>
                                     <th class="px-5 py-3 text-right">Действия</th>
@@ -292,6 +312,18 @@ function onImportChange(event) {
                                     </td>
                                     <td class="px-5 py-3 text-slate-600">
                                         {{ employee.email }}
+                                    </td>
+                                    <td class="px-5 py-3 text-slate-600">
+                                        <span v-if="employee.telegram_username">
+                                            @{{ employee.telegram_username }}
+                                            <span
+                                                class="ml-1 text-xs"
+                                                :class="employee.telegram_linked ? 'text-emerald-600' : 'text-amber-600'"
+                                            >
+                                                {{ employee.telegram_linked ? '✓' : 'ожидает /start' }}
+                                            </span>
+                                        </span>
+                                        <span v-else class="text-slate-400">—</span>
                                     </td>
                                     <td class="px-5 py-3 text-slate-600">
                                         {{ employee.position_name || '—' }}
@@ -406,6 +438,21 @@ function onImportChange(event) {
                         </select>
                         <InputError class="mt-2" :message="createForm.errors.position_id" />
                     </div>
+
+                    <div>
+                        <InputLabel for="employee-telegram" value="Telegram username" />
+                        <TextInput
+                            id="employee-telegram"
+                            v-model="createForm.telegram_username"
+                            type="text"
+                            class="mt-1 block w-full"
+                            placeholder="ivan_manager"
+                        />
+                        <p class="mt-1 text-xs text-slate-500">
+                            Без @. Нужен для входа в Mini App и пушей. После создания сотрудник пишет /start боту.
+                        </p>
+                        <InputError class="mt-2" :message="createForm.errors.telegram_username" />
+                    </div>
                 </div>
 
                 <div class="mt-6 flex justify-end gap-2">
@@ -486,6 +533,18 @@ function onImportChange(event) {
                             </option>
                         </select>
                         <InputError class="mt-2" :message="editForm.errors.position_id" />
+                    </div>
+
+                    <div>
+                        <InputLabel for="edit-employee-telegram" value="Telegram username" />
+                        <TextInput
+                            id="edit-employee-telegram"
+                            v-model="editForm.telegram_username"
+                            type="text"
+                            class="mt-1 block w-full"
+                            placeholder="ivan_manager"
+                        />
+                        <InputError class="mt-2" :message="editForm.errors.telegram_username" />
                     </div>
                 </div>
 

@@ -17,6 +17,7 @@ const page = usePage();
 const branding = page.props.branding ?? {};
 const subscription = computed(() => page.props.subscription ?? null);
 const pagePermissions = computed(() => page.props.pagePermissions ?? []);
+const telegramMiniApp = computed(() => Boolean(page.props.telegramMiniApp));
 
 function canAccessPage(key) {
     const user = page.props.auth?.user;
@@ -159,7 +160,7 @@ onUnmounted(() => {
     >
         <!-- Мобильная подложка -->
         <div
-            v-show="mobileDrawerOpen"
+            v-show="mobileDrawerOpen && !telegramMiniApp"
             class="fixed inset-0 z-40 bg-slate-900/50 md:hidden"
             aria-hidden="true"
             @click="closeMobileDrawer"
@@ -167,7 +168,7 @@ onUnmounted(() => {
 
         <!-- Кнопка вернуть меню (десктоп, полностью скрыто) -->
         <button
-            v-if="navMode === 'hidden'"
+            v-if="navMode === 'hidden' && !telegramMiniApp"
             type="button"
             class="fixed left-0 top-1/2 z-30 hidden -translate-y-1/2 rounded-r-lg border border-slate-700 border-l-0 bg-slate-800 px-1.5 py-8 text-slate-200 shadow-lg hover:bg-slate-700 md:block"
             title="Показать меню"
@@ -190,6 +191,7 @@ onUnmounted(() => {
         </button>
 
         <aside
+            v-if="!telegramMiniApp"
             :class="[
                 'shrink-0 flex-col overflow-hidden border-white/10 bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 text-slate-100',
                 mobileDrawerOpen
@@ -710,6 +712,7 @@ onUnmounted(() => {
             :class="fullHeight ? 'overflow-hidden' : ''"
         >
             <header
+                v-if="!telegramMiniApp"
                 class="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-200/70 bg-white/85 px-3 py-2.5 shadow-sm backdrop-blur-md sm:px-5"
             >
                 <div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">

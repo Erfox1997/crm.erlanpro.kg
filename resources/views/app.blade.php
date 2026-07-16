@@ -11,6 +11,9 @@
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
         <!-- Scripts -->
+        @if (!empty($page['component']) && str_starts_with($page['component'], 'TelegramMiniApp/'))
+            <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        @endif
         @routes
         @vite(['resources/js/app.js', "resources/js/Pages/{$page['component']}.vue"])
         @inertiaHead

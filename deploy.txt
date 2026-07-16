@@ -63,3 +63,18 @@ php artisan queue:work --tries=2 --timeout=120
 * * * * * cd /var/www/web/sites/crm.erlanpro.kg && php artisan schedule:run >> /dev/null 2>&1
 
 # Локально: composer run dev уже поднимает queue:listen.
+
+5. Telegram Mini App (бот менеджеров) — один раз после деплоя:
+# В .env на проде:
+# TELEGRAM_MANAGER_BOT_TOKEN=...
+# TELEGRAM_MANAGER_BOT_USERNAME=crmErlanPro_bot
+# TELEGRAM_MANAGER_WEBHOOK_SECRET=случайная_длинная_строка
+# TELEGRAM_MANAGER_WEBAPP_URL=https://crm.erlanpro.kg/tma
+#
+php artisan migrate --force
+php artisan config:clear
+php artisan telegram:manager-webhook
+#
+# Сотрудникам: /employees → поле Telegram username → сотрудник жмёт /start в @crmErlanPro_bot
+# Владелец: Профиль → Telegram username → /start в том же боте
+# Чужой Telegram без записи в CRM доступа не получит.

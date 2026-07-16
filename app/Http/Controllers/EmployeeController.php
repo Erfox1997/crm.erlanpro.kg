@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Position;
 use App\Models\User;
 use App\Services\Employee\EmployeeImportService;
+use App\Services\Telegram\ManagerTelegramBotService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -18,6 +19,7 @@ class EmployeeController extends Controller
 {
     public function __construct(
         private EmployeeImportService $importService,
+        private ManagerTelegramBotService $managerBot,
     ) {}
 
     public function index(Request $request): Response
@@ -39,6 +41,8 @@ class EmployeeController extends Controller
                 'email' => $user->email,
                 'position_id' => $user->position_id,
                 'position_name' => $user->position?->name,
+                'telegram_username' => $user->telegram_username,
+                'telegram_linked' => $user->telegram_id !== null,
                 'created_at' => $user->created_at?->format('d.m.Y'),
             ]);
 
@@ -59,6 +63,7 @@ class EmployeeController extends Controller
                 'employees_used' => $employeesUsed,
                 'can_add' => $maxEmployees === null || $employeesUsed < $maxEmployees,
             ],
+            'managerBotUsername' => $this->managerBot->botUsername(),
             'pageTitle' => 'Сотрудники',
         ]);
     }
@@ -84,7 +89,21 @@ class EmployeeController extends Controller
                 'required',
                 Rule::exists('positions', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
             ],
+            'telegram_username' => ['nullable', 'string', 'max:64'],
         ]);
+
+        $telegramUsername = $this->managerBot->normalizeUsername($validated['telegram_username'] ?? null);
+        if (($validated['telegram_username'] ?? '') !== '' && $telegramUsername === null) {
+            return back()->withErrors([
+                'telegram_username' => __('Укажите корректный Telegram username (например, ivan_manager).'),
+            ]);
+        }
+
+        if ($telegramUsername && $this->telegramUsernameTaken($telegramUsername)) {
+            return back()->withErrors([
+                'telegram_username' => __('Этот Telegram уже привязан к другому сотруднику.'),
+            ]);
+        }
 
         User::query()->create([
             'name' => trim($validated['name']),
@@ -93,6 +112,7 @@ class EmployeeController extends Controller
             'company_id' => $companyId,
             'company_role' => 'employee',
             'position_id' => (int) $validated['position_id'],
+            'telegram_username' => $telegramUsername,
             'email_verified_at' => now(),
         ]);
 
@@ -117,13 +137,33 @@ class EmployeeController extends Controller
                 'required',
                 Rule::exists('positions', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
             ],
+            'telegram_username' => ['nullable', 'string', 'max:64'],
         ]);
+
+        $telegramUsername = $this->managerBot->normalizeUsername($validated['telegram_username'] ?? null);
+        if (($validated['telegram_username'] ?? '') !== '' && $telegramUsername === null) {
+            return back()->withErrors([
+                'telegram_username' => __('Укажите корректный Telegram username (например, ivan_manager).'),
+            ]);
+        }
+
+        if ($telegramUsername && $this->telegramUsernameTaken($telegramUsername, $employee->id)) {
+            return back()->withErrors([
+                'telegram_username' => __('Этот Telegram уже привязан к другому сотруднику.'),
+            ]);
+        }
 
         $payload = [
             'name' => trim($validated['name']),
             'email' => $validated['email'],
             'position_id' => (int) $validated['position_id'],
+            'telegram_username' => $telegramUsername,
         ];
+
+        // Changing username resets binding until employee opens bot / Mini App again.
+        if ($telegramUsername !== $employee->telegram_username) {
+            $payload['telegram_id'] = null;
+        }
 
         if (! empty($validated['password'])) {
             $payload['password'] = $validated['password'];
@@ -132,6 +172,14 @@ class EmployeeController extends Controller
         $employee->update($payload);
 
         return back()->with('success', __('Сотрудник обновлён.'));
+    }
+
+    private function telegramUsernameTaken(string $username, ?int $ignoreUserId = null): bool
+    {
+        return User::query()
+            ->whereRaw('LOWER(telegram_username) = ?', [$username])
+            ->when($ignoreUserId, fn ($q) => $q->where('id', '!=', $ignoreUserId))
+            ->exists();
     }
 
     public function destroy(Request $request, User $employee): RedirectResponse

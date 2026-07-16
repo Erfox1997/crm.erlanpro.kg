@@ -52,6 +52,10 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => $request->session()->get('success'),
             ],
+            'telegramMiniApp' => (bool) (
+                $request->session()->get('telegram_mini_app')
+                || $request->boolean('mini')
+            ),
         ];
     }
 

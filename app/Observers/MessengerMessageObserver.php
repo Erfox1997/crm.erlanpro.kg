@@ -3,12 +3,12 @@
 namespace App\Observers;
 
 use App\Models\MessengerMessage;
-use App\Services\Messenger\MessengerFunnelService;
+use App\Services\Telegram\ManagerTelegramBotService;
 
 class MessengerMessageObserver
 {
     public function __construct(
-        private MessengerFunnelService $funnel,
+        private ManagerTelegramBotService $managerBot,
     ) {}
 
     public function created(MessengerMessage $message): void
@@ -17,12 +17,10 @@ class MessengerMessageObserver
             return;
         }
 
-        $conversation = $message->conversation()->first();
-
-        if (! $conversation) {
-            return;
+        try {
+            $this->managerBot->notifyNewInboundMessage($message);
+        } catch (\Throwable) {
+            // Never break inbound webhook processing because of manager notify.
         }
-
-        $this->funnel->ensureClientAndDeal($conversation);
     }
 }

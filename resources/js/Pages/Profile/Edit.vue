@@ -12,18 +12,26 @@ defineProps({
     status: {
         type: String,
     },
+    managerBotUsername: {
+        type: String,
+        default: '',
+    },
+    telegramLinked: {
+        type: Boolean,
+        default: false,
+    },
 });
 </script>
 
 <template>
-    <Head title="Profile" />
+    <Head title="Профиль" />
 
     <AuthenticatedLayout>
         <template #header>
             <h2
                 class="text-xl font-semibold leading-tight text-gray-800"
             >
-                Profile
+                Профиль
             </h2>
         </template>
 
@@ -35,6 +43,8 @@ defineProps({
                     <UpdateProfileInformationForm
                         :must-verify-email="mustVerifyEmail"
                         :status="status"
+                        :manager-bot-username="managerBotUsername"
+                        :telegram-linked="telegramLinked"
                         class="max-w-xl"
                     />
                 </div>

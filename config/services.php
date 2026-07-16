@@ -66,6 +66,11 @@ return [
 
     'telegram' => [
         'timeout' => (int) env('TELEGRAM_TIMEOUT', 60),
+        // Manager Mini App bot (separate from per-company client-chat bots)
+        'manager_bot_token' => env('TELEGRAM_MANAGER_BOT_TOKEN'),
+        'manager_bot_username' => env('TELEGRAM_MANAGER_BOT_USERNAME'),
+        'manager_webhook_secret' => env('TELEGRAM_MANAGER_WEBHOOK_SECRET'),
+        'manager_webapp_url' => env('TELEGRAM_MANAGER_WEBAPP_URL'),
     ],
 
     'openai' => [

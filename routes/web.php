@@ -28,6 +28,8 @@ use App\Http\Controllers\ShopSaleController;
 use App\Http\Controllers\StageController;
 use App\Http\Controllers\StageTunnelController;
 use App\Http\Controllers\TariffController;
+use App\Http\Controllers\TelegramManagerWebhookController;
+use App\Http\Controllers\TelegramMiniAppController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\WappiOutboundMediaController;
 use App\Http\Controllers\WappiWebhookController;
@@ -41,6 +43,12 @@ Route::post('/webhooks/wappi', [WappiWebhookController::class, 'handle'])->name(
 Route::post('/webhooks/telegram/{secret}', [TelegramWebhookController::class, 'handle'])
     ->where('secret', '[a-zA-Z0-9]+')
     ->name('webhooks.telegram.handle');
+Route::post('/webhooks/telegram-manager/{secret}', [TelegramManagerWebhookController::class, 'handle'])
+    ->where('secret', '[a-zA-Z0-9_-]+')
+    ->name('webhooks.telegram-manager.handle');
+
+Route::get('/tma', [TelegramMiniAppController::class, 'entry'])->name('tma.entry');
+Route::post('/tma/auth', [TelegramMiniAppController::class, 'auth'])->name('tma.auth');
 Route::get('/media/wappi-outbound/{filename}', [WappiOutboundMediaController::class, 'show'])
     ->where('filename', '[a-zA-Z0-9._-]+')
     ->name('wappi.outbound-media');

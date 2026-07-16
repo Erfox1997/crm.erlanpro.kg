@@ -12,6 +12,14 @@ defineProps({
     status: {
         type: String,
     },
+    managerBotUsername: {
+        type: String,
+        default: '',
+    },
+    telegramLinked: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const user = usePage().props.auth.user;
@@ -19,6 +27,7 @@ const user = usePage().props.auth.user;
 const form = useForm({
     name: user.name,
     email: user.email,
+    telegram_username: user.telegram_username || '',
 });
 </script>
 
@@ -26,11 +35,11 @@ const form = useForm({
     <section>
         <header>
             <h2 class="text-lg font-medium text-gray-900">
-                Profile Information
+                Профиль
             </h2>
 
             <p class="mt-1 text-sm text-gray-600">
-                Update your account's profile information and email address.
+                Имя, email и Telegram для входа в Mini App.
             </p>
         </header>
 
@@ -39,7 +48,7 @@ const form = useForm({
             class="mt-6 space-y-6"
         >
             <div>
-                <InputLabel for="name" value="Name" />
+                <InputLabel for="name" value="Имя" />
 
                 <TextInput
                     id="name"
@@ -69,16 +78,54 @@ const form = useForm({
                 <InputError class="mt-2" :message="form.errors.email" />
             </div>
 
+            <div>
+                <InputLabel for="telegram_username" value="Telegram username" />
+
+                <TextInput
+                    id="telegram_username"
+                    type="text"
+                    class="mt-1 block w-full"
+                    v-model="form.telegram_username"
+                    placeholder="ivan_manager"
+                    autocomplete="off"
+                />
+
+                <p class="mt-1 text-xs text-slate-500">
+                    Без @.
+                    <template v-if="managerBotUsername">
+                        Затем откройте
+                        <a
+                            :href="`https://t.me/${managerBotUsername}`"
+                            target="_blank"
+                            rel="noopener"
+                            class="font-medium text-sky-700 underline"
+                        >@{{ managerBotUsername }}</a>
+                        и нажмите /start.
+                    </template>
+                    <template v-else>
+                        Затем нажмите /start в боте менеджеров.
+                    </template>
+                    <span
+                        class="ml-1 font-medium"
+                        :class="telegramLinked ? 'text-emerald-600' : 'text-amber-600'"
+                    >
+                        {{ telegramLinked ? '✓ привязан' : 'ожидает /start' }}
+                    </span>
+                </p>
+
+                <InputError class="mt-2" :message="form.errors.telegram_username" />
+            </div>
+
             <div v-if="mustVerifyEmail && user.email_verified_at === null">
                 <p class="mt-2 text-sm text-gray-800">
-                    Your email address is unverified.
+                    Email не подтверждён.
                     <Link
                         :href="route('verification.send')"
                         method="post"
                         as="button"
                         class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                     >
-                        Click here to re-send the verification email.
+                        Отправить письмо ещё раз
                     </Link>
                 </p>
 
@@ -86,12 +133,12 @@ const form = useForm({
                     v-show="status === 'verification-link-sent'"
                     class="mt-2 text-sm font-medium text-green-600"
                 >
-                    A new verification link has been sent to your email address.
+                    Ссылка для подтверждения отправлена на email.
                 </div>
             </div>
 
             <div class="flex items-center gap-4">
-                <PrimaryButton :disabled="form.processing">Save</PrimaryButton>
+                <PrimaryButton :disabled="form.processing">Сохранить</PrimaryButton>
 
                 <Transition
                     enter-active-class="transition ease-in-out"
@@ -103,7 +150,7 @@ const form = useForm({
                         v-if="form.recentlySuccessful"
                         class="text-sm text-gray-600"
                     >
-                        Saved.
+                        Сохранено.
                     </p>
                 </Transition>
             </div>
