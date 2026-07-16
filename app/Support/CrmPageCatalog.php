@@ -19,6 +19,7 @@ class CrmPageCatalog
             'client-fields' => 'Данные клиента',
             'funnels' => 'Воронки',
             'broadcasts' => 'Рассылка',
+            'shop-sales' => 'Продажи магазина',
             'integrations' => 'Интеграции',
             'tariffs' => 'Тарифы',
             'positions' => 'Должности',
@@ -86,6 +87,10 @@ class CrmPageCatalog
 
         if (str_starts_with($routeName, 'broadcasts.')) {
             return 'broadcasts';
+        }
+
+        if (str_starts_with($routeName, 'shop-sales.')) {
+            return 'shop-sales';
         }
 
         if (str_starts_with($routeName, 'integrations.')) {

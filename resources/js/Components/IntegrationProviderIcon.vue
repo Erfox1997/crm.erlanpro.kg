@@ -72,4 +72,16 @@ defineProps({
       />
     </svg>
   </span>
+
+  <!-- Shop -->
+  <span
+    v-else-if="provider === 'shop'"
+    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm"
+    aria-hidden="true"
+  >
+    <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 7.5h16.5l-1.5 11.25H5.25L3.75 7.5z" />
+      <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 7.5V6a3.75 3.75 0 017.5 0v1.5" />
+    </svg>
+  </span>
 </template>

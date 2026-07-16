@@ -8,10 +8,12 @@ use App\Services\ChatGpt\ChatGptService;
 use App\Services\Facebook\FacebookMessengerService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Meta\MetaMessagingSupport;
+use App\Services\Shop\ShopIntegrationService;
 use App\Services\Telegram\TelegramMessengerService;
 use App\Services\Wappi\WappiMessengerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -35,6 +37,9 @@ class IntegrationController extends Controller
                 IntegrationProvider::Telegram => $record !== null
                     && filled($record->api_token)
                     && filled($record->metadata['bot_id'] ?? null),
+                IntegrationProvider::Shop => $record !== null
+                    && filled($record->api_token)
+                    && filled($record->metadata['shop_url'] ?? null),
                 default => $record !== null && filled($record->api_token),
             };
 
@@ -98,6 +103,16 @@ class IntegrationController extends Controller
                 }
             }
 
+            if ($provider === IntegrationProvider::Shop) {
+                $item['shop_url'] = $record?->metadata['shop_url'] ?? '';
+
+                if ($hasToken) {
+                    $item['account'] = [
+                        'name' => $record->metadata['shop_name'] ?? $item['shop_url'],
+                    ];
+                }
+            }
+
             return $item;
         })->values();
 
@@ -129,6 +144,13 @@ class IntegrationController extends Controller
 
         if ($integrationProvider === IntegrationProvider::Wappi) {
             $rules['profile_id'] = 'required|string|max:255';
+        }
+
+        if ($integrationProvider === IntegrationProvider::Shop) {
+            $rules = [
+                'api_token' => 'required|string|max:2000',
+                'shop_url' => 'required|string|max:500',
+            ];
         }
 
         $validated = $request->validate($rules);
@@ -240,6 +262,22 @@ class IntegrationController extends Controller
                         'msg' => $e->getMessage(),
                     ]),
                 ]);
+            }
+
+            $attributes = [
+                'api_token' => $connection['api_token'],
+                'metadata' => $connection['metadata'],
+            ];
+        }
+
+        if ($integrationProvider === IntegrationProvider::Shop) {
+            try {
+                $connection = app(ShopIntegrationService::class)->connectFromCredentials(
+                    (string) $validated['shop_url'],
+                    (string) $validated['api_token'],
+                );
+            } catch (ValidationException $e) {
+                return back()->withErrors($e->errors());
             }
 
             $attributes = [

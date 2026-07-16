@@ -24,6 +24,7 @@ use App\Http\Controllers\PipelineController;
 use App\Http\Controllers\PipelineTunnelController;
 use App\Http\Controllers\PositionController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ShopSaleController;
 use App\Http\Controllers\StageController;
 use App\Http\Controllers\StageTunnelController;
 use App\Http\Controllers\TariffController;
@@ -137,6 +138,13 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::post('/broadcasts/preview', [BroadcastController::class, 'preview'])->name('broadcasts.preview');
     Route::get('/broadcasts/{broadcastCampaign}', [BroadcastController::class, 'show'])->name('broadcasts.show');
     Route::post('/broadcasts/{broadcastCampaign}/cancel', [BroadcastController::class, 'cancel'])->name('broadcasts.cancel');
+
+    Route::get('/shop-sales', [ShopSaleController::class, 'index'])->name('shop-sales.index');
+    Route::get('/shop-sales/report', [ShopSaleController::class, 'report'])->name('shop-sales.report');
+    Route::get('/shop-sales/catalog', [ShopSaleController::class, 'catalog'])->name('shop-sales.catalog');
+    Route::post('/shop-sales/conversations/{conversation}', [ShopSaleController::class, 'store'])->name('shop-sales.store');
+    Route::put('/shop-sales/{shopSale}', [ShopSaleController::class, 'update'])->name('shop-sales.update');
+    Route::delete('/shop-sales/{shopSale}', [ShopSaleController::class, 'destroy'])->name('shop-sales.destroy');
 
     Route::get('/integrations', [IntegrationController::class, 'index'])->name('integrations.index');
     Route::get('/integrations/instagram/oauth', [MetaOAuthController::class, 'redirect'])->defaults('provider', 'instagram')->name('integrations.instagram.oauth');

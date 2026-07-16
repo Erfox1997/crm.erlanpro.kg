@@ -63,6 +63,15 @@ const chatGptModelInput = reactive({
         || 'gpt-4.1-mini',
 });
 
+const shopUrlInputs = reactive(
+    Object.fromEntries(
+        props.integrations.map((item) => [
+            item.provider,
+            item.provider === 'shop' ? (item.shop_url ?? '') : '',
+        ]),
+    ),
+);
+
 const forms = reactive(
     Object.fromEntries(
         props.integrations.map((item) => [
@@ -72,7 +81,9 @@ const forms = reactive(
                     ? { api_token: '', profile_id: '' }
                     : item.provider === 'chatgpt'
                         ? { api_token: '', model: item.model || '' }
-                        : { api_token: '' },
+                        : item.provider === 'shop'
+                            ? { api_token: '', shop_url: item.shop_url || '' }
+                            : { api_token: '' },
             ),
         ]),
     ),
@@ -84,6 +95,7 @@ const providerAccent = {
     telegram: 'border-sky-200 bg-sky-50/40',
     facebook: 'border-blue-200 bg-blue-50/40',
     chatgpt: 'border-teal-200 bg-teal-50/40',
+    shop: 'border-amber-200 bg-amber-50/40',
 };
 
 function saveToken(provider) {
@@ -169,6 +181,33 @@ function isTelegramProvider(provider) {
 
 function isChatGptProvider(provider) {
     return provider === 'chatgpt';
+}
+
+function isShopProvider(provider) {
+    return provider === 'shop';
+}
+
+function saveShop() {
+    const form = forms.shop;
+    form.api_token = tokenInputs.shop;
+    form.shop_url = shopUrlInputs.shop;
+    form.put(route('integrations.update', 'shop'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            tokenInputs.shop = '';
+            form.reset('api_token');
+        },
+    });
+}
+
+function shopCanSave() {
+    const form = forms.shop;
+
+    return (
+        !form.processing &&
+        shopUrlInputs.shop?.trim() &&
+        tokenInputs.shop?.trim()
+    );
 }
 
 function wappiCanSave() {
@@ -442,6 +481,74 @@ function wappiCanSave() {
                                         forms.telegram.processing ||
                                         !tokenInputs.telegram?.trim()
                                     "
+                                >
+                                    Сохранить
+                                </PrimaryButton>
+                                <SecondaryButton
+                                    v-if="item.has_token"
+                                    type="button"
+                                    @click="disconnect(item.provider)"
+                                >
+                                    Отключить
+                                </SecondaryButton>
+                            </div>
+                        </form>
+
+                        <form
+                            v-else-if="isShopProvider(item.provider)"
+                            class="mt-5 space-y-4"
+                            @submit.prevent="saveShop()"
+                        >
+                            <div>
+                                <InputLabel
+                                    for="shop_url"
+                                    value="URL магазина"
+                                />
+                                <TextInput
+                                    id="shop_url"
+                                    v-model="shopUrlInputs.shop"
+                                    type="url"
+                                    class="mt-1 block w-full font-mono text-sm"
+                                    placeholder="https://mag.ulan.kg"
+                                    autocomplete="off"
+                                />
+                                <InputError
+                                    class="mt-2"
+                                    :message="forms.shop.errors.shop_url"
+                                />
+                            </div>
+
+                            <div>
+                                <InputLabel
+                                    for="shop_api_token"
+                                    value="API-ключ"
+                                />
+                                <TextInput
+                                    id="shop_api_token"
+                                    v-model="tokenInputs.shop"
+                                    type="password"
+                                    class="mt-1 block w-full font-mono text-sm"
+                                    :placeholder="
+                                        item.has_token
+                                            ? 'Новый ключ из магазина'
+                                            : 'sk_… из раздела «Ключ API» в магазине'
+                                    "
+                                    autocomplete="off"
+                                />
+                                <p class="mt-2 text-xs text-slate-500">
+                                    Ключ создаётся в магазине: Настройки → Ключ API.
+                                    После сохранения можно продавать из мессенджера.
+                                </p>
+                                <InputError
+                                    class="mt-2"
+                                    :message="forms.shop.errors.api_token"
+                                />
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                <PrimaryButton
+                                    type="submit"
+                                    :disabled="!shopCanSave()"
                                 >
                                     Сохранить
                                 </PrimaryButton>

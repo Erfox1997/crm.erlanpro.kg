@@ -22,6 +22,7 @@ use App\Services\Messenger\MessengerSyncService;
 use App\Services\Messenger\MessengerUnreadService;
 use App\Services\Meta\MetaAttachmentService;
 use App\Services\Meta\MetaMessagingSupport;
+use App\Services\Shop\ShopIntegrationService;
 use App\Services\Telegram\TelegramMessengerService;
 use App\Services\Wappi\WappiMessengerService;
 use Illuminate\Http\Client\RequestException;
@@ -50,6 +51,7 @@ class MessengerController extends Controller
         private MessengerFunnelService $messengerFunnel,
         private DealStageService $dealStages,
         private ChatDistributionService $chatDistribution,
+        private ShopIntegrationService $shop,
     ) {}
 
     public function index(Request $request): Response
@@ -202,6 +204,7 @@ class MessengerController extends Controller
                     $linkedClient = [
                         'id' => $conversation->client->id,
                         'name' => $conversation->client->name,
+                        'phone' => $conversation->client->phone,
                         'custom_fields' => $conversation->client->custom_fields ?? [],
                     ];
                 }
@@ -254,6 +257,7 @@ class MessengerController extends Controller
             'messengerFieldKey' => $messengerField?->key,
             'linkedClient' => $linkedClient,
             'funnelDeal' => $funnelDeal,
+            'shopConnected' => $this->shop->isConnected($companyId),
             'webhookUrl' => url('/webhooks/meta'),
             'wappiWebhookUrl' => route('webhooks.wappi.handle'),
         ]);

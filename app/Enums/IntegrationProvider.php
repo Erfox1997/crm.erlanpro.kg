@@ -9,6 +9,7 @@ enum IntegrationProvider: string
     case Telegram = 'telegram';
     case Facebook = 'facebook';
     case ChatGpt = 'chatgpt';
+    case Shop = 'shop';
 
     public function label(): string
     {
@@ -18,6 +19,7 @@ enum IntegrationProvider: string
             self::Telegram => 'Telegram',
             self::Facebook => 'Facebook',
             self::ChatGpt => 'ChatGPT',
+            self::Shop => 'Магазин',
         };
     }
 
@@ -29,13 +31,14 @@ enum IntegrationProvider: string
             self::Telegram => 'Telegram-бот для личных сообщений клиентов.',
             self::Facebook => 'Messenger страницы Facebook.',
             self::ChatGpt => 'ИИ-помощник в мессенджере: поправляет текст и добавляет эмодзи.',
+            self::Shop => 'Продажи из мессенджера: товары, склад и чек клиенту в чат.',
         };
     }
 
     public function isMessagingChannel(): bool
     {
         return match ($this) {
-            self::ChatGpt => false,
+            self::ChatGpt, self::Shop => false,
             default => true,
         };
     }

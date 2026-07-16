@@ -1,6 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import ChannelIcon from '@/Components/Messenger/ChannelIcon.vue';
+import SellFromChatModal from '@/Components/Messenger/SellFromChatModal.vue';
 import VoiceMessagePlayer from '@/Components/Messenger/VoiceMessagePlayer.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -92,12 +93,17 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    shopConnected: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const page = usePage();
 
 const messagesEnd = ref(null);
 const syncing = ref(false);
+const sellModalOpen = ref(false);
 const searchQuery = ref('');
 const slashActiveIndex = ref(0);
 const messageInput = ref(null);
@@ -1300,6 +1306,19 @@ watch(
                         </span>
 
                         <button
+                            v-if="shopConnected"
+                            type="button"
+                            class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-amber-600 sm:px-3 sm:text-xs"
+                            title="Продать"
+                            @click="sellModalOpen = true"
+                        >
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+                            </svg>
+                            <span class="hidden sm:inline">Продать</span>
+                        </button>
+
+                        <button
                             type="button"
                             class="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-medium text-[#008069] shadow-sm transition hover:bg-[#f0f2f5] sm:px-3 sm:py-1.5 sm:text-xs"
                             @click="openClientModal"
@@ -1975,6 +1994,17 @@ watch(
                 </form>
             </div>
         </Modal>
+
+        <SellFromChatModal
+            v-if="selectedConversation && shopConnected"
+            :show="sellModalOpen"
+            :conversation-id="selectedConversation.id"
+            :client-name="linkedClient?.name || selectedConversation.participant_name || ''"
+            :client-phone="linkedClient?.phone || selectedConversation.participant_id || ''"
+            :catalog-url="route('shop-sales.catalog')"
+            :submit-url="route('shop-sales.store', selectedConversation.id)"
+            @close="sellModalOpen = false"
+        />
 
         <p
             v-if="messengerConnected && webhookUrl"

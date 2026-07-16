@@ -86,7 +86,7 @@ class BroadcastController extends Controller
 
         $validated = $request->validate([
             'name' => 'nullable|string|max:160',
-            'channel' => 'required|string|in:'.implode(',', IntegrationProvider::values()),
+            'channel' => 'required|string|in:'.implode(',', array_map(fn (IntegrationProvider $p) => $p->value, IntegrationProvider::messagingChannels())),
             'audience_type' => 'required|in:funnel,client_fields',
             'pipeline_id' => 'nullable|integer',
             'stage_id' => 'nullable|integer',
@@ -131,7 +131,7 @@ class BroadcastController extends Controller
         $companyId = (int) $request->user()->company_id;
 
         $validated = $request->validate([
-            'channel' => 'required|string|in:'.implode(',', IntegrationProvider::values()),
+            'channel' => 'required|string|in:'.implode(',', array_map(fn (IntegrationProvider $p) => $p->value, IntegrationProvider::messagingChannels())),
             'audience_type' => 'required|in:funnel,client_fields',
             'pipeline_id' => 'nullable|integer',
             'stage_id' => 'nullable|integer',
