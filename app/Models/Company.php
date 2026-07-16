@@ -99,4 +99,50 @@ class Company extends Model
     {
         return $this->subscriptionIsActive() ? 'Активен' : 'Истёк';
     }
+
+    public function employeesCount(): int
+    {
+        return $this->users()
+            ->where(function ($query) {
+                $query->whereNull('company_role')
+                    ->orWhere('company_role', '!=', 'owner');
+            })
+            ->where(function ($query) {
+                $query->whereNull('is_platform_admin')
+                    ->orWhere('is_platform_admin', false);
+            })
+            ->count();
+    }
+
+    public function maxEmployees(): ?int
+    {
+        return $this->tariff?->max_employees;
+    }
+
+    public function messageRetentionDays(): ?int
+    {
+        return $this->tariff?->message_retention_days;
+    }
+
+    public function canAddEmployees(int $count = 1): bool
+    {
+        $max = $this->maxEmployees();
+
+        if ($max === null) {
+            return true;
+        }
+
+        return ($this->employeesCount() + $count) <= $max;
+    }
+
+    public function remainingEmployeeSlots(): ?int
+    {
+        $max = $this->maxEmployees();
+
+        if ($max === null) {
+            return null;
+        }
+
+        return max(0, $max - $this->employeesCount());
+    }
 }

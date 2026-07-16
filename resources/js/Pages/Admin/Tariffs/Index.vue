@@ -69,6 +69,16 @@ function formatPrice(value, original = null) {
                         <th
                             class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
+                            Сотрудники
+                        </th>
+                        <th
+                            class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+                        >
+                            Сообщения
+                        </th>
+                        <th
+                            class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+                        >
                             Бесплатный
                         </th>
                         <th
@@ -95,6 +105,16 @@ function formatPrice(value, original = null) {
                         </td>
                         <td class="px-4 py-4 text-sm text-slate-600">
                             {{ tariff.duration_days }} дн.
+                        </td>
+                        <td class="px-4 py-4 text-sm text-slate-600">
+                            {{ tariff.max_employees ?? '∞' }}
+                        </td>
+                        <td class="px-4 py-4 text-sm text-slate-600">
+                            {{
+                                tariff.message_retention_days
+                                    ? `${tariff.message_retention_days} дн.`
+                                    : '∞'
+                            }}
                         </td>
                         <td class="px-4 py-4 text-sm text-slate-600">
                             {{ tariff.is_free ? 'Да' : 'Нет' }}

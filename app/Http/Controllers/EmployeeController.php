@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Company;
 use App\Models\Position;
 use App\Models\User;
 use App\Services\Employee\EmployeeImportService;
@@ -46,9 +47,18 @@ class EmployeeController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
+        $company = Company::query()->with('tariff')->findOrFail($companyId);
+        $maxEmployees = $company->maxEmployees();
+        $employeesUsed = $employees->count();
+
         return Inertia::render('Employees/Index', [
             'employees' => $employees,
             'positions' => $positions,
+            'limits' => [
+                'max_employees' => $maxEmployees,
+                'employees_used' => $employeesUsed,
+                'can_add' => $maxEmployees === null || $employeesUsed < $maxEmployees,
+            ],
             'pageTitle' => 'Сотрудники',
         ]);
     }
@@ -56,6 +66,15 @@ class EmployeeController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $companyId = (int) $request->user()->company_id;
+        $company = Company::query()->with('tariff')->findOrFail($companyId);
+
+        if (! $company->canAddEmployees()) {
+            return back()->withErrors([
+                'employee' => __('Лимит сотрудников по тарифу исчерпан (:max).', [
+                    'max' => $company->maxEmployees(),
+                ]),
+            ]);
+        }
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',

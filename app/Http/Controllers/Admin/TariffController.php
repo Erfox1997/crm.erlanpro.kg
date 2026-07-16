@@ -58,7 +58,7 @@ class TariffController extends Controller
 
     public function update(Request $request, Tariff $tariff): RedirectResponse
     {
-        $validated = $this->validateTariff($request, $tariff);
+        $validated = $this->validateTariff($request);
 
         $tariff->update($validated);
 
@@ -85,7 +85,7 @@ class TariffController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function validateTariff(Request $request, ?Tariff $tariff = null): array
+    private function validateTariff(Request $request): array
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -96,7 +96,8 @@ class TariffController extends Controller
             'is_free' => 'required|boolean',
             'is_active' => 'required|boolean',
             'sort_order' => 'required|integer|min:0|max:65535',
-            'max_managers' => 'nullable|integer|min:1',
+            'max_employees' => 'nullable|integer|min:1',
+            'message_retention_days' => 'nullable|integer|min:1|max:3650',
             'max_deals' => 'nullable|integer|min:1',
         ]);
 
@@ -138,7 +139,8 @@ class TariffController extends Controller
             'is_free' => $tariff->is_free,
             'is_active' => $tariff->is_active,
             'sort_order' => $tariff->sort_order,
-            'max_managers' => $tariff->max_managers,
+            'max_employees' => $tariff->max_employees,
+            'message_retention_days' => $tariff->message_retention_days,
             'max_deals' => $tariff->max_deals,
             'companies_count' => $tariff->companies()->count(),
         ];

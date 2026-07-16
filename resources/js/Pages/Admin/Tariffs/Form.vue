@@ -30,7 +30,8 @@ const form = useForm({
     is_free: props.tariff?.is_free ?? false,
     is_active: props.tariff?.is_active ?? true,
     sort_order: props.tariff?.sort_order ?? 0,
-    max_managers: props.tariff?.max_managers ?? '',
+    max_employees: props.tariff?.max_employees ?? '',
+    message_retention_days: props.tariff?.message_retention_days ?? '',
     max_deals: props.tariff?.max_deals ?? '',
 });
 
@@ -38,7 +39,11 @@ function submit() {
     const payload = {
         ...form.data(),
         original_price: form.original_price === '' ? null : form.original_price,
-        max_managers: form.max_managers === '' ? null : form.max_managers,
+        max_employees: form.max_employees === '' ? null : form.max_employees,
+        message_retention_days:
+            form.message_retention_days === ''
+                ? null
+                : form.message_retention_days,
         max_deals: form.max_deals === '' ? null : form.max_deals,
     };
 
@@ -157,33 +162,59 @@ function submit() {
                 </div>
             </div>
 
-            <div class="grid gap-5 sm:grid-cols-2">
-                <div>
-                    <InputLabel for="max_managers" value="Макс. менеджеров" />
-                    <TextInput
-                        id="max_managers"
-                        v-model="form.max_managers"
-                        type="number"
-                        min="1"
-                        class="mt-1 block w-full"
-                        placeholder="Без ограничения"
-                    />
-                    <InputError
-                        class="mt-2"
-                        :message="form.errors.max_managers"
-                    />
-                </div>
-                <div>
-                    <InputLabel for="max_deals" value="Макс. сделок" />
-                    <TextInput
-                        id="max_deals"
-                        v-model="form.max_deals"
-                        type="number"
-                        min="1"
-                        class="mt-1 block w-full"
-                        placeholder="Без ограничения"
-                    />
-                    <InputError class="mt-2" :message="form.errors.max_deals" />
+            <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p class="text-sm font-semibold text-slate-800">Ограничения тарифа</p>
+                <p class="mt-1 text-xs text-slate-500">
+                    Пустое значение — без ограничения. Сообщения старше указанного
+                    срока удаляются автоматически.
+                </p>
+
+                <div class="mt-4 grid gap-5 sm:grid-cols-2">
+                    <div>
+                        <InputLabel for="max_employees" value="Макс. сотрудников" />
+                        <TextInput
+                            id="max_employees"
+                            v-model="form.max_employees"
+                            type="number"
+                            min="1"
+                            class="mt-1 block w-full"
+                            placeholder="Без ограничения"
+                        />
+                        <InputError
+                            class="mt-2"
+                            :message="form.errors.max_employees"
+                        />
+                    </div>
+                    <div>
+                        <InputLabel
+                            for="message_retention_days"
+                            value="Хранение сообщений (дней)"
+                        />
+                        <TextInput
+                            id="message_retention_days"
+                            v-model="form.message_retention_days"
+                            type="number"
+                            min="1"
+                            class="mt-1 block w-full"
+                            placeholder="Без ограничения"
+                        />
+                        <InputError
+                            class="mt-2"
+                            :message="form.errors.message_retention_days"
+                        />
+                    </div>
+                    <div>
+                        <InputLabel for="max_deals" value="Макс. сделок" />
+                        <TextInput
+                            id="max_deals"
+                            v-model="form.max_deals"
+                            type="number"
+                            min="1"
+                            class="mt-1 block w-full"
+                            placeholder="Без ограничения"
+                        />
+                        <InputError class="mt-2" :message="form.errors.max_deals" />
+                    </div>
                 </div>
             </div>
 

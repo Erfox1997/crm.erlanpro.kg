@@ -31,6 +31,8 @@ class TariffController extends Controller
                 'original_price' => $tariff->original_price !== null ? (float) $tariff->original_price : null,
                 'duration_days' => $tariff->duration_days,
                 'is_free' => $tariff->is_free,
+                'max_employees' => $tariff->max_employees,
+                'message_retention_days' => $tariff->message_retention_days,
                 'is_current' => $tariff->id === $company->tariff_id,
             ]);
 

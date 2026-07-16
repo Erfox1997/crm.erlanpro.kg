@@ -17,7 +17,8 @@ class Tariff extends Model
         'is_free',
         'is_active',
         'sort_order',
-        'max_managers',
+        'max_employees',
+        'message_retention_days',
         'max_deals',
     ];
 
@@ -30,7 +31,8 @@ class Tariff extends Model
             'is_free' => 'boolean',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
-            'max_managers' => 'integer',
+            'max_employees' => 'integer',
+            'message_retention_days' => 'integer',
             'max_deals' => 'integer',
         ];
     }
@@ -53,7 +55,8 @@ class Tariff extends Model
                 'is_free' => true,
                 'is_active' => true,
                 'sort_order' => 1,
-                'max_managers' => 2,
+                'max_employees' => 2,
+                'message_retention_days' => 30,
                 'max_deals' => 100,
             ],
         );

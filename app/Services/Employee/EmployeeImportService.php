@@ -2,6 +2,7 @@
 
 namespace App\Services\Employee;
 
+use App\Models\Company;
 use App\Models\Position;
 use App\Models\User;
 use Illuminate\Support\Facades\Validator;
@@ -23,6 +24,9 @@ class EmployeeImportService
         $imported = 0;
         $skipped = 0;
         $errors = [];
+
+        $company = Company::query()->with('tariff')->findOrFail($companyId);
+        $remainingSlots = $company->remainingEmployeeSlots();
 
         $positionsByName = Position::query()
             ->where('company_id', $companyId)
@@ -46,6 +50,16 @@ class EmployeeImportService
             }
 
             $rowNumber = $index + 1;
+
+            if ($remainingSlots !== null && $remainingSlots <= 0) {
+                $skipped++;
+                $errors[] = __('Строка :row: лимит сотрудников по тарифу исчерпан (:max).', [
+                    'row' => $rowNumber,
+                    'max' => $company->maxEmployees(),
+                ]);
+
+                continue;
+            }
 
             $validator = Validator::make([
                 'name' => $name,
@@ -97,6 +111,10 @@ class EmployeeImportService
             ]);
 
             $imported++;
+
+            if ($remainingSlots !== null) {
+                $remainingSlots--;
+            }
         }
 
         return [

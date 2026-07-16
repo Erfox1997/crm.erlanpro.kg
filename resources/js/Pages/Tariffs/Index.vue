@@ -65,6 +65,12 @@ function tariffFeatures(tariff) {
     const items = [
         'Полный доступ ко всем функциям',
         `Срок действия — ${tariff.duration_days} дн.`,
+        tariff.max_employees
+            ? `До ${tariff.max_employees} сотрудников`
+            : 'Без ограничения по сотрудникам',
+        tariff.message_retention_days
+            ? `Хранение сообщений — ${tariff.message_retention_days} дн.`
+            : 'Хранение сообщений без ограничения',
     ];
 
     if (!tariff.is_free) {

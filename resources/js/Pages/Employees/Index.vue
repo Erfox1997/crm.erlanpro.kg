@@ -18,10 +18,26 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    limits: {
+        type: Object,
+        default: () => ({
+            max_employees: null,
+            employees_used: 0,
+            can_add: true,
+        }),
+    },
     pageTitle: {
         type: String,
         default: 'Сотрудники',
     },
+});
+
+const limitLabel = computed(() => {
+    if (props.limits.max_employees == null) {
+        return `${props.limits.employees_used} сотрудников`;
+    }
+
+    return `${props.limits.employees_used} / ${props.limits.max_employees} сотрудников`;
 });
 
 const showCreateModal = ref(false);
@@ -65,6 +81,10 @@ const filteredEmployees = computed(() => {
 });
 
 function openCreateModal() {
+    if (!props.limits.can_add) {
+        return;
+    }
+
     createForm.reset();
     createForm.clearErrors();
     showCreateModal.value = true;
@@ -155,7 +175,18 @@ function onImportChange(event) {
                         <p class="mt-1 text-sm text-slate-500">
                             Создайте аккаунты сотрудников или загрузите их из Excel.
                         </p>
+                        <p class="mt-1 text-sm font-medium text-slate-700">
+                            По тарифу: {{ limitLabel }}
+                        </p>
                     </div>
+                </div>
+
+                <div
+                    v-if="!limits.can_add"
+                    class="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+                >
+                    Лимит сотрудников по тарифу исчерпан. Чтобы добавить новых,
+                    смените тариф.
                 </div>
 
                 <div
@@ -200,7 +231,7 @@ function onImportChange(event) {
                                 <button
                                     type="button"
                                     class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-                                    :disabled="importForm.processing || positions.length === 0"
+                                    :disabled="importForm.processing || positions.length === 0 || !limits.can_add"
                                     @click="triggerImport"
                                 >
                                     <svg class="h-4 w-4 text-slate-500" :class="{ 'animate-spin': importForm.processing }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
@@ -218,7 +249,7 @@ function onImportChange(event) {
                                 <button
                                     type="button"
                                     class="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:opacity-50"
-                                    :disabled="positions.length === 0"
+                                    :disabled="positions.length === 0 || !limits.can_add"
                                     @click="openCreateModal"
                                 >
                                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -306,6 +337,7 @@ function onImportChange(event) {
                 <p class="mt-1 text-sm text-slate-500">
                     Аккаунт сразу сможет войти в CRM с указанным паролем.
                 </p>
+                <InputError class="mt-3" :message="createForm.errors.employee" />
 
                 <div class="mt-5 space-y-4">
                     <div>
