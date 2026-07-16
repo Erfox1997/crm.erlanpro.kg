@@ -29,8 +29,11 @@ const paymentAccounts = ref([]);
 const currency = ref('KGS');
 const cart = ref([]);
 const warehouseId = ref(null);
-const payments = ref({});
 const selectedCategoryId = ref(null);
+const cashAccountId = ref(null);
+const cashlessAccountId = ref(null);
+const paymentCash = ref(0);
+const paymentCard = ref(0);
 
 const form = useForm({
     warehouse_id: null,
@@ -97,12 +100,24 @@ const searchResults = computed(() => {
         .slice(0, 12);
 });
 
+const cashAccounts = computed(() =>
+    paymentAccounts.value.filter((a) => a.type === 'cash'),
+);
+
+const cashlessAccounts = computed(() =>
+    paymentAccounts.value.filter((a) => a.type === 'cashless' || a.type === 'card'),
+);
+
 const cartTotal = computed(() =>
     cart.value.reduce((sum, line) => sum + roundMoney(line.price * line.quantity), 0),
 );
 
 const paidTotal = computed(() =>
-    Object.values(payments.value).reduce((sum, amount) => sum + Number(amount || 0), 0),
+    roundMoney((Number(paymentCash.value) || 0) + (Number(paymentCard.value) || 0)),
+);
+
+const creditTotal = computed(() =>
+    roundMoney(Math.max(0, cartTotal.value - paidTotal.value)),
 );
 
 watch(
@@ -117,7 +132,8 @@ watch(
         searchOpen.value = false;
         selectedCategoryId.value = null;
         cart.value = [];
-        payments.value = {};
+        paymentCash.value = 0;
+        paymentCard.value = 0;
         form.client_name = props.clientName || '';
         form.client_phone = props.clientPhone || '';
         await loadCatalog();
@@ -166,11 +182,12 @@ async function loadCatalog() {
         const defaultWarehouse = warehouses.value.find((w) => w.is_default) || warehouses.value[0];
         warehouseId.value = defaultWarehouse?.id ?? null;
 
-        const defaults = {};
-        for (const account of paymentAccounts.value) {
-            defaults[account.id] = '';
-        }
-        payments.value = defaults;
+        const defaultCash = cashAccounts.value.find((a) => a.is_default) || cashAccounts.value[0];
+        const defaultCashless = cashlessAccounts.value.find((a) => a.is_default) || cashlessAccounts.value[0];
+        cashAccountId.value = defaultCash?.id ?? null;
+        cashlessAccountId.value = defaultCashless?.id ?? null;
+        paymentCash.value = 0;
+        paymentCard.value = 0;
 
         if (! products.value.length && ! warehouses.value.length) {
             loadError.value = 'Каталог пуст. Добавьте товары и склады в магазине.';
@@ -226,13 +243,33 @@ function removeLine(line) {
     cart.value = cart.value.filter((item) => item.product_id !== line.product_id);
 }
 
-function fillFullPayment(accountId) {
-    const next = { ...payments.value };
-    for (const id of Object.keys(next)) {
-        next[id] = '';
+/** Like shop POS: fill this field with (total − other field). */
+function fillPaymentRemaining(field) {
+    const total = cartTotal.value;
+    const cash = Math.max(0, Number(paymentCash.value) || 0);
+    const card = Math.max(0, Number(paymentCard.value) || 0);
+
+    if (field === 'cash') {
+        paymentCash.value = roundMoney(Math.max(0, total - card));
+    } else {
+        paymentCard.value = roundMoney(Math.max(0, total - cash));
     }
-    next[accountId] = String(cartTotal.value);
-    payments.value = next;
+}
+
+function clampPayment(field) {
+    const total = cartTotal.value;
+    let cash = Math.max(0, Number(paymentCash.value) || 0);
+    let card = Math.max(0, Number(paymentCard.value) || 0);
+
+    if (field === 'card') {
+        const maxCard = roundMoney(Math.max(0, total - cash));
+        if (card > maxCard) {
+            card = maxCard;
+        }
+    }
+
+    paymentCash.value = cash;
+    paymentCard.value = card;
 }
 
 function closeSearchSoon() {
@@ -251,11 +288,13 @@ function submit() {
     }
 
     const paymentPayload = {};
-    for (const [id, amount] of Object.entries(payments.value)) {
-        const value = Number(amount || 0);
-        if (value > 0) {
-            paymentPayload[id] = value;
-        }
+    const cash = Math.max(0, Number(paymentCash.value) || 0);
+    const card = Math.max(0, Number(paymentCard.value) || 0);
+    if (cash > 0 && cashAccountId.value) {
+        paymentPayload[cashAccountId.value] = cash;
+    }
+    if (card > 0 && cashlessAccountId.value) {
+        paymentPayload[cashlessAccountId.value] = card;
     }
 
     form.warehouse_id = warehouseId.value;
@@ -479,15 +518,11 @@ function money(value) {
                                     </button>
                                 </div>
                                 <div class="text-right">
-                                    <input
-                                        v-model.number="line.price"
-                                        type="number"
-                                        min="0"
-                                        step="1"
-                                        class="w-24 rounded-lg border-slate-300 text-right text-sm"
-                                    >
+                                    <p class="text-sm font-semibold tabular-nums text-slate-800">
+                                        {{ money(line.price) }} {{ currency }}
+                                    </p>
                                     <p class="mt-0.5 text-xs text-slate-500">
-                                        {{ money(line.price * line.quantity) }} {{ currency }}
+                                        × {{ line.quantity }} = {{ money(line.price * line.quantity) }} {{ currency }}
                                     </p>
                                 </div>
                             </div>
@@ -497,34 +532,92 @@ function money(value) {
                         </p>
                     </div>
 
-                    <div v-if="cart.length" class="space-y-2">
+                    <div v-if="cart.length" class="space-y-3">
                         <p class="text-sm font-semibold text-slate-900">Оплата</p>
-                        <div
-                            v-for="account in paymentAccounts"
-                            :key="account.id"
-                            class="flex items-center gap-2"
-                        >
-                            <input
-                                v-model="payments[account.id]"
-                                type="number"
-                                min="0"
-                                step="1"
-                                class="block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-amber-500 focus:ring-amber-500"
-                                :placeholder="account.name"
-                            >
-                            <button
-                                type="button"
-                                class="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700"
-                                @click="fillFullPayment(account.id)"
-                            >
-                                Всё
-                            </button>
+
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                                <label class="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                                    Наличные
+                                </label>
+                                <select
+                                    v-model="cashAccountId"
+                                    class="mb-2 block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                                >
+                                    <option
+                                        v-for="account in cashAccounts"
+                                        :key="'cash-' + account.id"
+                                        :value="account.id"
+                                    >
+                                        {{ account.name }}
+                                    </option>
+                                </select>
+                                <div class="flex items-center gap-2">
+                                    <input
+                                        v-model.number="paymentCash"
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        class="block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                                        @focus="$event.target.select()"
+                                        @input="clampPayment('cash')"
+                                    >
+                                    <button
+                                        type="button"
+                                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                        title="Заполнить остаток"
+                                        @click="fillPaymentRemaining('cash')"
+                                    >
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                                <label class="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-blue-700">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+                                    Безнал
+                                </label>
+                                <select
+                                    v-model="cashlessAccountId"
+                                    class="mb-2 block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                                >
+                                    <option
+                                        v-for="account in cashlessAccounts"
+                                        :key="'card-' + account.id"
+                                        :value="account.id"
+                                    >
+                                        {{ account.name }}
+                                    </option>
+                                </select>
+                                <div class="flex items-center gap-2">
+                                    <input
+                                        v-model.number="paymentCard"
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        class="block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-amber-500 focus:ring-amber-500"
+                                        @focus="$event.target.select()"
+                                        @input="clampPayment('card')"
+                                    >
+                                    <button
+                                        type="button"
+                                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                        title="Заполнить остаток"
+                                        @click="fillPaymentRemaining('card')"
+                                    >
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
+
                         <p class="text-xs text-slate-500">
-                            Оплачено: {{ money(paidTotal) }} · Долг: {{ money(Math.max(0, cartTotal - paidTotal)) }}
+                            Оплачено: {{ money(paidTotal) }} · Долг: {{ money(creditTotal) }}
                         </p>
                         <p class="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                            Клиенту уйдёт короткий текст с суммой и красивый чек-картинка.
+                            Пример: безнал 400 → галочка на наличных поставит остаток {{ money(cartTotal) }} − 400.
                         </p>
                     </div>
 
