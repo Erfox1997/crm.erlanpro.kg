@@ -163,10 +163,7 @@ class ShopSaleController extends Controller
         }
 
         return redirect()
-            ->route('messenger.index', ['conversation' => $conversation->id])
-            ->with('success', __('Продажа #:num оформлена, чек отправлен.', [
-                'num' => $shopSale->shop_document_number ?? $shopSale->shop_document_id,
-            ]));
+            ->route('messenger.index', ['conversation' => $conversation->id]);
     }
 
     /**
