@@ -202,8 +202,7 @@ class ShopSaleController extends Controller
         }
 
         return redirect()
-            ->route('messenger.index', ['conversation' => $conversation->id])
-            ->with('success', __('Расчёт отправлен клиенту (это не продажа).'));
+            ->route('messenger.index', ['conversation' => $conversation->id]);
     }
 
     public function showDraft(Request $request, MessengerConversation $conversation): JsonResponse
