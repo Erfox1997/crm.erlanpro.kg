@@ -21,13 +21,16 @@ const emit = defineEmits(['close']);
 const loading = ref(false);
 const loadError = ref('');
 const search = ref('');
+const searchOpen = ref(false);
 const products = ref([]);
+const categories = ref([]);
 const warehouses = ref([]);
 const paymentAccounts = ref([]);
 const currency = ref('KGS');
 const cart = ref([]);
 const warehouseId = ref(null);
 const payments = ref({});
+const selectedCategoryId = ref(null);
 
 const form = useForm({
     warehouse_id: null,
@@ -37,18 +40,61 @@ const form = useForm({
     payments: {},
 });
 
-const filteredProducts = computed(() => {
+const categoryCards = computed(() => {
+    const counts = {};
+    for (const product of products.value) {
+        const key = product.category_id ?? 0;
+        counts[key] = (counts[key] || 0) + 1;
+    }
+
+    const list = categories.value
+        .map((category) => ({
+            ...category,
+            count: counts[category.id] || 0,
+        }))
+        .filter((category) => category.count > 0);
+
+    const uncategorized = counts[0] || 0;
+    if (uncategorized > 0) {
+        list.push({
+            id: 0,
+            name: 'Без категории',
+            count: uncategorized,
+            is_service: false,
+        });
+    }
+
+    return list;
+});
+
+const selectedCategory = computed(() =>
+    categoryCards.value.find((c) => c.id === selectedCategoryId.value) || null,
+);
+
+const categoryProducts = computed(() => {
+    if (selectedCategoryId.value === null) {
+        return [];
+    }
+
+    return products.value.filter((product) => {
+        const key = product.category_id ?? 0;
+        return key === selectedCategoryId.value;
+    });
+});
+
+const searchResults = computed(() => {
     const q = search.value.trim().toLowerCase();
-    if (! q) {
-        return products.value.slice(0, 40);
+    if (q.length < 1) {
+        return [];
     }
 
     return products.value
         .filter((p) =>
             p.name?.toLowerCase().includes(q)
-            || String(p.barcode || '').toLowerCase().includes(q),
+            || String(p.barcode || '').toLowerCase().includes(q)
+            || String(p.category_name || '').toLowerCase().includes(q),
         )
-        .slice(0, 40);
+        .slice(0, 12);
 });
 
 const cartTotal = computed(() =>
@@ -68,6 +114,8 @@ watch(
 
         form.clearErrors();
         search.value = '';
+        searchOpen.value = false;
+        selectedCategoryId.value = null;
         cart.value = [];
         payments.value = {};
         form.client_name = props.clientName || '';
@@ -75,6 +123,10 @@ watch(
         await loadCatalog();
     },
 );
+
+watch(search, (value) => {
+    searchOpen.value = value.trim().length > 0;
+});
 
 async function loadCatalog() {
     loading.value = true;
@@ -106,6 +158,7 @@ async function loadCatalog() {
         }
 
         products.value = data.products || [];
+        categories.value = data.categories || [];
         warehouses.value = data.warehouses || [];
         paymentAccounts.value = data.payment_accounts || [];
         currency.value = data.currency || 'KGS';
@@ -137,20 +190,32 @@ function stockFor(product) {
     return Number(product.stock?.[String(warehouseId.value)] ?? 0);
 }
 
+function openCategory(categoryId) {
+    selectedCategoryId.value = categoryId;
+    search.value = '';
+    searchOpen.value = false;
+}
+
+function backToCategories() {
+    selectedCategoryId.value = null;
+}
+
 function addProduct(product) {
     const existing = cart.value.find((line) => line.product_id === product.id);
     if (existing) {
         existing.quantity = roundQty(existing.quantity + 1);
-        return;
+    } else {
+        cart.value.push({
+            product_id: product.id,
+            name: product.name,
+            price: Number(product.sale_price || 0),
+            quantity: 1,
+            unit_type: 'primary',
+        });
     }
 
-    cart.value.push({
-        product_id: product.id,
-        name: product.name,
-        price: Number(product.sale_price || 0),
-        quantity: 1,
-        unit_type: 'primary',
-    });
+    search.value = '';
+    searchOpen.value = false;
 }
 
 function changeQty(line, delta) {
@@ -168,6 +233,12 @@ function fillFullPayment(accountId) {
     }
     next[accountId] = String(cartTotal.value);
     payments.value = next;
+}
+
+function closeSearchSoon() {
+    window.setTimeout(() => {
+        searchOpen.value = false;
+    }, 180);
 }
 
 function close() {
@@ -227,7 +298,7 @@ function money(value) {
             <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <div>
                     <h3 class="text-base font-semibold text-slate-900">Продажа</h3>
-                    <p class="text-xs text-slate-500">Быстрый чек по телефону</p>
+                    <p class="text-xs text-slate-500">Категории или поиск — быстрый чек</p>
                 </div>
                 <button
                     type="button"
@@ -240,7 +311,7 @@ function money(value) {
 
             <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
                 <div v-if="loading" class="py-10 text-center text-sm text-slate-500">
-                    Загрузка товаров…
+                    Загрузка каталога…
                 </div>
                 <div v-else-if="loadError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
                     {{ loadError }}
@@ -274,20 +345,80 @@ function money(value) {
                         </div>
                     </div>
 
-                    <div>
-                        <InputLabel value="Найти товар" />
+                    <div class="relative">
+                        <InputLabel value="Поиск товара" />
                         <input
                             v-model="search"
                             type="search"
                             class="mt-1 block w-full rounded-lg border-slate-300 text-base shadow-sm focus:border-amber-500 focus:ring-amber-500"
-                            placeholder="Название или штрихкод"
-                            autofocus
+                            placeholder="Начните вводить название…"
+                            autocomplete="off"
+                            @focus="searchOpen = search.trim().length > 0"
+                            @blur="closeSearchSoon"
                         >
+                        <div
+                            v-if="searchOpen && searchResults.length"
+                            class="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                        >
+                            <button
+                                v-for="product in searchResults"
+                                :key="'s-' + product.id"
+                                type="button"
+                                class="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-amber-50"
+                                @mousedown.prevent="addProduct(product)"
+                            >
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-medium text-slate-900">{{ product.name }}</p>
+                                    <p class="truncate text-xs text-slate-500">
+                                        {{ product.category_name || 'Без категории' }}
+                                        · ост. {{ stockFor(product) }}
+                                    </p>
+                                </div>
+                                <span class="shrink-0 text-sm font-semibold text-amber-700">
+                                    {{ money(product.sale_price) }}
+                                </span>
+                            </button>
+                        </div>
+                        <p
+                            v-else-if="searchOpen && search.trim() && !searchResults.length"
+                            class="absolute z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 shadow-lg"
+                        >
+                            Ничего не найдено
+                        </p>
                     </div>
 
-                    <div class="space-y-2">
+                    <div v-if="selectedCategoryId === null" class="space-y-2">
+                        <p class="text-sm font-semibold text-slate-900">Категории</p>
+                        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            <button
+                                v-for="category in categoryCards"
+                                :key="category.id"
+                                type="button"
+                                class="rounded-xl border border-slate-200 bg-white px-3 py-4 text-left shadow-sm transition active:scale-[0.99] hover:border-amber-300 hover:bg-amber-50/40"
+                                @click="openCategory(category.id)"
+                            >
+                                <p class="text-sm font-semibold text-slate-900">{{ category.name }}</p>
+                                <p class="mt-1 text-xs text-slate-500">{{ category.count }} тов.</p>
+                            </button>
+                        </div>
+                        <p v-if="!categoryCards.length" class="text-sm text-slate-500">
+                            Нет категорий с товарами
+                        </p>
+                    </div>
+
+                    <div v-else class="space-y-2">
                         <button
-                            v-for="product in filteredProducts"
+                            type="button"
+                            class="inline-flex items-center gap-1 text-sm font-medium text-amber-700"
+                            @click="backToCategories"
+                        >
+                            ← Категории
+                        </button>
+                        <p class="text-sm font-semibold text-slate-900">
+                            {{ selectedCategory?.name }}
+                        </p>
+                        <button
+                            v-for="product in categoryProducts"
                             :key="product.id"
                             type="button"
                             class="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm active:scale-[0.99]"
@@ -295,17 +426,14 @@ function money(value) {
                         >
                             <div class="min-w-0">
                                 <p class="truncate text-sm font-medium text-slate-900">{{ product.name }}</p>
-                                <p class="text-xs text-slate-500">
-                                    Остаток: {{ stockFor(product) }}
-                                    <span v-if="product.barcode"> · {{ product.barcode }}</span>
-                                </p>
+                                <p class="text-xs text-slate-500">Остаток: {{ stockFor(product) }}</p>
                             </div>
                             <span class="shrink-0 text-sm font-semibold text-amber-700">
                                 {{ money(product.sale_price) }}
                             </span>
                         </button>
-                        <p v-if="filteredProducts.length === 0" class="text-sm text-slate-500">
-                            Ничего не найдено
+                        <p v-if="!categoryProducts.length" class="text-sm text-slate-500">
+                            В категории пусто
                         </p>
                     </div>
 
@@ -394,6 +522,9 @@ function money(value) {
                         </div>
                         <p class="text-xs text-slate-500">
                             Оплачено: {{ money(paidTotal) }} · Долг: {{ money(Math.max(0, cartTotal - paidTotal)) }}
+                        </p>
+                        <p class="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                            Клиенту уйдёт короткий текст с суммой и красивый чек-картинка.
                         </p>
                     </div>
 

@@ -143,9 +143,11 @@ class ShopSaleController extends Controller
         ]);
 
         try {
-            $this->receipts->sendToConversation(
+            $this->receipts->sendSaleReceipts(
                 $conversation,
-                $this->receipts->formatReceipt($saleData, 'new'),
+                $saleData,
+                'new',
+                ['shop_name' => $integration->metadata['shop_name'] ?? null],
             );
         } catch (\Throwable $e) {
             return redirect()
@@ -196,9 +198,11 @@ class ShopSaleController extends Controller
 
         if ($shopSale->conversation) {
             try {
-                $this->receipts->sendToConversation(
+                $this->receipts->sendSaleReceipts(
                     $shopSale->conversation,
-                    $this->receipts->formatReceipt($saleData, 'updated'),
+                    $saleData,
+                    'updated',
+                    ['shop_name' => $integration->metadata['shop_name'] ?? ($shopSale->payload['shop_name'] ?? null)],
                 );
             } catch (\Throwable $e) {
                 return back()->with('success', __('Продажа изменена, но чек не отправлен: :msg', ['msg' => $e->getMessage()]));
