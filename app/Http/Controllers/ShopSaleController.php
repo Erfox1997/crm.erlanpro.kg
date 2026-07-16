@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MessengerConversation;
 use App\Models\ShopSale;
+use App\Models\ShopSaleDraft;
 use App\Models\User;
 use App\Services\Messenger\ChatDistributionService;
 use App\Services\Shop\ShopIntegrationService;
@@ -120,7 +121,7 @@ class ShopSaleController extends Controller
         $integration = $this->shop->integrationForCompany($companyId);
         abort_unless($integration && $this->shop->isConnected($companyId), 422, __('Магазин не подключён.'));
 
-        $data = $this->validatedSalePayload($request);
+        $data = $this->validatedSalePayload($request, requireFullPayment: true);
         $clientMeta = $this->clientMeta($conversation, $data);
 
         try {
@@ -142,6 +143,12 @@ class ShopSaleController extends Controller
             'payload' => $this->receipts->snapshotPayload($saleData, array_merge($data, $clientMeta)),
         ]);
 
+        ShopSaleDraft::query()
+            ->where('company_id', $companyId)
+            ->where('conversation_id', $conversation->id)
+            ->where('user_id', $user->id)
+            ->delete();
+
         try {
             $this->receipts->sendSaleReceipts(
                 $conversation,
@@ -162,6 +169,116 @@ class ShopSaleController extends Controller
             ]));
     }
 
+    /**
+     * Send a text-only quote (not a sale, no image, no shop document).
+     */
+    public function quote(Request $request, MessengerConversation $conversation): RedirectResponse
+    {
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
+        abort_unless($conversation->company_id === $companyId, 403);
+        abort_unless($this->chatDistribution->userCanViewConversation($user, $conversation), 403);
+
+        $data = $request->validate([
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.name' => ['required', 'string', 'max:255'],
+            'items.*.quantity' => ['required', 'numeric', 'min:0.001'],
+            'items.*.price' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $total = 0.0;
+        foreach ($data['items'] as $item) {
+            $total += round(((float) $item['quantity']) * ((float) $item['price']), 2);
+        }
+        $total = round($total, 2);
+
+        try {
+            $this->receipts->sendToConversation(
+                $conversation,
+                $this->receipts->formatQuoteText($data['items'], $total),
+            );
+        } catch (\Throwable $e) {
+            return back()->withErrors(['quote' => __('Не удалось отправить расчёт: :msg', ['msg' => $e->getMessage()])]);
+        }
+
+        return redirect()
+            ->route('messenger.index', ['conversation' => $conversation->id])
+            ->with('success', __('Расчёт отправлен клиенту (это не продажа).'));
+    }
+
+    public function showDraft(Request $request, MessengerConversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
+        abort_unless($conversation->company_id === $companyId, 403);
+        abort_unless($this->chatDistribution->userCanViewConversation($user, $conversation), 403);
+
+        $draft = ShopSaleDraft::query()
+            ->where('company_id', $companyId)
+            ->where('conversation_id', $conversation->id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        return response()->json([
+            'draft' => $draft?->payload,
+            'updated_at' => $draft?->updated_at?->toIso8601String(),
+        ]);
+    }
+
+    public function saveDraft(Request $request, MessengerConversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
+        abort_unless($conversation->company_id === $companyId, 403);
+        abort_unless($this->chatDistribution->userCanViewConversation($user, $conversation), 403);
+
+        $data = $request->validate([
+            'warehouse_id' => ['nullable', 'integer'],
+            'client_name' => ['nullable', 'string', 'max:255'],
+            'client_phone' => ['nullable', 'string', 'max:50'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.product_id' => ['required', 'integer'],
+            'items.*.name' => ['nullable', 'string', 'max:255'],
+            'items.*.quantity' => ['required', 'numeric', 'min:0.001'],
+            'items.*.price' => ['required', 'numeric', 'min:0'],
+            'items.*.unit_type' => ['nullable', 'in:primary,secondary'],
+            'cash_account_id' => ['nullable', 'integer'],
+            'cashless_account_id' => ['nullable', 'integer'],
+            'payment_cash' => ['nullable', 'numeric', 'min:0'],
+            'payment_card' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $draft = ShopSaleDraft::query()->updateOrCreate(
+            [
+                'company_id' => $companyId,
+                'conversation_id' => $conversation->id,
+                'user_id' => $user->id,
+            ],
+            ['payload' => $data],
+        );
+
+        return response()->json([
+            'ok' => true,
+            'updated_at' => $draft->updated_at?->toIso8601String(),
+        ]);
+    }
+
+    public function destroyDraft(Request $request, MessengerConversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
+        abort_unless($conversation->company_id === $companyId, 403);
+        abort_unless($this->chatDistribution->userCanViewConversation($user, $conversation), 403);
+
+        ShopSaleDraft::query()
+            ->where('company_id', $companyId)
+            ->where('conversation_id', $conversation->id)
+            ->where('user_id', $user->id)
+            ->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
     public function update(Request $request, ShopSale $shopSale): RedirectResponse
     {
         $user = $request->user();
@@ -172,7 +289,7 @@ class ShopSaleController extends Controller
         $integration = $this->shop->integrationForCompany($companyId);
         abort_unless($integration && $this->shop->isConnected($companyId), 422, __('Магазин не подключён.'));
 
-        $data = $this->validatedSalePayload($request);
+        $data = $this->validatedSalePayload($request, requireFullPayment: true);
         $clientMeta = [
             'client_name' => $data['client_name'] ?? ($shopSale->payload['client_name'] ?? $shopSale->client?->name),
             'client_phone' => $data['client_phone'] ?? ($shopSale->payload['client_phone'] ?? $shopSale->client?->phone),
@@ -247,9 +364,9 @@ class ShopSaleController extends Controller
     /**
      * @return array<string, mixed>
      */
-    protected function validatedSalePayload(Request $request): array
+    protected function validatedSalePayload(Request $request, bool $requireFullPayment = false): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'warehouse_id' => ['required', 'integer'],
             'client_name' => ['nullable', 'string', 'max:255'],
             'client_phone' => ['nullable', 'string', 'max:50'],
@@ -258,9 +375,34 @@ class ShopSaleController extends Controller
             'items.*.quantity' => ['required', 'numeric', 'min:0.001'],
             'items.*.price' => ['required', 'numeric', 'min:0'],
             'items.*.unit_type' => ['nullable', 'in:primary,secondary'],
-            'payments' => ['nullable', 'array'],
+            'payments' => ['required', 'array', 'min:1'],
             'payments.*' => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        if ($requireFullPayment) {
+            $itemsTotal = 0.0;
+            foreach ($data['items'] as $item) {
+                $itemsTotal += round(((float) $item['quantity']) * ((float) $item['price']), 2);
+            }
+            $itemsTotal = round($itemsTotal, 2);
+
+            $paid = 0.0;
+            foreach ($data['payments'] as $amount) {
+                $paid += (float) ($amount ?? 0);
+            }
+            $paid = round($paid, 2);
+
+            if ($paid + 0.009 < $itemsTotal) {
+                throw ValidationException::withMessages([
+                    'payments' => __('Оформление в долг недоступно. Оплатите полную сумму: :total (сейчас :paid).', [
+                        'total' => number_format($itemsTotal, 0, '.', ' '),
+                        'paid' => number_format($paid, 0, '.', ' '),
+                    ]),
+                ]);
+            }
+        }
+
+        return $data;
     }
 
     /**

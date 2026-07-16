@@ -14,6 +14,8 @@ const props = defineProps({
     clientPhone: { type: String, default: '' },
     catalogUrl: { type: String, required: true },
     submitUrl: { type: String, required: true },
+    quoteUrl: { type: String, required: true },
+    draftUrl: { type: String, required: true },
 });
 
 const emit = defineEmits(['close']);
@@ -34,6 +36,10 @@ const cashAccountId = ref(null);
 const cashlessAccountId = ref(null);
 const paymentCash = ref(0);
 const paymentCard = ref(0);
+const draftSaving = ref(false);
+const draftStatus = ref('');
+const hasDraft = ref(false);
+const actionError = ref('');
 
 const form = useForm({
     warehouse_id: null,
@@ -41,6 +47,10 @@ const form = useForm({
     client_phone: '',
     items: [],
     payments: {},
+});
+
+const quoteForm = useForm({
+    items: [],
 });
 
 const categoryCards = computed(() => {
@@ -116,8 +126,12 @@ const paidTotal = computed(() =>
     roundMoney((Number(paymentCash.value) || 0) + (Number(paymentCard.value) || 0)),
 );
 
-const creditTotal = computed(() =>
+const remainingToPay = computed(() =>
     roundMoney(Math.max(0, cartTotal.value - paidTotal.value)),
+);
+
+const isFullyPaid = computed(() =>
+    cart.value.length > 0 && remainingToPay.value <= 0.009,
 );
 
 watch(
@@ -128,6 +142,9 @@ watch(
         }
 
         form.clearErrors();
+        quoteForm.clearErrors();
+        actionError.value = '';
+        draftStatus.value = '';
         search.value = '';
         searchOpen.value = false;
         selectedCategoryId.value = null;
@@ -137,12 +154,31 @@ watch(
         form.client_name = props.clientName || '';
         form.client_phone = props.clientPhone || '';
         await loadCatalog();
+        await loadDraft();
     },
 );
 
 watch(search, (value) => {
     searchOpen.value = value.trim().length > 0;
 });
+
+function csrfHeaders() {
+    const meta = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    const xsrf = decodeURIComponent(
+        document.cookie
+            .split('; ')
+            .find((row) => row.startsWith('XSRF-TOKEN='))
+            ?.split('=')[1] ?? '',
+    );
+
+    return {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        ...(meta ? { 'X-CSRF-TOKEN': meta } : {}),
+        ...(xsrf ? { 'X-XSRF-TOKEN': xsrf } : {}),
+    };
+}
 
 async function loadCatalog() {
     loading.value = true;
@@ -197,6 +233,122 @@ async function loadCatalog() {
     } finally {
         loading.value = false;
     }
+}
+
+async function loadDraft() {
+    hasDraft.value = false;
+    try {
+        const response = await fetch(props.draftUrl, {
+            headers: csrfHeaders(),
+            credentials: 'same-origin',
+        });
+        if (! response.ok) {
+            return;
+        }
+        const data = await response.json();
+        const draft = data.draft;
+        if (! draft?.items?.length) {
+            return;
+        }
+
+        applyDraft(draft);
+        hasDraft.value = true;
+        draftStatus.value = 'Черновик загружен';
+    } catch {
+        // ignore — fresh cart is fine
+    }
+}
+
+function applyDraft(draft) {
+    if (draft.warehouse_id) {
+        warehouseId.value = draft.warehouse_id;
+    }
+    if (draft.client_name != null) {
+        form.client_name = draft.client_name;
+    }
+    if (draft.client_phone != null) {
+        form.client_phone = draft.client_phone;
+    }
+    cart.value = (draft.items || []).map((item) => ({
+        product_id: item.product_id,
+        name: item.name || products.value.find((p) => p.id === item.product_id)?.name || 'Товар',
+        price: Number(item.price || 0),
+        quantity: Number(item.quantity || 1),
+        unit_type: item.unit_type || 'primary',
+    }));
+    if (draft.cash_account_id) {
+        cashAccountId.value = draft.cash_account_id;
+    }
+    if (draft.cashless_account_id) {
+        cashlessAccountId.value = draft.cashless_account_id;
+    }
+    paymentCash.value = Number(draft.payment_cash || 0);
+    paymentCard.value = Number(draft.payment_card || 0);
+}
+
+function draftPayload() {
+    return {
+        warehouse_id: warehouseId.value,
+        client_name: form.client_name,
+        client_phone: form.client_phone,
+        items: cart.value.map((line) => ({
+            product_id: line.product_id,
+            name: line.name,
+            quantity: line.quantity,
+            price: line.price,
+            unit_type: line.unit_type || 'primary',
+        })),
+        cash_account_id: cashAccountId.value,
+        cashless_account_id: cashlessAccountId.value,
+        payment_cash: Number(paymentCash.value) || 0,
+        payment_card: Number(paymentCard.value) || 0,
+    };
+}
+
+async function saveDraft() {
+    if (! cart.value.length) {
+        return;
+    }
+
+    draftSaving.value = true;
+    draftStatus.value = '';
+    actionError.value = '';
+
+    try {
+        const response = await fetch(props.draftUrl, {
+            method: 'PUT',
+            headers: csrfHeaders(),
+            credentials: 'same-origin',
+            body: JSON.stringify(draftPayload()),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (! response.ok) {
+            throw new Error(data.message || 'Не удалось сохранить черновик');
+        }
+        hasDraft.value = true;
+        draftStatus.value = 'Черновик сохранён';
+    } catch (error) {
+        actionError.value = error.message || 'Ошибка сохранения черновика';
+    } finally {
+        draftSaving.value = false;
+    }
+}
+
+async function clearDraft() {
+    try {
+        await fetch(props.draftUrl, {
+            method: 'DELETE',
+            headers: csrfHeaders(),
+            credentials: 'same-origin',
+        });
+    } catch {
+        // ignore
+    }
+    hasDraft.value = false;
+    draftStatus.value = '';
+    cart.value = [];
+    paymentCash.value = 0;
+    paymentCard.value = 0;
 }
 
 function stockFor(product) {
@@ -266,6 +418,11 @@ function clampPayment(field) {
         if (card > maxCard) {
             card = maxCard;
         }
+    } else {
+        const maxCash = roundMoney(Math.max(0, total - card));
+        if (cash > maxCash) {
+            cash = maxCash;
+        }
     }
 
     paymentCash.value = cash;
@@ -282,11 +439,7 @@ function close() {
     emit('close');
 }
 
-function submit() {
-    if (! warehouseId.value || cart.value.length === 0) {
-        return;
-    }
-
+function buildPaymentPayload() {
     const paymentPayload = {};
     const cash = Math.max(0, Number(paymentCash.value) || 0);
     const card = Math.max(0, Number(paymentCard.value) || 0);
@@ -296,7 +449,50 @@ function submit() {
     if (card > 0 && cashlessAccountId.value) {
         paymentPayload[cashlessAccountId.value] = card;
     }
+    return paymentPayload;
+}
 
+function submitQuote() {
+    if (cart.value.length === 0) {
+        return;
+    }
+
+    actionError.value = '';
+    quoteForm.items = cart.value.map((line) => ({
+        name: line.name,
+        quantity: line.quantity,
+        price: line.price,
+    }));
+
+    quoteForm.post(props.quoteUrl, {
+        preserveScroll: true,
+        onSuccess: () => {
+            close();
+            router.reload({ only: ['messages', 'conversations', 'selectedConversation'] });
+        },
+        onError: (errors) => {
+            actionError.value = errors.quote || Object.values(errors)[0] || 'Не удалось отправить расчёт';
+        },
+    });
+}
+
+function submit() {
+    if (! warehouseId.value || cart.value.length === 0) {
+        return;
+    }
+
+    if (! isFullyPaid.value) {
+        actionError.value = `Нужна полная оплата. Осталось: ${money(remainingToPay.value)} ${currency.value}`;
+        return;
+    }
+
+    const paymentPayload = buildPaymentPayload();
+    if (! Object.keys(paymentPayload).length) {
+        actionError.value = 'Укажите оплату наличными или безналом.';
+        return;
+    }
+
+    actionError.value = '';
     form.warehouse_id = warehouseId.value;
     form.items = cart.value.map((line) => ({
         product_id: line.product_id,
@@ -309,6 +505,7 @@ function submit() {
     form.post(props.submitUrl, {
         preserveScroll: true,
         onSuccess: () => {
+            hasDraft.value = false;
             close();
             router.reload({ only: ['messages', 'conversations', 'selectedConversation'] });
         },
@@ -337,7 +534,9 @@ function money(value) {
             <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <div>
                     <h3 class="text-base font-semibold text-slate-900">Продажа</h3>
-                    <p class="text-xs text-slate-500">Категории или поиск — быстрый чек</p>
+                    <p class="text-xs text-slate-500">
+                        Расчёт текстом · продажа только с полной оплатой
+                    </p>
                 </div>
                 <button
                     type="button"
@@ -356,6 +555,21 @@ function money(value) {
                     {{ loadError }}
                 </div>
                 <template v-else>
+                    <div
+                        v-if="hasDraft || draftStatus"
+                        class="flex items-center justify-between gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800"
+                    >
+                        <span>{{ draftStatus || 'Есть сохранённый черновик' }}</span>
+                        <button
+                            v-if="hasDraft"
+                            type="button"
+                            class="font-medium text-sky-700 underline"
+                            @click="clearDraft"
+                        >
+                            Очистить
+                        </button>
+                    </div>
+
                     <div class="grid gap-3 sm:grid-cols-2">
                         <div>
                             <InputLabel value="Склад" />
@@ -533,7 +747,7 @@ function money(value) {
                     </div>
 
                     <div v-if="cart.length" class="space-y-3">
-                        <p class="text-sm font-semibold text-slate-900">Оплата</p>
+                        <p class="text-sm font-semibold text-slate-900">Оплата (только для продажи)</p>
 
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -613,30 +827,58 @@ function money(value) {
                             </div>
                         </div>
 
-                        <p class="text-xs text-slate-500">
-                            Оплачено: {{ money(paidTotal) }} · Долг: {{ money(creditTotal) }}
-                        </p>
-                        <p class="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                            Пример: безнал 400 → галочка на наличных поставит остаток {{ money(cartTotal) }} − 400.
+                        <p
+                            class="rounded-lg px-3 py-2 text-xs"
+                            :class="isFullyPaid ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'"
+                        >
+                            Оплачено: {{ money(paidTotal) }}
+                            <template v-if="!isFullyPaid">
+                                · осталось внести: {{ money(remainingToPay) }} (долг нельзя)
+                            </template>
+                            <template v-else>
+                                · сумма закрыта
+                            </template>
                         </p>
                     </div>
 
-                    <InputError :message="form.errors.shop || form.errors.items || form.errors.client_phone" />
+                    <InputError
+                        :message="actionError || form.errors.payments || form.errors.shop || form.errors.items || form.errors.client_phone || quoteForm.errors.quote"
+                    />
                 </template>
             </div>
 
-            <div class="flex gap-2 border-t border-slate-200 px-4 py-3">
-                <SecondaryButton type="button" class="flex-1 justify-center" @click="close">
-                    Отмена
-                </SecondaryButton>
-                <PrimaryButton
-                    type="button"
-                    class="flex-1 justify-center !bg-amber-600 hover:!bg-amber-500"
-                    :disabled="form.processing || !cart.length || !warehouseId || loading"
-                    @click="submit"
-                >
-                    Продать {{ cart.length ? `· ${money(cartTotal)}` : '' }}
-                </PrimaryButton>
+            <div class="space-y-2 border-t border-slate-200 px-4 py-3">
+                <div class="flex gap-2">
+                    <SecondaryButton
+                        type="button"
+                        class="flex-1 justify-center"
+                        :disabled="draftSaving || !cart.length || loading"
+                        @click="saveDraft"
+                    >
+                        {{ draftSaving ? 'Сохранение…' : 'Черновик' }}
+                    </SecondaryButton>
+                    <SecondaryButton
+                        type="button"
+                        class="flex-1 justify-center !border-sky-300 !text-sky-800"
+                        :disabled="quoteForm.processing || !cart.length || loading"
+                        @click="submitQuote"
+                    >
+                        Посчитать
+                    </SecondaryButton>
+                </div>
+                <div class="flex gap-2">
+                    <SecondaryButton type="button" class="flex-1 justify-center" @click="close">
+                        Отмена
+                    </SecondaryButton>
+                    <PrimaryButton
+                        type="button"
+                        class="flex-1 justify-center !bg-amber-600 hover:!bg-amber-500"
+                        :disabled="form.processing || !cart.length || !warehouseId || loading || !isFullyPaid"
+                        @click="submit"
+                    >
+                        Продать {{ cart.length ? `· ${money(cartTotal)}` : '' }}
+                    </PrimaryButton>
+                </div>
             </div>
         </div>
     </Modal>

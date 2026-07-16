@@ -143,6 +143,10 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::get('/shop-sales/report', [ShopSaleController::class, 'report'])->name('shop-sales.report');
     Route::get('/shop-sales/catalog', [ShopSaleController::class, 'catalog'])->name('shop-sales.catalog');
     Route::post('/shop-sales/conversations/{conversation}', [ShopSaleController::class, 'store'])->name('shop-sales.store');
+    Route::post('/shop-sales/conversations/{conversation}/quote', [ShopSaleController::class, 'quote'])->name('shop-sales.quote');
+    Route::get('/shop-sales/conversations/{conversation}/draft', [ShopSaleController::class, 'showDraft'])->name('shop-sales.draft.show');
+    Route::put('/shop-sales/conversations/{conversation}/draft', [ShopSaleController::class, 'saveDraft'])->name('shop-sales.draft.save');
+    Route::delete('/shop-sales/conversations/{conversation}/draft', [ShopSaleController::class, 'destroyDraft'])->name('shop-sales.draft.destroy');
     Route::put('/shop-sales/{shopSale}', [ShopSaleController::class, 'update'])->name('shop-sales.update');
     Route::delete('/shop-sales/{shopSale}', [ShopSaleController::class, 'destroy'])->name('shop-sales.destroy');
 

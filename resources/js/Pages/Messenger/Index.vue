@@ -2003,6 +2003,8 @@ watch(
             :client-phone="linkedClient?.phone || selectedConversation.participant_id || ''"
             :catalog-url="route('shop-sales.catalog')"
             :submit-url="route('shop-sales.store', selectedConversation.id)"
+            :quote-url="route('shop-sales.quote', selectedConversation.id)"
+            :draft-url="route('shop-sales.draft.show', selectedConversation.id)"
             @close="sellModalOpen = false"
         />
 

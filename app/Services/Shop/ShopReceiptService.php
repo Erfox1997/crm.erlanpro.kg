@@ -40,6 +40,29 @@ class ShopReceiptService
     }
 
     /**
+     * Quote / calculate-only message (not a sale). Text only, no image.
+     *
+     * @param  list<array{name?: string, quantity?: float|int, price?: float|int}>  $items
+     */
+    public function formatQuoteText(array $items, float $totalAmount): string
+    {
+        $lines = ['Расчёт (не продажа):'];
+
+        foreach ($items as $item) {
+            $name = trim((string) ($item['name'] ?? 'Товар'));
+            $qty = (float) ($item['quantity'] ?? 0);
+            $price = (float) ($item['price'] ?? 0);
+            $lineTotal = round($qty * $price, 2);
+            $qtyStr = rtrim(rtrim(number_format($qty, 3, '.', ''), '0'), '.') ?: '0';
+            $lines[] = "• {$name} × {$qtyStr} = ".number_format($lineTotal, 0, '.', ' ').' сом';
+        }
+
+        $lines[] = 'Итого с вас: '.number_format($totalAmount, 0, '.', ' ').' сом';
+
+        return implode("\n", $lines);
+    }
+
+    /**
      * Full text receipt (used as image caption fallback / history).
      *
      * @param  array<string, mixed>  $salePayload
