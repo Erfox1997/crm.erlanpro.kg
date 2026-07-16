@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MessengerMessage;
 use App\Models\MessengerQuickReply;
+use App\Services\Messenger\ChatDistributionService;
 use App\Services\Messenger\MessengerQuickReplyImportService;
+use App\Services\Meta\MetaAttachmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -18,6 +21,8 @@ class MessengerQuickReplyController extends Controller
 {
     public function __construct(
         private MessengerQuickReplyImportService $importService,
+        private ChatDistributionService $chatDistribution,
+        private MetaAttachmentService $metaAttachments,
     ) {}
 
     public function index(Request $request): Response
@@ -78,6 +83,76 @@ class MessengerQuickReplyController extends Controller
         ]);
 
         return back()->with('success', __('Быстрый ответ добавлен.'));
+    }
+
+    public function storeFromMessage(Request $request, MessengerMessage $message): RedirectResponse
+    {
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
+        abort_unless($message->company_id === $companyId, 403);
+
+        $conversation = $message->conversation()->firstOrFail();
+        abort_unless($this->chatDistribution->userCanViewConversation($user, $conversation), 403);
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:120',
+        ]);
+
+        $title = ltrim(trim($validated['title']), "/ \t");
+        if ($title === '') {
+            return back()->withErrors(['title' => __('Укажите название шаблона.')]);
+        }
+
+        $body = trim((string) ($message->body ?? ''));
+        $attachments = $message->normalizedAttachments();
+        $firstAttachment = collect($attachments)->first(fn ($item) => is_array($item));
+
+        $type = 'text';
+        if ($body === '' && is_array($firstAttachment)) {
+            $attachmentType = (string) ($firstAttachment['type'] ?? '');
+            if (in_array($attachmentType, ['image', 'audio'], true)) {
+                $type = $attachmentType;
+            }
+        }
+
+        if ($type === 'text' && $body === '') {
+            return back()->withErrors([
+                'title' => __('В этом сообщении нет текста для быстрого ответа.'),
+            ]);
+        }
+
+        $attachmentMeta = [
+            'attachment_path' => null,
+            'attachment_mime' => null,
+            'attachment_name' => null,
+        ];
+
+        if (in_array($type, ['image', 'audio'], true)) {
+            try {
+                $attachmentMeta = $this->copyMessageAttachment($firstAttachment, $companyId, $type);
+            } catch (\Throwable $e) {
+                return back()->withErrors([
+                    'title' => __('Не удалось сохранить вложение: :msg', ['msg' => $e->getMessage()]),
+                ]);
+            }
+        }
+
+        $sortOrder = (int) MessengerQuickReply::query()
+            ->where('company_id', $companyId)
+            ->max('sort_order') + 1;
+
+        MessengerQuickReply::query()->create([
+            'company_id' => $companyId,
+            'type' => $type,
+            'title' => $title,
+            'body' => $body !== '' ? $body : null,
+            'sort_order' => $sortOrder,
+            ...$attachmentMeta,
+        ]);
+
+        return back()->with('success', __('Сообщение добавлено в быстрые ответы как /:title', [
+            'title' => $title,
+        ]));
     }
 
     public function update(Request $request, MessengerQuickReply $quickReply): RedirectResponse
@@ -247,5 +322,47 @@ class MessengerQuickReplyController extends Controller
         if ($quickReply->attachment_path) {
             Storage::disk('local')->delete($quickReply->attachment_path);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $attachment
+     * @return array{attachment_path: string, attachment_mime: string, attachment_name: string}
+     */
+    protected function copyMessageAttachment(
+        array $attachment,
+        int $companyId,
+        string $type,
+    ): array {
+        $sourcePath = null;
+        $storagePath = (string) ($attachment['storage_path'] ?? '');
+        if ($storagePath !== '') {
+            $sourcePath = $this->metaAttachments->resolveLocalStoragePath($storagePath);
+        }
+
+        if (! $sourcePath) {
+            throw new \RuntimeException(__('Файл сообщения недоступен. Нажмите «Обновить» в списке чатов и попробуйте снова.'));
+        }
+
+        $originalName = (string) ($attachment['name'] ?? basename($sourcePath));
+        $extension = pathinfo($originalName, PATHINFO_EXTENSION)
+            ?: pathinfo($sourcePath, PATHINFO_EXTENSION)
+            ?: ($type === 'audio' ? 'm4a' : 'jpg');
+        $filename = Str::uuid().'.'.strtolower($extension);
+        $directory = "quick-replies/{$companyId}";
+        $targetRelative = $directory.'/'.$filename;
+
+        Storage::disk('local')->makeDirectory($directory);
+        $copied = copy($sourcePath, Storage::disk('local')->path($targetRelative));
+        if (! $copied) {
+            throw new \RuntimeException(__('Не удалось скопировать файл.'));
+        }
+
+        return [
+            'attachment_path' => $targetRelative,
+            'attachment_mime' => (string) ($attachment['mime_type']
+                ?? $this->metaAttachments->mimeTypeForPath($sourcePath)
+                ?? 'application/octet-stream'),
+            'attachment_name' => $originalName !== '' ? $originalName : $filename,
+        ];
     }
 }

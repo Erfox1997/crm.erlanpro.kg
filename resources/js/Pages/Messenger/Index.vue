@@ -113,8 +113,15 @@ const imagePreviewUrl = ref(null);
 const lightboxImageUrl = ref(null);
 const showClientModal = ref(false);
 const showFilterModal = ref(false);
+const showSaveQuickReplyModal = ref(false);
+const saveQuickReplyPreview = ref('');
 const aiImproving = ref(false);
 const aiError = ref('');
+
+const saveQuickReplyForm = useForm({
+    title: '',
+});
+let saveQuickReplyMessageId = null;
 
 const funnelFilter = ref({
     pipeline_id: '',
@@ -913,6 +920,67 @@ function messageHasContent(message) {
         || (Array.isArray(message.attachments) && message.attachments.length > 0);
 }
 
+function canSaveAsQuickReply(message) {
+    if (message.body?.trim()) {
+        return true;
+    }
+
+    const first = Array.isArray(message.attachments) ? message.attachments[0] : null;
+    return first?.type === 'image' || first?.type === 'audio';
+}
+
+function suggestQuickReplyTitle(message) {
+    const body = (message.body || '').trim().replace(/\s+/g, ' ');
+    if (body) {
+        return body.slice(0, 40).replace(/[^\p{L}\p{N}\s_-]+/gu, '').trim() || 'ответ';
+    }
+
+    const first = Array.isArray(message.attachments) ? message.attachments[0] : null;
+    if (first?.type === 'image') {
+        return 'фото';
+    }
+    if (first?.type === 'audio') {
+        return 'голос';
+    }
+
+    return 'ответ';
+}
+
+function openSaveQuickReplyModal(message) {
+    if (!canSaveAsQuickReply(message)) {
+        return;
+    }
+
+    saveQuickReplyMessageId = message.id;
+    saveQuickReplyPreview.value = message.body?.trim()
+        || (message.attachments?.[0]?.type === 'image' ? 'Фото' : 'Голосовое сообщение');
+    saveQuickReplyForm.clearErrors();
+    saveQuickReplyForm.title = suggestQuickReplyTitle(message);
+    showSaveQuickReplyModal.value = true;
+}
+
+function closeSaveQuickReplyModal() {
+    showSaveQuickReplyModal.value = false;
+    saveQuickReplyMessageId = null;
+    saveQuickReplyPreview.value = '';
+    saveQuickReplyForm.reset();
+    saveQuickReplyForm.clearErrors();
+}
+
+function submitSaveQuickReply() {
+    if (!saveQuickReplyMessageId) {
+        return;
+    }
+
+    saveQuickReplyForm.post(
+        route('messenger.messages.quick-reply', saveQuickReplyMessageId),
+        {
+            preserveScroll: true,
+            onSuccess: () => closeSaveQuickReplyModal(),
+        },
+    );
+}
+
 function scrollToBottom() {
     nextTick(() => {
         messagesEnd.value?.scrollIntoView({ behavior: 'smooth' });
@@ -930,6 +998,13 @@ watch(
     <Head title="Мессенджер" />
 
     <AuthenticatedLayout full-height>
+        <div
+            v-if="$page.props.flash?.success"
+            class="shrink-0 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800"
+        >
+            {{ $page.props.flash.success }}
+        </div>
+
         <div
             v-if="$page.props.errors?.sync"
             class="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
@@ -1287,11 +1362,34 @@ watch(
                                 :class="item.message.direction === 'outbound' ? 'justify-end' : 'justify-start'"
                             >
                             <div
-                                class="relative max-w-[82%] rounded-lg px-2 py-1.5 text-[13px] leading-snug shadow-sm sm:max-w-[min(100%,28rem)] sm:px-3 sm:py-2 sm:text-sm"
+                                class="group relative max-w-[82%] rounded-lg px-2 py-1.5 text-[13px] leading-snug shadow-sm sm:max-w-[min(100%,28rem)] sm:px-3 sm:py-2 sm:text-sm"
                                 :class="item.message.direction === 'outbound'
                                     ? 'rounded-tr-none bg-[#d9fdd3]'
                                     : 'rounded-tl-none bg-white'"
                             >
+                                <button
+                                    v-if="canSaveAsQuickReply(item.message)"
+                                    type="button"
+                                    class="absolute -top-2 right-1 z-10 rounded-full bg-white p-1 text-[#54656f] opacity-100 shadow-sm ring-1 ring-[#d1d7db] transition hover:bg-[#f0f2f5] hover:text-[#008069] sm:opacity-0 sm:group-hover:opacity-100"
+                                    title="В быстрые ответы"
+                                    @click.stop="openSaveQuickReplyModal(item.message)"
+                                >
+                                    <svg
+                                        class="h-3.5 w-3.5"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                                        />
+                                    </svg>
+                                </button>
+
                                 <p
                                     v-if="item.message.body?.trim()"
                                     class="whitespace-pre-wrap break-words text-[#111b21]"
@@ -1621,6 +1719,64 @@ watch(
                 @click.stop
             >
         </div>
+
+        <Modal :show="showSaveQuickReplyModal" max-width="md" @close="closeSaveQuickReplyModal">
+            <form class="p-6" @submit.prevent="submitSaveQuickReply">
+                <h3 class="text-lg font-semibold text-slate-900">
+                    В быстрые ответы
+                </h3>
+                <p class="mt-1 text-sm text-slate-600">
+                    Сообщение сохранится как шаблон. В чате его можно вызвать через
+                    <span class="font-mono">/</span> и название.
+                </p>
+
+                <div
+                    v-if="saveQuickReplyPreview"
+                    class="mt-4 max-h-28 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm whitespace-pre-wrap text-slate-700"
+                >
+                    {{ saveQuickReplyPreview }}
+                </div>
+
+                <div class="mt-4">
+                    <InputLabel for="save_quick_reply_title" value="Название команды" />
+                    <div class="mt-1 flex items-center gap-2">
+                        <span class="text-sm font-semibold text-slate-500">/</span>
+                        <TextInput
+                            id="save_quick_reply_title"
+                            v-model="saveQuickReplyForm.title"
+                            type="text"
+                            class="block w-full"
+                            placeholder="например: мбанк"
+                            maxlength="120"
+                            autocomplete="off"
+                        />
+                    </div>
+                    <p class="mt-1 text-xs text-slate-500">
+                        Будет доступно как
+                        <span class="font-mono">/{{ saveQuickReplyForm.title || 'название' }}</span>
+                    </p>
+                    <InputError
+                        class="mt-2"
+                        :message="saveQuickReplyForm.errors.title"
+                    />
+                </div>
+
+                <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <SecondaryButton
+                        type="button"
+                        @click="closeSaveQuickReplyModal"
+                    >
+                        Отмена
+                    </SecondaryButton>
+                    <PrimaryButton
+                        type="submit"
+                        :disabled="saveQuickReplyForm.processing || !saveQuickReplyForm.title.trim()"
+                    >
+                        Сохранить
+                    </PrimaryButton>
+                </div>
+            </form>
+        </Modal>
 
         <Modal :show="showFilterModal" max-width="md" @close="showFilterModal = false">
             <div class="p-6">

@@ -111,6 +111,8 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::post('/messenger/conversations/{conversation}/client', [MessengerController::class, 'saveClient'])->name('messenger.save-client');
     Route::patch('/messenger/conversations/{conversation}/deal-stage', [MessengerController::class, 'updateDealStage'])->name('messenger.update-deal-stage');
     Route::post('/messenger/conversations/{conversation}/quick-replies/{quickReply}', [MessengerController::class, 'sendQuickReply'])->name('messenger.send-quick-reply');
+    Route::post('/messenger/messages/{message}/quick-reply', [MessengerQuickReplyController::class, 'storeFromMessage'])
+        ->name('messenger.messages.quick-reply');
     Route::get('/messenger/messages/{message}/attachments/{index}', [MessengerController::class, 'attachment'])
         ->whereNumber('index')
         ->name('messenger.attachment');
