@@ -88,10 +88,21 @@ async function loadCatalog() {
             },
             credentials: 'same-origin',
         });
-        const data = await response.json();
+
+        let data = {};
+        const raw = await response.text();
+        try {
+            data = raw ? JSON.parse(raw) : {};
+        } catch {
+            throw new Error(
+                response.ok
+                    ? 'Некорректный ответ сервера'
+                    : `Ошибка сервера (${response.status}). Проверьте деплой CRM и магазина.`,
+            );
+        }
 
         if (! response.ok) {
-            throw new Error(data.message || 'Не удалось загрузить каталог');
+            throw new Error(data.message || `Не удалось загрузить каталог (${response.status})`);
         }
 
         products.value = data.products || [];
@@ -107,6 +118,10 @@ async function loadCatalog() {
             defaults[account.id] = '';
         }
         payments.value = defaults;
+
+        if (! products.value.length && ! warehouses.value.length) {
+            loadError.value = 'Каталог пуст. Добавьте товары и склады в магазине.';
+        }
     } catch (error) {
         loadError.value = error.message || 'Ошибка загрузки';
     } finally {

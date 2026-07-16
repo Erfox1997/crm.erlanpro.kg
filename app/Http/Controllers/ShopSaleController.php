@@ -90,13 +90,21 @@ class ShopSaleController extends Controller
         $integration = $this->shop->integrationForCompany($companyId);
 
         if (! $integration || ! $this->shop->isConnected($companyId)) {
-            return response()->json(['message' => __('Магазин не подключён.')], 422);
+            return response()->json(['message' => __('Магазин не подключён. Откройте Интеграции → Магазин.')], 422);
         }
 
         try {
             $catalog = $this->shop->fetchCatalog($integration);
         } catch (ValidationException $e) {
-            return response()->json(['message' => collect($e->errors())->flatten()->first()], 422);
+            return response()->json([
+                'message' => collect($e->errors())->flatten()->first() ?: __('Не удалось загрузить каталог.'),
+            ], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => __('Ошибка загрузки каталога: :msg', ['msg' => $e->getMessage()]),
+            ], 422);
         }
 
         return response()->json($catalog);
