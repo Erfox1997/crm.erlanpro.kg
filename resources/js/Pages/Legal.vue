@@ -1,19 +1,22 @@
 <script setup>
 import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head } from '@inertiajs/vue3';
+import { computed } from 'vue';
 
-defineProps({
-    contactEmail: {
-        type: String,
-        default: 'support@erlanpro.kg',
-    },
-    contactPhone: {
-        type: String,
-        default: '+996 702 300 339',
+const props = defineProps({
+    legal: {
+        type: Object,
+        required: true,
     },
 });
 
+const aboutParagraphs = computed(() =>
+    String(props.legal.about ?? '')
+        .split(/\n\s*\n/)
+        .map((part) => part.trim())
+        .filter(Boolean),
+);
 </script>
 
 <template>
@@ -27,31 +30,26 @@ defineProps({
                 Реквизиты и сведения об индивидуальном предпринимателе
             </h1>
             <p class="mt-2 text-sm text-slate-500">
-                Последнее обновление: 11 июля 2026 г.
+                Последнее обновление: {{ legal.updated_at_label }}
             </p>
 
             <div class="prose prose-slate mt-8 max-w-none text-sm leading-relaxed">
                 <section class="mb-8 rounded-xl border border-slate-200 bg-white p-6">
                     <h2 class="text-lg font-semibold text-slate-900">
-                        ИП АСАНАЛИЕВ ЭРЛАН МАЛИКОВИЧ
+                        {{ legal.legal_name }}
                     </h2>
                     <dl class="mt-4 space-y-3 text-slate-600">
                         <div>
                             <dt class="font-medium text-slate-800">ПИН</dt>
-                            <dd>21706199700221</dd>
+                            <dd>{{ legal.pin }}</dd>
                         </div>
                         <div>
                             <dt class="font-medium text-slate-800">Вид деятельности</dt>
-                            <dd>Разработка программного обеспечения (ОКУД 62.01.0)</dd>
+                            <dd>{{ legal.activity }}</dd>
                         </div>
                         <div>
                             <dt class="font-medium text-slate-800">Юридический адрес</dt>
-                            <dd>
-                                Кыргызская Республика, Иссык-Кульская область,
-                                Ак-Суйский район, Кыдыр Аке айылный аймак,
-                                село Новоконстантиновка (Жергез), улица Оторбая,
-                                дом 20, 722348
-                            </dd>
+                            <dd class="whitespace-pre-line">{{ legal.address }}</dd>
                         </div>
                     </dl>
                 </section>
@@ -60,20 +58,12 @@ defineProps({
                     <h2 class="text-lg font-semibold text-slate-900">
                         Сервис CRM ErlanPro
                     </h2>
-                    <p class="mt-3 text-slate-600">
-                        Сервис
-                        <strong>CRM ErlanPro</strong>, доступный по адресу
-                        <a
-                            href="https://crm.erlanpro.kg"
-                            class="text-indigo-600 hover:underline"
-                            >https://crm.erlanpro.kg</a
-                        >, предоставляется индивидуальным предпринимателем
-                        <strong>АСАНАЛИЕВЫМ ЭРЛАНОМ МАЛИКОВИЧЕМ</strong>.
-                    </p>
-                    <p class="mt-3 text-slate-600">
-                        ErlanPro — коммерческое обозначение сервиса CRM.
-                        Юридическим лицом, оказывающим услуги, является
-                        <strong>ИП АСАНАЛИЕВ ЭРЛАН МАЛИКОВИЧ</strong>.
+                    <p
+                        v-for="(paragraph, index) in aboutParagraphs"
+                        :key="index"
+                        class="mt-3 whitespace-pre-line text-slate-600"
+                    >
+                        {{ paragraph }}
                     </p>
                 </section>
 
@@ -82,21 +72,21 @@ defineProps({
                     <p class="mt-3 text-slate-600">
                         Email:
                         <a
-                            :href="`mailto:${contactEmail}`"
+                            :href="`mailto:${legal.contact_email}`"
                             class="text-indigo-600 hover:underline"
-                            >{{ contactEmail }}</a
+                            >{{ legal.contact_email }}</a
                         ><br />
                         Телефон:
                         <a
-                            :href="`tel:${contactPhone.replace(/\s/g, '')}`"
+                            :href="`tel:${legal.contact_phone.replace(/\s/g, '')}`"
                             class="text-indigo-600 hover:underline"
-                            >{{ contactPhone }}</a
+                            >{{ legal.contact_phone }}</a
                         ><br />
                         Сайт:
                         <a
-                            href="https://crm.erlanpro.kg"
+                            :href="legal.site_url"
                             class="text-indigo-600 hover:underline"
-                            >https://crm.erlanpro.kg</a
+                            >{{ legal.site_url }}</a
                         >
                     </p>
                 </section>

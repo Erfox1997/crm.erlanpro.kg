@@ -19,7 +19,6 @@ class Tariff extends Model
         'sort_order',
         'max_employees',
         'message_retention_days',
-        'max_deals',
     ];
 
     protected function casts(): array
@@ -33,7 +32,6 @@ class Tariff extends Model
             'sort_order' => 'integer',
             'max_employees' => 'integer',
             'message_retention_days' => 'integer',
-            'max_deals' => 'integer',
         ];
     }
 
@@ -57,7 +55,6 @@ class Tariff extends Model
                 'sort_order' => 1,
                 'max_employees' => 2,
                 'message_retention_days' => 30,
-                'max_deals' => 100,
             ],
         );
     }

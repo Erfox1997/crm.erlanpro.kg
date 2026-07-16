@@ -32,7 +32,6 @@ const form = useForm({
     sort_order: props.tariff?.sort_order ?? 0,
     max_employees: props.tariff?.max_employees ?? '',
     message_retention_days: props.tariff?.message_retention_days ?? '',
-    max_deals: props.tariff?.max_deals ?? '',
 });
 
 function submit() {
@@ -44,7 +43,6 @@ function submit() {
             form.message_retention_days === ''
                 ? null
                 : form.message_retention_days,
-        max_deals: form.max_deals === '' ? null : form.max_deals,
     };
 
     if (isEdit.value) {
@@ -202,18 +200,6 @@ function submit() {
                             class="mt-2"
                             :message="form.errors.message_retention_days"
                         />
-                    </div>
-                    <div>
-                        <InputLabel for="max_deals" value="Макс. сделок" />
-                        <TextInput
-                            id="max_deals"
-                            v-model="form.max_deals"
-                            type="number"
-                            min="1"
-                            class="mt-1 block w-full"
-                            placeholder="Без ограничения"
-                        />
-                        <InputError class="mt-2" :message="form.errors.max_deals" />
                     </div>
                 </div>
             </div>

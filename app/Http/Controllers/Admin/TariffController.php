@@ -98,7 +98,6 @@ class TariffController extends Controller
             'sort_order' => 'required|integer|min:0|max:65535',
             'max_employees' => 'nullable|integer|min:1',
             'message_retention_days' => 'nullable|integer|min:1|max:3650',
-            'max_deals' => 'nullable|integer|min:1',
         ]);
 
         if ($validated['is_free']) {
@@ -141,7 +140,6 @@ class TariffController extends Controller
             'sort_order' => $tariff->sort_order,
             'max_employees' => $tariff->max_employees,
             'message_retention_days' => $tariff->message_retention_days,
-            'max_deals' => $tariff->max_deals,
             'companies_count' => $tariff->companies()->count(),
         ];
     }

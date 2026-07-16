@@ -24,7 +24,6 @@ class TariffSeeder extends Seeder
                 'sort_order' => 2,
                 'max_employees' => 10,
                 'message_retention_days' => 90,
-                'max_deals' => 5000,
             ],
         );
 
@@ -41,7 +40,6 @@ class TariffSeeder extends Seeder
                 'sort_order' => 3,
                 'max_employees' => 25,
                 'message_retention_days' => 180,
-                'max_deals' => null,
             ],
         );
 
@@ -58,7 +56,6 @@ class TariffSeeder extends Seeder
                 'sort_order' => 4,
                 'max_employees' => 50,
                 'message_retention_days' => 365,
-                'max_deals' => null,
             ],
         );
 
@@ -75,7 +72,6 @@ class TariffSeeder extends Seeder
                 'sort_order' => 5,
                 'max_employees' => null,
                 'message_retention_days' => null,
-                'max_deals' => null,
             ],
         );
     }

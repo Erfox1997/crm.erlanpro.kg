@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Admin\CompanyController as AdminCompanyController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\LegalController as AdminLegalController;
 use App\Http\Controllers\Admin\PaymentRequisiteController as AdminPaymentRequisiteController;
 use App\Http\Controllers\Admin\TariffController as AdminTariffController;
+use App\Support\PlatformLegalDetails;
 use App\Http\Controllers\BroadcastController;
 use App\Http\Controllers\ChatDistributionController;
 use App\Http\Controllers\ClientFieldDefinitionController;
@@ -59,8 +61,7 @@ Route::get('/privacy', function () {
 
 Route::get('/legal', function () {
     return Inertia::render('Legal', [
-        'contactEmail' => config('mail.from.address', 'support@erlanpro.kg'),
-        'contactPhone' => '+996 702 300 339',
+        'legal' => PlatformLegalDetails::forFrontend(),
     ]);
 })->name('legal');
 
@@ -82,6 +83,8 @@ Route::middleware(['auth', 'verified', 'platform.admin'])
         Route::put('companies/{company}', [AdminCompanyController::class, 'update'])->name('companies.update');
         Route::get('payment-requisites', [AdminPaymentRequisiteController::class, 'edit'])->name('payment-requisites.edit');
         Route::post('payment-requisites', [AdminPaymentRequisiteController::class, 'update'])->name('payment-requisites.update');
+        Route::get('legal', [AdminLegalController::class, 'edit'])->name('legal.edit');
+        Route::put('legal', [AdminLegalController::class, 'update'])->name('legal.update');
     });
 
 Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->group(function () {
