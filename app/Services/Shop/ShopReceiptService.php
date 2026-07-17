@@ -94,12 +94,7 @@ class ShopReceiptService
             $salePayload['payments'] ?? [],
             fn ($payment) => is_array($payment) && (float) ($payment['amount'] ?? 0) > 0.001,
         ));
-        $dateRaw = (string) ($salePayload['document_date'] ?? $salePayload['created_at'] ?? now()->toDateTimeString());
-        try {
-            $date = \Carbon\Carbon::parse($dateRaw)->format('d.m.Y H:i');
-        } catch (\Throwable) {
-            $date = $dateRaw;
-        }
+        $date = $this->formatReceiptDateTime($salePayload);
 
         $statusLabel = match ($mode) {
             'updated' => 'ИЗМЕНЁННЫЙ ЧЕК',
@@ -107,125 +102,113 @@ class ShopReceiptService
             default => 'КАССОВЫЙ ЧЕК',
         };
 
-        // Estimate wrapped item lines for height.
-        $estimatedItemRows = 0;
-        foreach ($items as $item) {
-            $name = (string) ($item['name'] ?? 'Товар');
-            $estimatedItemRows += max(1, (int) ceil(mb_strlen($name) / 28));
-            $estimatedItemRows += 1; // qty × price line
-        }
-        $estimatedItemRows = max(1, $estimatedItemRows);
-
-        $width = 420;
-        $pad = 28;
-        $height = 220 + ($estimatedItemRows * 26) + (count($payments) * 24) + 160;
-        $height = max(520, min(1800, $height));
-
-        $img = imagecreatetruecolor($width, $height);
-        $paper = imagecolorallocate($img, 252, 252, 248);
-        $ink = imagecolorallocate($img, 28, 28, 28);
-        $muted = imagecolorallocate($img, 90, 90, 90);
-        $edge = imagecolorallocate($img, 220, 220, 214);
-
-        imagefilledrectangle($img, 0, 0, $width, $height, $paper);
-        // Soft paper edge
-        imagerectangle($img, 0, 0, $width - 1, $height - 1, $edge);
+        $width = 760;
+        $pad = 36;
+        // Columns: Товар | Кол-во | Цена | Сумма
+        $colSumRight = $width - $pad;
+        $colPriceRight = $colSumRight - 130;
+        $colQtyRight = $colPriceRight - 110;
+        $nameMaxWidth = $colQtyRight - $pad - 24;
 
         $font = $this->fontPath(false);
         $fontBold = $this->fontPath(true) ?: $font;
-        $y = 36;
 
-        $y = $this->drawCenteredText($img, $shopName, $y, 17, $ink, $fontBold ?: $font, $width, $pad);
-        $y += 6;
-        $y = $this->drawCenteredText($img, $statusLabel, $y, 11, $muted, $font ?: $fontBold, $width, $pad);
-        $y += 4;
-        $y = $this->drawCenteredText($img, "№ {$number}", $y, 12, $ink, $fontBold ?: $font, $width, $pad);
-        $y += 2;
-        $y = $this->drawCenteredText($img, $date, $y, 11, $muted, $font ?: $fontBold, $width, $pad);
-        $y += 10;
-        $y = $this->drawDashedLine($img, $pad, $y, $width - $pad, $muted);
-        $y += 22;
-
+        $preparedItems = [];
+        $itemRows = 0;
         foreach ($items as $item) {
             $name = trim((string) ($item['name'] ?? 'Товар'));
             $qty = (float) ($item['quantity'] ?? 0);
             $price = (float) ($item['price'] ?? 0);
             $lineAmount = (float) ($item['amount'] ?? round($qty * $price, 2));
-            $qtyStr = rtrim(rtrim(number_format($qty, 3, '.', ''), '0'), '.') ?: '0';
-            $priceStr = $this->money($price);
-            $amountStr = $this->money($lineAmount).' сом';
+            $nameLines = $this->wrapTextToWidth($name, 13, $font, $nameMaxWidth);
+            $preparedItems[] = [
+                'name_lines' => $nameLines,
+                'qty' => rtrim(rtrim(number_format($qty, 3, '.', ''), '0'), '.') ?: '0',
+                'price' => $this->money($price),
+                'sum' => $this->money($lineAmount),
+            ];
+            $itemRows += max(1, count($nameLines));
+        }
+        $itemRows = max(1, $itemRows);
 
-            $nameLines = $this->wrapText($name, 30);
+        $height = 240 + ($itemRows * 28) + (count($payments) * 26) + 150;
+        $height = max(480, min(2000, $height));
+
+        $img = imagecreatetruecolor($width, $height);
+        $paper = imagecolorallocate($img, 255, 255, 255);
+        $ink = imagecolorallocate($img, 30, 30, 30);
+        $muted = imagecolorallocate($img, 100, 100, 100);
+        $line = imagecolorallocate($img, 200, 200, 200);
+        $headerBg = imagecolorallocate($img, 245, 245, 245);
+        $edge = imagecolorallocate($img, 210, 210, 210);
+
+        imagefilledrectangle($img, 0, 0, $width, $height, $paper);
+        imagerectangle($img, 0, 0, $width - 1, $height - 1, $edge);
+
+        $y = 42;
+
+        $y = $this->drawCenteredText($img, $shopName, $y, 20, $ink, $fontBold ?: $font, $width, $pad);
+        $y += 4;
+        $y = $this->drawCenteredText($img, $statusLabel, $y, 12, $muted, $font ?: $fontBold, $width, $pad);
+        $y += 2;
+        $y = $this->drawCenteredText($img, "Чек № {$number}  ·  {$date}", $y, 12, $muted, $font ?: $fontBold, $width, $pad);
+        $y += 14;
+
+        // Table header
+        $headerTop = $y - 18;
+        $headerBottom = $y + 10;
+        imagefilledrectangle($img, $pad - 8, $headerTop, $width - $pad + 8, $headerBottom, $headerBg);
+        imageline($img, $pad - 8, $headerBottom, $width - $pad + 8, $headerBottom, $line);
+
+        $this->drawText($img, 'Товар', $pad, $y, 12, $muted, $fontBold ?: $font);
+        $this->drawRightText($img, 'Кол-во', $colQtyRight, $y, 12, $muted, $fontBold ?: $font);
+        $this->drawRightText($img, 'Цена', $colPriceRight, $y, 12, $muted, $fontBold ?: $font);
+        $this->drawRightText($img, 'Сумма', $colSumRight, $y, 12, $muted, $fontBold ?: $font);
+        $y += 28;
+
+        foreach ($preparedItems as $row) {
+            $nameLines = $row['name_lines'];
+            $first = true;
             foreach ($nameLines as $nameLine) {
-                if ($font) {
-                    imagettftext($img, 12, 0, $pad, $y, $ink, $font, $nameLine);
-                } else {
-                    imagestring($img, 3, $pad, $y - 12, substr($nameLine, 0, 40), $ink);
+                $this->drawText($img, $nameLine, $pad, $y, 13, $ink, $font ?: $fontBold);
+                if ($first) {
+                    $this->drawRightText($img, $row['qty'], $colQtyRight, $y, 13, $ink, $font ?: $fontBold);
+                    $this->drawRightText($img, $row['price'], $colPriceRight, $y, 13, $ink, $font ?: $fontBold);
+                    $this->drawRightText($img, $row['sum'], $colSumRight, $y, 13, $ink, $fontBold ?: $font);
+                    $first = false;
                 }
-                $y += 20;
+                $y += 26;
             }
-
-            $meta = "{$qtyStr} × {$priceStr}";
-            if ($font) {
-                imagettftext($img, 11, 0, $pad + 8, $y, $muted, $font, $meta);
-                $box = imagettfbbox(12, 0, $fontBold ?: $font, $amountStr);
-                $tw = abs(($box[2] ?? 0) - ($box[0] ?? 0));
-                imagettftext($img, 12, 0, $width - $pad - $tw, $y, $ink, $fontBold ?: $font, $amountStr);
-            } else {
-                imagestring($img, 2, $pad + 8, $y - 10, $meta, $muted);
-                imagestring($img, 3, $width - $pad - 90, $y - 12, $amountStr, $ink);
-            }
-            $y += 24;
         }
 
         $y += 4;
-        $y = $this->drawDashedLine($img, $pad, $y, $width - $pad, $muted);
-        $y += 28;
+        imageline($img, $pad - 8, $y, $width - $pad + 8, $y, $line);
+        $y += 30;
 
         $totalLabel = 'ИТОГО';
         $totalValue = $this->money($total).' сом';
-        if ($fontBold) {
-            imagettftext($img, 14, 0, $pad, $y, $ink, $fontBold, $totalLabel);
-            $box = imagettfbbox(16, 0, $fontBold, $totalValue);
-            $tw = abs(($box[2] ?? 0) - ($box[0] ?? 0));
-            imagettftext($img, 16, 0, $width - $pad - $tw, $y, $ink, $fontBold, $totalValue);
-        } else {
-            imagestring($img, 4, $pad, $y - 12, $totalLabel, $ink);
-            imagestring($img, 4, $width - $pad - 120, $y - 12, $totalValue, $ink);
-        }
+        $this->drawText($img, $totalLabel, $pad, $y, 16, $ink, $fontBold ?: $font);
+        $this->drawRightText($img, $totalValue, $colSumRight, $y, 18, $ink, $fontBold ?: $font);
+        $y += 30;
 
-        $y += 28;
         foreach ($payments as $payment) {
             $label = trim((string) ($payment['account_name'] ?? $payment['name'] ?? 'Оплата'));
             $payValue = $this->money((float) ($payment['amount'] ?? 0)).' сом';
-            if ($font) {
-                imagettftext($img, 11, 0, $pad, $y, $muted, $font, $label);
-                $box = imagettfbbox(11, 0, $font, $payValue);
-                $tw = abs(($box[2] ?? 0) - ($box[0] ?? 0));
-                imagettftext($img, 11, 0, $width - $pad - $tw, $y, $ink, $font, $payValue);
-            } else {
-                imagestring($img, 2, $pad, $y - 10, substr($label, 0, 24), $muted);
-                imagestring($img, 2, $width - $pad - 90, $y - 10, $payValue, $ink);
-            }
-            $y += 22;
-        }
-
-        if ($credit > 0.001) {
-            $debt = 'В долг: '.$this->money($credit).' сом';
-            if ($font) {
-                imagettftext($img, 11, 0, $pad, $y, $ink, $fontBold ?: $font, $debt);
-            } else {
-                imagestring($img, 3, $pad, $y - 10, $debt, $ink);
-            }
+            $this->drawText($img, $label, $pad, $y, 12, $muted, $font ?: $fontBold);
+            $this->drawRightText($img, $payValue, $colSumRight, $y, 12, $ink, $font ?: $fontBold);
             $y += 24;
         }
 
-        $y += 8;
-        $y = $this->drawDashedLine($img, $pad, $y, $width - $pad, $muted);
-        $y += 28;
-        $this->drawCenteredText($img, 'Спасибо за покупку!', $y, 12, $ink, $fontBold ?: $font, $width, $pad);
-        $y += 22;
-        $this->drawCenteredText($img, '***', $y, 12, $muted, $font ?: $fontBold, $width, $pad);
+        if ($credit > 0.001) {
+            $this->drawText($img, 'В долг', $pad, $y, 12, $ink, $fontBold ?: $font);
+            $this->drawRightText($img, $this->money($credit).' сом', $colSumRight, $y, 12, $ink, $fontBold ?: $font);
+            $y += 24;
+        }
+
+        $y += 10;
+        imageline($img, $pad - 8, $y, $width - $pad + 8, $y, $line);
+        $y += 30;
+        $this->drawCenteredText($img, 'Спасибо за покупку!', $y, 13, $ink, $fontBold ?: $font, $width, $pad);
 
         $dir = storage_path('app/shop-receipts');
         if (! is_dir($dir)) {
@@ -242,6 +225,98 @@ class ShopReceiptService
     protected function money(float $amount): string
     {
         return number_format($amount, 0, '.', ' ');
+    }
+
+    /**
+     * Receipt datetime in Kyrgyzstan local time.
+     * Prefer full timestamps; document_date is often date-only (shows 00:00).
+     *
+     * @param  array<string, mixed>  $salePayload
+     */
+    protected function formatReceiptDateTime(array $salePayload): string
+    {
+        $tz = 'Asia/Bishkek';
+
+        foreach (['created_at', 'sold_at', 'updated_at', 'datetime'] as $key) {
+            $raw = $salePayload[$key] ?? null;
+            if (! is_string($raw) || trim($raw) === '') {
+                continue;
+            }
+
+            try {
+                return \Carbon\Carbon::parse($raw)->timezone($tz)->format('d.m.Y H:i');
+            } catch (\Throwable) {
+                // try next candidate
+            }
+        }
+
+        // Fall back to "now" — receipt image is generated at sale/send time.
+        // Avoid document_date alone: shop often sends Y-m-d without a clock time.
+        return now()->timezone($tz)->format('d.m.Y H:i');
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function wrapTextToWidth(string $text, int $size, ?string $font, int $maxWidth): array
+    {
+        $text = trim(preg_replace('/\s+/u', ' ', $text) ?? $text);
+        if ($text === '') {
+            return ['Товар'];
+        }
+
+        if (! $font || $maxWidth < 40) {
+            return $this->wrapText($text, 32);
+        }
+
+        $words = preg_split('/\s+/u', $text) ?: [$text];
+        $lines = [];
+        $current = '';
+
+        foreach ($words as $word) {
+            $candidate = $current === '' ? $word : "{$current} {$word}";
+            $box = imagettfbbox($size, 0, $font, $candidate);
+            $w = abs(($box[2] ?? 0) - ($box[0] ?? 0));
+
+            if ($w <= $maxWidth) {
+                $current = $candidate;
+                continue;
+            }
+
+            if ($current !== '') {
+                $lines[] = $current;
+                $current = '';
+            }
+
+            $boxWord = imagettfbbox($size, 0, $font, $word);
+            $wordW = abs(($boxWord[2] ?? 0) - ($boxWord[0] ?? 0));
+            if ($wordW <= $maxWidth) {
+                $current = $word;
+                continue;
+            }
+
+            // Hard-cut very long tokens.
+            $chunk = '';
+            $chars = preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            foreach ($chars as $ch) {
+                $try = $chunk.$ch;
+                $boxTry = imagettfbbox($size, 0, $font, $try.'…');
+                $tryW = abs(($boxTry[2] ?? 0) - ($boxTry[0] ?? 0));
+                if ($tryW > $maxWidth && $chunk !== '') {
+                    $lines[] = $chunk.'…';
+                    $chunk = $ch;
+                } else {
+                    $chunk = $try;
+                }
+            }
+            $current = $chunk;
+        }
+
+        if ($current !== '') {
+            $lines[] = $current;
+        }
+
+        return $lines ?: ['Товар'];
     }
 
     /**
@@ -282,6 +357,30 @@ class ShopReceiptService
         }
 
         return $lines ?: ['Товар'];
+    }
+
+    protected function drawText($img, string $text, int $x, int $y, int $size, int $color, ?string $font): void
+    {
+        if ($font) {
+            imagettftext($img, $size, 0, $x, $y, $color, $font, $text);
+
+            return;
+        }
+
+        imagestring($img, 3, $x, $y - 12, substr($text, 0, 60), $color);
+    }
+
+    protected function drawRightText($img, string $text, int $rightX, int $y, int $size, int $color, ?string $font): void
+    {
+        if ($font) {
+            $box = imagettfbbox($size, 0, $font, $text);
+            $tw = abs(($box[2] ?? 0) - ($box[0] ?? 0));
+            imagettftext($img, $size, 0, $rightX - $tw, $y, $color, $font, $text);
+
+            return;
+        }
+
+        imagestring($img, 3, max(0, $rightX - (strlen($text) * 7)), $y - 12, $text, $color);
     }
 
     protected function drawCenteredText(
