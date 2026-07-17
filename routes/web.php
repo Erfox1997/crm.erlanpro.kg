@@ -69,9 +69,11 @@ Route::get('/', function () {
 });
 
 Route::get('/privacy', function () {
+    $supportBot = ltrim((string) config('services.telegram.support_bot_username', 'ErlanProtask_bot'), '@');
+
     return Inertia::render('Privacy', [
         'appName' => config('app.name'),
-        'contactEmail' => config('mail.from.address', 'support@erlanpro.kg'),
+        'supportTelegramUsername' => $supportBot !== '' ? $supportBot : 'ErlanProtask_bot',
     ]);
 })->name('privacy');
 

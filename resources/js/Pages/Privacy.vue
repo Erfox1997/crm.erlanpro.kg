@@ -2,17 +2,27 @@
 import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
 import { Head, Link } from '@inertiajs/vue3';
+import { computed } from 'vue';
 
-defineProps({
+const props = defineProps({
     appName: {
         type: String,
         default: 'CRM',
     },
-    contactEmail: {
+    supportTelegramUsername: {
         type: String,
-        default: 'support@erlanpro.kg',
+        default: 'ErlanProtask_bot',
     },
 });
+
+const supportBotHandle = computed(() =>
+    `@${String(props.supportTelegramUsername || 'ErlanProtask_bot').replace(/^@/, '')}`,
+);
+
+const supportBotUrl = computed(
+    () =>
+        `https://t.me/${String(props.supportTelegramUsername || 'ErlanProtask_bot').replace(/^@/, '')}`,
+);
 </script>
 
 <template>
@@ -47,11 +57,14 @@ defineProps({
                         Оператор данных аккаунта CRM:
                         <strong>ИП АСАНАЛИЕВ ЭРЛАН МАЛИКОВИЧ</strong>
                         (сервис ErlanPro, https://crm.erlanpro.kg). ПИН:
-                        21706199700221. По вопросам конфиденциальности:
+                        21706199700221. По вопросам конфиденциальности,
+                        удаления данных и иным проблемам пишите в Telegram:
                         <a
-                            :href="`mailto:${contactEmail}`"
+                            :href="supportBotUrl"
                             class="text-indigo-600 hover:underline"
-                            >{{ contactEmail }}</a
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >{{ supportBotHandle }}</a
                         >.
                         <Link
                             href="/legal"
@@ -317,11 +330,14 @@ defineProps({
                     <p class="mt-3 text-slate-600">
                         В отношении данных аккаунта CRM вы можете запросить
                         уточнение, исправление, ограничение обработки или
-                        удаление — через настройки профиля или обратившись на
+                        удаление — через настройки профиля или написав в
+                        Telegram-бот поддержки
                         <a
-                            :href="`mailto:${contactEmail}`"
+                            :href="supportBotUrl"
                             class="text-indigo-600 hover:underline"
-                            >{{ contactEmail }}</a
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >{{ supportBotHandle }}</a
                         >.
                     </p>
                     <p class="mt-3 text-slate-600">
@@ -349,16 +365,19 @@ defineProps({
                             обезличен.
                         </li>
                         <li>
-                            Напишите на
+                            Напишите в Telegram
                             <a
-                                :href="`mailto:${contactEmail}`"
+                                :href="supportBotUrl"
                                 class="text-indigo-600 hover:underline"
-                                >{{ contactEmail }}</a
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                >{{ supportBotHandle }}</a
                             >
-                            с темой «Удаление данных» и укажите email аккаунта
-                            CRM и/или идентификатор Facebook/Instagram/Telegram.
-                            Мы обработаем запрос в течение 30 календарных дней,
-                            если иное не требуется законом или Meta.
+                            сообщение с текстом «Удаление данных» и укажите
+                            email аккаунта CRM и/или идентификатор
+                            Facebook/Instagram/Telegram. Мы обработаем запрос в
+                            течение 30 календарных дней, если иное не требуется
+                            законом или Meta.
                         </li>
                         <li>
                             Вы можете отозвать доступ приложения в настройках
@@ -368,10 +387,16 @@ defineProps({
                             Удаление аккаунта пользователя не всегда означает
                             немедленное удаление всех данных компании (сделки,
                             переписка, сотрудники) — для полного удаления
-                            данных компании обратитесь к Оператору. После
-                            прекращения использования Сервиса данные компании
-                            могут храниться ограниченное время для завершения
-                            расчётов и по запросу Клиента, после чего
+                            данных компании напишите в
+                            <a
+                                :href="supportBotUrl"
+                                class="text-indigo-600 hover:underline"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                >{{ supportBotHandle }}</a
+                            >. После прекращения использования Сервиса данные
+                            компании могут храниться ограниченное время для
+                            завершения расчётов и по запросу Клиента, после чего
                             удаляются или обезличиваются, если закон не
                             требует иного.
                         </li>
@@ -387,11 +412,13 @@ defineProps({
                         предпринимателями и организациями и не ориентирован на
                         лиц младше 18 лет. Мы сознательно не собираем
                         персональные данные детей. Если вам стало известно о
-                        такой обработке — сообщите на
+                        такой обработке — напишите в Telegram
                         <a
-                            :href="`mailto:${contactEmail}`"
+                            :href="supportBotUrl"
                             class="text-indigo-600 hover:underline"
-                            >{{ contactEmail }}</a
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >{{ supportBotHandle }}</a
                         >.
                     </p>
                 </section>
@@ -422,11 +449,14 @@ defineProps({
                         13. Контакты
                     </h2>
                     <p class="mt-3 text-slate-600">
-                        Email:
+                        По вопросам конфиденциальности, поддержке и проблемам —
+                        только Telegram:
                         <a
-                            :href="`mailto:${contactEmail}`"
+                            :href="supportBotUrl"
                             class="text-indigo-600 hover:underline"
-                            >{{ contactEmail }}</a
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >{{ supportBotHandle }}</a
                         ><br />
                         Сайт:
                         <a
