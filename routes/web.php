@@ -24,6 +24,7 @@ use App\Http\Controllers\PipelineController;
 use App\Http\Controllers\PipelineTunnelController;
 use App\Http\Controllers\PositionController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\MessengerTaskController;
 use App\Http\Controllers\ShopSaleController;
 use App\Http\Controllers\StageController;
 use App\Http\Controllers\StageTunnelController;
@@ -124,11 +125,19 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::post('/messenger/conversations/{conversation}/client', [MessengerController::class, 'saveClient'])->name('messenger.save-client');
     Route::patch('/messenger/conversations/{conversation}/deal-stage', [MessengerController::class, 'updateDealStage'])->name('messenger.update-deal-stage');
     Route::post('/messenger/conversations/{conversation}/quick-replies/{quickReply}', [MessengerController::class, 'sendQuickReply'])->name('messenger.send-quick-reply');
+    Route::post('/messenger/conversations/{conversation}/tasks', [MessengerTaskController::class, 'store'])
+        ->name('messenger.conversations.tasks.store');
     Route::post('/messenger/messages/{message}/quick-reply', [MessengerQuickReplyController::class, 'storeFromMessage'])
         ->name('messenger.messages.quick-reply');
     Route::get('/messenger/messages/{message}/attachments/{index}', [MessengerController::class, 'attachment'])
         ->whereNumber('index')
         ->name('messenger.attachment');
+
+    Route::get('/tasks', [MessengerTaskController::class, 'index'])->name('tasks.index');
+    Route::post('/tasks/{task}/complete', [MessengerTaskController::class, 'complete'])->name('tasks.complete');
+    Route::post('/tasks/{task}/reopen', [MessengerTaskController::class, 'reopen'])->name('tasks.reopen');
+    Route::delete('/tasks/{task}', [MessengerTaskController::class, 'destroy'])->name('tasks.destroy');
+
     Route::get('/funnels', [FunnelController::class, 'index'])->name('funnels.index');
     Route::post('/pipelines', [PipelineController::class, 'store'])->name('pipelines.store');
     Route::patch('/pipelines/{pipeline}', [PipelineController::class, 'update'])->name('pipelines.update');
@@ -180,6 +189,8 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::post('/employees/import', [EmployeeController::class, 'import'])->name('employees.import');
     Route::get('/employees/sample', [EmployeeController::class, 'sample'])->name('employees.sample');
     Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->name('employees.update');
+    Route::post('/employees/{employee}/dismiss', [EmployeeController::class, 'dismiss'])->name('employees.dismiss');
+    Route::post('/employees/{employee}/restore', [EmployeeController::class, 'restore'])->name('employees.restore');
     Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
 
     Route::get('/chat-distribution', [ChatDistributionController::class, 'index'])->name('chat-distribution.index');

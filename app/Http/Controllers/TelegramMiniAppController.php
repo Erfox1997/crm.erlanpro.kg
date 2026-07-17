@@ -45,6 +45,12 @@ class TelegramMiniAppController extends Controller
             ], 403);
         }
 
+        if ($user->isDismissed()) {
+            return response()->json([
+                'message' => __('Аккаунт отключён. Обратитесь к владельцу компании.'),
+            ], 403);
+        }
+
         if (! CrmPageCatalog::userCanAccess($user, 'messenger')) {
             return response()->json([
                 'message' => __('У вашей должности нет доступа к мессенджеру.'),

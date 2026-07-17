@@ -6,7 +6,7 @@ import Modal from '@/Components/Modal.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, nextTick, ref } from 'vue';
 
 const props = defineProps({
@@ -25,6 +25,10 @@ const props = defineProps({
             employees_used: 0,
             can_add: true,
         }),
+    },
+    filter: {
+        type: String,
+        default: 'active',
     },
     pageTitle: {
         type: String,
@@ -130,12 +134,30 @@ function submitEdit() {
     });
 }
 
-function destroyEmployee(employee) {
-    if (!confirm(`Удалить сотрудника «${employee.name}»?`)) {
+function setFilter(value) {
+    router.get(route('employees.index'), { filter: value }, {
+        preserveState: true,
+        replace: true,
+        preserveScroll: true,
+    });
+}
+
+function dismissEmployee(employee) {
+    if (!confirm(`Уволить «${employee.name}»?\n\nПродажи и история сохранятся, вход в кабинет будет закрыт.`)) {
         return;
     }
 
-    useForm({}).delete(route('employees.destroy', employee.id), {
+    useForm({}).post(route('employees.dismiss', employee.id), {
+        preserveScroll: true,
+    });
+}
+
+function restoreEmployee(employee) {
+    if (!confirm(`Восстановить доступ для «${employee.name}»?`)) {
+        return;
+    }
+
+    useForm({}).post(route('employees.restore', employee.id), {
         preserveScroll: true,
     });
 }
@@ -218,6 +240,39 @@ function onImportChange(event) {
 
                 <div class="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
                     <div class="border-b border-slate-100 px-4 py-4 sm:px-5">
+                        <div class="mb-3 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+                                :class="filter === 'active'
+                                    ? 'bg-slate-800 text-white'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                                @click="setFilter('active')"
+                            >
+                                Активные
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+                                :class="filter === 'dismissed'
+                                    ? 'bg-slate-800 text-white'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                                @click="setFilter('dismissed')"
+                            >
+                                Уволенные
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+                                :class="filter === 'all'
+                                    ? 'bg-slate-800 text-white'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                                @click="setFilter('all')"
+                            >
+                                Все
+                            </button>
+                        </div>
+
                         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                             <div class="relative min-w-0 flex-1">
                                 <svg
@@ -297,7 +352,7 @@ function onImportChange(event) {
                                     <th class="px-5 py-3">Почта</th>
                                     <th class="px-5 py-3">Telegram</th>
                                     <th class="px-5 py-3">Должность</th>
-                                    <th class="px-5 py-3">Создан</th>
+                                    <th class="px-5 py-3">Статус</th>
                                     <th class="px-5 py-3 text-right">Действия</th>
                                 </tr>
                             </thead>
@@ -306,6 +361,7 @@ function onImportChange(event) {
                                     v-for="employee in filteredEmployees"
                                     :key="employee.id"
                                     class="bg-white"
+                                    :class="{ 'opacity-70': employee.dismissed }"
                                 >
                                     <td class="px-5 py-3 font-medium text-slate-900">
                                         {{ employee.name }}
@@ -328,12 +384,24 @@ function onImportChange(event) {
                                     <td class="px-5 py-3 text-slate-600">
                                         {{ employee.position_name || '—' }}
                                     </td>
-                                    <td class="px-5 py-3 text-slate-500">
-                                        {{ employee.created_at || '—' }}
+                                    <td class="px-5 py-3">
+                                        <span
+                                            v-if="employee.dismissed"
+                                            class="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700"
+                                        >
+                                            Уволен{{ employee.dismissed_at ? ` ${employee.dismissed_at}` : '' }}
+                                        </span>
+                                        <span
+                                            v-else
+                                            class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
+                                        >
+                                            Активен
+                                        </span>
                                     </td>
                                     <td class="px-5 py-3">
                                         <div class="flex justify-end gap-2">
                                             <button
+                                                v-if="!employee.dismissed"
                                                 type="button"
                                                 class="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
                                                 title="Редактировать"
@@ -344,14 +412,22 @@ function onImportChange(event) {
                                                 </svg>
                                             </button>
                                             <button
+                                                v-if="!employee.dismissed"
                                                 type="button"
-                                                class="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                                                title="Удалить"
-                                                @click="destroyEmployee(employee)"
+                                                class="rounded-md border border-rose-200 px-2.5 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
+                                                title="Уволить"
+                                                @click="dismissEmployee(employee)"
                                             >
-                                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                                                </svg>
+                                                Уволить
+                                            </button>
+                                            <button
+                                                v-else
+                                                type="button"
+                                                class="rounded-md border border-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
+                                                title="Восстановить"
+                                                @click="restoreEmployee(employee)"
+                                            >
+                                                Восстановить
                                             </button>
                                         </div>
                                     </td>

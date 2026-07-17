@@ -103,6 +103,7 @@ class Company extends Model
     public function employeesCount(): int
     {
         return $this->users()
+            ->whereNull('dismissed_at')
             ->where(function ($query) {
                 $query->whereNull('company_role')
                     ->orWhere('company_role', '!=', 'owner');

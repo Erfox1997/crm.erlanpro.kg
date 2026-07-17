@@ -138,12 +138,18 @@ const lightboxImageUrl = ref(null);
 const showClientModal = ref(false);
 const showFilterModal = ref(false);
 const showSaveQuickReplyModal = ref(false);
+const showTaskModal = ref(false);
 const saveQuickReplyPreview = ref('');
 const aiImproving = ref(false);
 const aiError = ref('');
 
 const saveQuickReplyForm = useForm({
     title: '',
+});
+
+const taskForm = useForm({
+    note: '',
+    due_on: '',
 });
 let saveQuickReplyMessageId = null;
 
@@ -1436,23 +1442,6 @@ function canSaveAsQuickReply(message) {
     return first?.type === 'image' || first?.type === 'audio';
 }
 
-function suggestQuickReplyTitle(message) {
-    const body = (message.body || '').trim().replace(/\s+/g, ' ');
-    if (body) {
-        return body.slice(0, 40).replace(/[^\p{L}\p{N}\s_-]+/gu, '').trim() || 'ответ';
-    }
-
-    const first = Array.isArray(message.attachments) ? message.attachments[0] : null;
-    if (first?.type === 'image') {
-        return 'фото';
-    }
-    if (first?.type === 'audio') {
-        return 'голос';
-    }
-
-    return 'ответ';
-}
-
 function openSaveQuickReplyModal(message) {
     if (!canSaveAsQuickReply(message)) {
         return;
@@ -1462,8 +1451,49 @@ function openSaveQuickReplyModal(message) {
     saveQuickReplyPreview.value = message.body?.trim()
         || (message.attachments?.[0]?.type === 'image' ? 'Фото' : 'Голосовое сообщение');
     saveQuickReplyForm.clearErrors();
-    saveQuickReplyForm.title = suggestQuickReplyTitle(message);
+    saveQuickReplyForm.title = '';
     showSaveQuickReplyModal.value = true;
+}
+
+function tomorrowDateValue() {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+}
+
+function openTaskModal() {
+    if (!props.selectedConversation) {
+        return;
+    }
+
+    taskForm.clearErrors();
+    taskForm.note = '';
+    taskForm.due_on = tomorrowDateValue();
+    showTaskModal.value = true;
+}
+
+function closeTaskModal() {
+    showTaskModal.value = false;
+    taskForm.reset();
+    taskForm.clearErrors();
+}
+
+function submitTask() {
+    if (!props.selectedConversation) {
+        return;
+    }
+
+    taskForm.post(
+        route('messenger.conversations.tasks.store', props.selectedConversation.id),
+        {
+            preserveScroll: true,
+            onSuccess: () => closeTaskModal(),
+        },
+    );
 }
 
 function closeSaveQuickReplyModal() {
@@ -1809,9 +1839,21 @@ function scrollToBottom() {
                             @click="sellModalOpen = true"
                         >
                             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
                             </svg>
                             <span class="hidden sm:inline">Продать</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            class="inline-flex shrink-0 items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-indigo-700 sm:px-3 sm:text-xs"
+                            title="Задача"
+                            @click="openTaskModal"
+                        >
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span class="hidden sm:inline">Задача</span>
                         </button>
 
                         <button
@@ -2268,6 +2310,56 @@ function scrollToBottom() {
                 @click.stop
             >
         </div>
+
+        <Modal :show="showTaskModal" max-width="md" @close="closeTaskModal">
+            <form class="p-6" @submit.prevent="submitTask">
+                <h3 class="text-lg font-semibold text-slate-900">
+                    Новая задача
+                </h3>
+                <p class="mt-1 text-sm text-slate-600">
+                    Дата и заметка по этому чату. Задачи смотрите в меню «Задачи».
+                </p>
+
+                <div class="mt-5 space-y-4">
+                    <div>
+                        <InputLabel for="task_due_on" value="Дата" />
+                        <TextInput
+                            id="task_due_on"
+                            v-model="taskForm.due_on"
+                            type="date"
+                            class="mt-1 block w-full"
+                            required
+                        />
+                        <InputError class="mt-2" :message="taskForm.errors.due_on" />
+                    </div>
+
+                    <div>
+                        <InputLabel for="task_note" value="Заметка" />
+                        <textarea
+                            id="task_note"
+                            v-model="taskForm.note"
+                            rows="4"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            placeholder="Например: перезвонить завтра"
+                            required
+                        />
+                        <InputError class="mt-2" :message="taskForm.errors.note" />
+                    </div>
+                </div>
+
+                <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <SecondaryButton type="button" @click="closeTaskModal">
+                        Отмена
+                    </SecondaryButton>
+                    <PrimaryButton
+                        type="submit"
+                        :disabled="taskForm.processing || !taskForm.note.trim() || !taskForm.due_on"
+                    >
+                        Сохранить
+                    </PrimaryButton>
+                </div>
+            </form>
+        </Modal>
 
         <Modal :show="showSaveQuickReplyModal" max-width="md" @close="closeSaveQuickReplyModal">
             <form class="p-6" @submit.prevent="submitSaveQuickReply">

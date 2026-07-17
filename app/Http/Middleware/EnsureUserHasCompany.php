@@ -20,6 +20,18 @@ class EnsureUserHasCompany
             return $next($request);
         }
 
+        if ($user->dismissed_at !== null) {
+            auth()->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect()
+                ->route('login')
+                ->withErrors([
+                    'email' => __('Этот аккаунт отключён. Обратитесь к владельцу компании.'),
+                ]);
+        }
+
         if ($user->company_id === null) {
             abort(Response::HTTP_FORBIDDEN, __('Нет привязки к компании.'));
         }

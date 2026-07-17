@@ -21,6 +21,7 @@ use Illuminate\Notifications\Notifiable;
     'position_id',
     'telegram_username',
     'telegram_id',
+    'dismissed_at',
     'email_verified_at',
 ])]
 #[Hidden(['password', 'remember_token'])]
@@ -44,6 +45,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->company_role === 'owner';
     }
 
+    public function isDismissed(): bool
+    {
+        return $this->dismissed_at !== null;
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -53,6 +59,7 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'dismissed_at' => 'datetime',
             'password' => 'hashed',
             'is_platform_admin' => 'boolean',
         ];

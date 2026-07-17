@@ -128,6 +128,7 @@ class ManagerTelegramBotService
         $user = User::query()
             ->where('telegram_id', $telegramId)
             ->whereNotNull('company_id')
+            ->whereNull('dismissed_at')
             ->first();
 
         if ($user) {
@@ -146,6 +147,7 @@ class ManagerTelegramBotService
 
         $user = User::query()
             ->whereNotNull('company_id')
+            ->whereNull('dismissed_at')
             ->whereNull('telegram_id')
             ->whereRaw('LOWER(telegram_username) = ?', [$username])
             ->first();
@@ -191,11 +193,15 @@ class ManagerTelegramBotService
         }
 
         if (str_starts_with($text, '/start')) {
-            $user = User::query()->where('telegram_id', $chatId)->first();
+            $user = User::query()
+                ->where('telegram_id', $chatId)
+                ->whereNull('dismissed_at')
+                ->first();
 
             if (! $user && $username) {
                 $user = User::query()
                     ->whereNull('telegram_id')
+                    ->whereNull('dismissed_at')
                     ->whereRaw('LOWER(telegram_username) = ?', [$username])
                     ->first();
 

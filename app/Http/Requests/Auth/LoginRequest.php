@@ -50,6 +50,16 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        $user = Auth::user();
+        if ($user && $user->dismissed_at !== null) {
+            Auth::logout();
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => __('Этот аккаунт отключён. Обратитесь к владельцу компании.'),
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 

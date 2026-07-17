@@ -80,19 +80,39 @@ class ShopSaleController extends Controller
             ->whereBetween('created_at', [$start, $end])
             ->selectRaw('user_id, COUNT(*) as sales_count, SUM(total_amount) as total_amount')
             ->groupBy('user_id')
-            ->get();
+            ->get()
+            ->keyBy('user_id');
+
+        $responseStats = $this->averageResponseSecondsByManager($companyId, $start, $end);
+
+        $userIds = $rows->keys()
+            ->merge(collect($responseStats)->keys())
+            ->unique()
+            ->filter()
+            ->values();
 
         $users = User::query()
-            ->whereIn('id', $rows->pluck('user_id'))
+            ->whereIn('id', $userIds)
             ->get(['id', 'name'])
             ->keyBy('id');
 
-        $managers = $rows->map(fn ($row) => [
-            'user_id' => $row->user_id,
-            'name' => $users->get($row->user_id)?->name ?? '—',
-            'sales_count' => (int) $row->sales_count,
-            'total_amount' => (float) $row->total_amount,
-        ])->sortByDesc('total_amount')->values();
+        $managers = $userIds->map(function ($userId) use ($rows, $users, $responseStats) {
+            $saleRow = $rows->get($userId);
+            $response = $responseStats[$userId] ?? null;
+
+            return [
+                'user_id' => (int) $userId,
+                'name' => $users->get($userId)?->name ?? '—',
+                'sales_count' => (int) ($saleRow->sales_count ?? 0),
+                'total_amount' => (float) ($saleRow->total_amount ?? 0),
+                'avg_response_seconds' => $response['avg_seconds'] ?? null,
+                'response_count' => (int) ($response['count'] ?? 0),
+            ];
+        })->sortByDesc('total_amount')->values();
+
+        $responseSeconds = $managers
+            ->pluck('avg_response_seconds')
+            ->filter(fn ($value) => $value !== null);
 
         return Inertia::render('ShopSales/Report', [
             'month' => $month,
@@ -100,9 +120,63 @@ class ShopSaleController extends Controller
             'totals' => [
                 'sales_count' => $managers->sum('sales_count'),
                 'total_amount' => round($managers->sum('total_amount'), 2),
+                'avg_response_seconds' => $responseSeconds->isNotEmpty()
+                    ? (int) round($responseSeconds->avg())
+                    : null,
             ],
-            'pageTitle' => 'Отчёт продаж',
+            'pageTitle' => 'Отчёт по менеджерам',
         ]);
+    }
+
+    /**
+     * Average first-reply time after inbound messages, attributed to conversation assignee.
+     *
+     * @return array<int, array{avg_seconds: int, count: int}>
+     */
+    protected function averageResponseSecondsByManager(int $companyId, $start, $end): array
+    {
+        $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
+
+        $diffSql = $driver === 'sqlite'
+            ? 'AVG((julianday(reply.sent_at) - julianday(inbound.sent_at)) * 86400)'
+            : 'AVG(TIMESTAMPDIFF(SECOND, inbound.sent_at, reply.sent_at))';
+
+        $rows = \Illuminate\Support\Facades\DB::table('messenger_messages as inbound')
+            ->join('messenger_conversations as conversations', 'conversations.id', '=', 'inbound.messenger_conversation_id')
+            ->join('messenger_messages as reply', function ($join) {
+                $join->on('reply.messenger_conversation_id', '=', 'inbound.messenger_conversation_id')
+                    ->where('reply.direction', '=', 'outbound')
+                    ->whereColumn('reply.sent_at', '>', 'inbound.sent_at');
+            })
+            ->where('inbound.company_id', $companyId)
+            ->where('inbound.direction', 'inbound')
+            ->whereBetween('inbound.sent_at', [$start, $end])
+            ->whereNotNull('conversations.assigned_user_id')
+            ->whereRaw('reply.sent_at = (
+                SELECT MIN(m2.sent_at)
+                FROM messenger_messages AS m2
+                WHERE m2.messenger_conversation_id = inbound.messenger_conversation_id
+                  AND m2.direction = ?
+                  AND m2.sent_at > inbound.sent_at
+            )', ['outbound'])
+            ->groupBy('conversations.assigned_user_id')
+            ->selectRaw("conversations.assigned_user_id as user_id, {$diffSql} as avg_seconds, COUNT(*) as response_count")
+            ->get();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $userId = (int) $row->user_id;
+            if ($userId < 1 || $row->avg_seconds === null) {
+                continue;
+            }
+
+            $result[$userId] = [
+                'avg_seconds' => max(0, (int) round((float) $row->avg_seconds)),
+                'count' => (int) $row->response_count,
+            ];
+        }
+
+        return $result;
     }
 
     public function catalog(Request $request): JsonResponse

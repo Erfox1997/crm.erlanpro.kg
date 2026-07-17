@@ -26,12 +26,19 @@ class EmployeeController extends Controller
     {
         $companyId = (int) $request->user()->company_id;
 
+        $validated = $request->validate([
+            'filter' => ['nullable', 'in:active,dismissed,all'],
+        ]);
+        $filter = $validated['filter'] ?? 'active';
+
         $employees = User::query()
             ->where('company_id', $companyId)
             ->where(function ($query) {
                 $query->whereNull('company_role')
                     ->orWhere('company_role', '!=', 'owner');
             })
+            ->when($filter === 'active', fn ($q) => $q->whereNull('dismissed_at'))
+            ->when($filter === 'dismissed', fn ($q) => $q->whereNotNull('dismissed_at'))
             ->with('position:id,name')
             ->orderBy('name')
             ->get()
@@ -43,6 +50,8 @@ class EmployeeController extends Controller
                 'position_name' => $user->position?->name,
                 'telegram_username' => $user->telegram_username,
                 'telegram_linked' => $user->telegram_id !== null,
+                'dismissed' => $user->isDismissed(),
+                'dismissed_at' => $user->dismissed_at?->format('d.m.Y'),
                 'created_at' => $user->created_at?->format('d.m.Y'),
             ]);
 
@@ -53,11 +62,12 @@ class EmployeeController extends Controller
 
         $company = Company::query()->with('tariff')->findOrFail($companyId);
         $maxEmployees = $company->maxEmployees();
-        $employeesUsed = $employees->count();
+        $employeesUsed = $company->employeesCount();
 
         return Inertia::render('Employees/Index', [
             'employees' => $employees,
             'positions' => $positions,
+            'filter' => $filter,
             'limits' => [
                 'max_employees' => $maxEmployees,
                 'employees_used' => $employeesUsed,
@@ -182,6 +192,50 @@ class EmployeeController extends Controller
             ->exists();
     }
 
+    public function dismiss(Request $request, User $employee): RedirectResponse
+    {
+        $companyId = (int) $request->user()->company_id;
+        $this->assertManageableEmployee($employee, $companyId);
+
+        if ($employee->id === $request->user()->id) {
+            return back()->withErrors([
+                'employee' => __('Нельзя уволить собственный аккаунт.'),
+            ]);
+        }
+
+        if ($employee->isDismissed()) {
+            return back()->with('success', __('Сотрудник уже уволен.'));
+        }
+
+        $employee->update([
+            'dismissed_at' => now(),
+            'telegram_id' => null,
+        ]);
+
+        return back()->with('success', __('Сотрудник уволен. Продажи и история сохранены, вход в кабинет закрыт.'));
+    }
+
+    public function restore(Request $request, User $employee): RedirectResponse
+    {
+        $companyId = (int) $request->user()->company_id;
+        $this->assertManageableEmployee($employee, $companyId);
+
+        if (! $employee->isDismissed()) {
+            return back()->with('success', __('Сотрудник уже активен.'));
+        }
+
+        $company = Company::query()->with('tariff')->findOrFail($companyId);
+        if (! $company->canAddEmployees()) {
+            return back()->withErrors([
+                'employee' => __('Лимит сотрудников по тарифу исчерпан. Нельзя восстановить.'),
+            ]);
+        }
+
+        $employee->update(['dismissed_at' => null]);
+
+        return back()->with('success', __('Сотрудник восстановлен.'));
+    }
+
     public function destroy(Request $request, User $employee): RedirectResponse
     {
         $companyId = (int) $request->user()->company_id;
@@ -193,9 +247,8 @@ class EmployeeController extends Controller
             ]);
         }
 
-        $employee->delete();
-
-        return back()->with('success', __('Сотрудник удалён.'));
+        // Prefer soft dismiss so sales/history stay linked to the person.
+        return $this->dismiss($request, $employee);
     }
 
     public function import(Request $request): RedirectResponse

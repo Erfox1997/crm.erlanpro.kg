@@ -6,7 +6,7 @@ const props = defineProps({
     month: { type: String, required: true },
     managers: { type: Array, default: () => [] },
     totals: { type: Object, required: true },
-    pageTitle: { type: String, default: 'Отчёт продаж' },
+    pageTitle: { type: String, default: 'Отчёт по менеджерам' },
 });
 
 function onMonthChange(event) {
@@ -21,6 +21,27 @@ function money(value) {
         minimumFractionDigits: 0,
         maximumFractionDigits: 2,
     });
+}
+
+function formatDuration(seconds) {
+    if (seconds === null || seconds === undefined || Number.isNaN(Number(seconds))) {
+        return '—';
+    }
+
+    const total = Math.max(0, Math.round(Number(seconds)));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+
+    if (hours > 0) {
+        return `${hours} ч ${minutes} мин`;
+    }
+
+    if (minutes > 0) {
+        return `${minutes} мин ${secs} сек`;
+    }
+
+    return `${secs} сек`;
 }
 </script>
 
@@ -41,7 +62,7 @@ function money(value) {
         </template>
 
         <div class="py-8">
-            <div class="mx-auto max-w-4xl space-y-6 px-4 sm:px-6 lg:px-8">
+            <div class="mx-auto max-w-5xl space-y-6 px-4 sm:px-6 lg:px-8">
                 <div class="rounded-xl border bg-white p-4 shadow-sm">
                     <label class="block text-sm font-medium text-slate-700">Месяц</label>
                     <input
@@ -50,9 +71,13 @@ function money(value) {
                         :value="month"
                         @change="onMonthChange"
                     >
+                    <p class="mt-2 text-xs text-slate-500">
+                        Среднее время ответа — от входящего сообщения клиента до первого ответа менеджера
+                        (по назначенному чату).
+                    </p>
                 </div>
 
-                <div class="grid gap-3 sm:grid-cols-2">
+                <div class="grid gap-3 sm:grid-cols-3">
                     <div class="rounded-xl border bg-white p-4 shadow-sm">
                         <p class="text-xs text-slate-500">Продаж</p>
                         <p class="mt-1 text-2xl font-semibold text-slate-900">{{ totals.sales_count }}</p>
@@ -60,6 +85,12 @@ function money(value) {
                     <div class="rounded-xl border bg-white p-4 shadow-sm">
                         <p class="text-xs text-slate-500">Сумма</p>
                         <p class="mt-1 text-2xl font-semibold text-slate-900">{{ money(totals.total_amount) }}</p>
+                    </div>
+                    <div class="rounded-xl border bg-white p-4 shadow-sm">
+                        <p class="text-xs text-slate-500">Среднее время ответа</p>
+                        <p class="mt-1 text-2xl font-semibold text-slate-900">
+                            {{ formatDuration(totals.avg_response_seconds) }}
+                        </p>
                     </div>
                 </div>
 
@@ -70,6 +101,7 @@ function money(value) {
                                 <th class="px-4 py-3">Менеджер</th>
                                 <th class="px-4 py-3">Продаж</th>
                                 <th class="px-4 py-3">Сумма</th>
+                                <th class="px-4 py-3">Среднее время ответа</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -77,10 +109,19 @@ function money(value) {
                                 <td class="px-4 py-3 font-medium text-slate-900">{{ row.name }}</td>
                                 <td class="px-4 py-3">{{ row.sales_count }}</td>
                                 <td class="px-4 py-3 font-medium">{{ money(row.total_amount) }}</td>
+                                <td class="px-4 py-3">
+                                    <span>{{ formatDuration(row.avg_response_seconds) }}</span>
+                                    <span
+                                        v-if="row.response_count"
+                                        class="ml-1 text-xs text-slate-400"
+                                    >
+                                        ({{ row.response_count }})
+                                    </span>
+                                </td>
                             </tr>
                             <tr v-if="managers.length === 0">
-                                <td colspan="3" class="px-4 py-10 text-center text-slate-500">
-                                    Нет продаж за выбранный месяц
+                                <td colspan="4" class="px-4 py-10 text-center text-slate-500">
+                                    Нет данных за выбранный месяц
                                 </td>
                             </tr>
                         </tbody>

@@ -14,6 +14,7 @@ class CrmPageCatalog
         return [
             'dashboard' => 'Дашборд',
             'messenger' => 'Месенджер',
+            'tasks' => 'Задачи',
             'comments' => 'Комментарии',
             'quick-replies' => 'Быстрые ответы',
             'client-fields' => 'Данные клиента',
@@ -64,8 +65,16 @@ class CrmPageCatalog
             return 'quick-replies';
         }
 
+        if (str_starts_with($routeName, 'messenger.conversations.') && str_contains($routeName, 'tasks')) {
+            return 'messenger';
+        }
+
         if (str_starts_with($routeName, 'messenger.')) {
             return 'messenger';
+        }
+
+        if (str_starts_with($routeName, 'tasks.')) {
+            return 'tasks';
         }
 
         if (str_starts_with($routeName, 'comments.')) {
