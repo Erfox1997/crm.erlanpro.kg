@@ -12,6 +12,10 @@ defineProps({
         type: String,
         default: 'CRM',
     },
+    newsGroupUrl: {
+        type: String,
+        default: 'https://t.me/+XAExfDN7j8Q1NWRi',
+    },
 });
 </script>
 
@@ -55,6 +59,14 @@ defineProps({
                 ·
                 <Link href="/privacy" class="text-indigo-600 hover:underline"
                     >Конфиденциальность</Link
+                >
+                ·
+                <a
+                    :href="newsGroupUrl"
+                    class="text-indigo-600 hover:underline"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >Группа новостей</a
                 >
             </p>
         </main>

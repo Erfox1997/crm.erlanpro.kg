@@ -75,6 +75,7 @@ return [
         'news_bot_token' => env('TELEGRAM_NEWS_BOT_TOKEN'),
         'news_bot_username' => env('TELEGRAM_NEWS_BOT_USERNAME'),
         'announcement_chat_id' => env('TELEGRAM_ANNOUNCEMENT_CHAT_ID'),
+        'news_group_url' => env('TELEGRAM_NEWS_GROUP_URL', 'https://t.me/+XAExfDN7j8Q1NWRi'),
         // 3) Support bot (@ErlanProtask_bot) → forwards client messages to owner
         'support_bot_token' => env('TELEGRAM_SUPPORT_BOT_TOKEN'),
         'support_bot_username' => env('TELEGRAM_SUPPORT_BOT_USERNAME'),

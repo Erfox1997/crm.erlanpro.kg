@@ -78,9 +78,11 @@ php artisan telegram:manager-webhook
 # TELEGRAM_NEWS_BOT_TOKEN=...
 # TELEGRAM_NEWS_BOT_USERNAME=crmerlanpronews_bot
 # TELEGRAM_ANNOUNCEMENT_CHAT_ID=-1004473476529
+# TELEGRAM_NEWS_GROUP_URL=https://t.me/+XAExfDN7j8Q1NWRi
 # Бот должен быть админом группы с правом писать.
 # Webhook не нужен (только исходящие сообщения).
 # Админка: /admin/rule-updates → опубликовать → сайт /updates + группа Telegram.
+# Клиенты вступают в группу по TELEGRAM_NEWS_GROUP_URL (ссылка на /privacy, /terms, /updates).
 
 # --- C) @ErlanProtask_bot — поддержка: клиент пишет боту → вам в личку ---
 # TELEGRAM_SUPPORT_BOT_TOKEN=...

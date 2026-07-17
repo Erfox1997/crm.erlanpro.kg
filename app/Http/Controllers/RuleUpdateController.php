@@ -21,6 +21,7 @@ class RuleUpdateController extends Controller
         return Inertia::render('RuleUpdates', [
             'updates' => $updates,
             'appName' => config('app.name'),
+            'newsGroupUrl' => config('services.telegram.news_group_url', 'https://t.me/+XAExfDN7j8Q1NWRi'),
         ]);
     }
 
@@ -31,6 +32,7 @@ class RuleUpdateController extends Controller
         return Inertia::render('RuleUpdateShow', [
             'update' => $this->toPublicArray($ruleUpdate),
             'appName' => config('app.name'),
+            'newsGroupUrl' => config('services.telegram.news_group_url', 'https://t.me/+XAExfDN7j8Q1NWRi'),
         ]);
     }
 

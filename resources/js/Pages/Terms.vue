@@ -2,17 +2,31 @@
 import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
 import { Head, Link } from '@inertiajs/vue3';
+import { computed } from 'vue';
 
-defineProps({
+const props = defineProps({
     appName: {
         type: String,
         default: 'CRM',
     },
-    contactEmail: {
+    supportTelegramUsername: {
         type: String,
-        default: 'support@erlanpro.kg',
+        default: 'ErlanProtask_bot',
+    },
+    newsGroupUrl: {
+        type: String,
+        default: 'https://t.me/+XAExfDN7j8Q1NWRi',
     },
 });
+
+const supportBotHandle = computed(() =>
+    `@${String(props.supportTelegramUsername || 'ErlanProtask_bot').replace(/^@/, '')}`,
+);
+
+const supportBotUrl = computed(
+    () =>
+        `https://t.me/${String(props.supportTelegramUsername || 'ErlanProtask_bot').replace(/^@/, '')}`,
+);
 </script>
 
 <template>
@@ -35,8 +49,16 @@ defineProps({
                     class="text-indigo-600 hover:underline"
                     >страница «Обновления правил»</Link
                 >
-                и новостной канал/группа Telegram (дата публикации
-                фиксируется сообщением в Telegram).
+                и группа Telegram
+                <a
+                    :href="newsGroupUrl"
+                    class="text-indigo-600 hover:underline"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >«Новости ErlanPro»</a
+                >
+                (можно вступить по ссылке; дата публикации фиксируется
+                сообщением в Telegram).
             </p>
 
             <div class="prose prose-slate mt-8 max-w-none text-sm leading-relaxed">
@@ -278,11 +300,13 @@ defineProps({
                             только если Сервис (система CRM) перестал работать
                             по вине Оператора и не был восстановлен, либо в иных
                             случаях, прямо предусмотренных законом. Заявку
-                            направляйте на
+                            направляйте в Telegram
                             <a
-                                :href="`mailto:${contactEmail}`"
+                                :href="supportBotUrl"
                                 class="text-indigo-600 hover:underline"
-                                >{{ contactEmail }}</a
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                >{{ supportBotHandle }}</a
                             >
                             с указанием компании и даты оплаты.
                         </li>
@@ -445,11 +469,13 @@ defineProps({
                     <p class="mt-3 text-slate-600">
                         Вы можете прекратить использование Сервиса в любое
                         время, удалив аккаунт пользователя, отключив интеграции
-                        и/или направив запрос на
+                        и/или направив запрос в Telegram
                         <a
-                            :href="`mailto:${contactEmail}`"
+                            :href="supportBotUrl"
                             class="text-indigo-600 hover:underline"
-                            >{{ contactEmail }}</a
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >{{ supportBotHandle }}</a
                         >
                         об удалении данных компании.
                     </p>
@@ -506,11 +532,20 @@ defineProps({
                             Соглашения / Политики;
                         </li>
                         <li>
-                            в новостной группе/канале Telegram Оператора —
-                            сообщением бота. Дата и время публикации
-                            фиксируются самим сообщением Telegram (дату
-                            сообщения в канале нельзя произвольно изменить
-                            задним числом), что обеспечивает прозрачность.
+                            в новостной группе Telegram
+                            <a
+                                :href="newsGroupUrl"
+                                class="text-indigo-600 hover:underline"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                >«Новости ErlanPro»</a
+                            >
+                            — сообщением бота. Клиенты могут вступить в группу
+                            по ссылке, чтобы узнавать об изменениях. Дата и
+                            время публикации фиксируются самим сообщением
+                            Telegram (дату сообщения нельзя произвольно
+                            изменить задним числом), что обеспечивает
+                            прозрачность.
                         </li>
                     </ul>
                     <p class="mt-3 text-slate-600">
@@ -529,11 +564,13 @@ defineProps({
                         К Соглашению применяется законодательство Кыргызской
                         Республики. Споры стороны стремятся урегулировать путём
                         переговоров. До обращения в суд Клиент направляет
-                        Оператору письменную претензию на
+                        Оператору письменную претензию в Telegram
                         <a
-                            :href="`mailto:${contactEmail}`"
+                            :href="supportBotUrl"
                             class="text-indigo-600 hover:underline"
-                            >{{ contactEmail }}</a
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >{{ supportBotHandle }}</a
                         >.
                         Срок рассмотрения претензии — 15 календарных дней с даты
                         получения, если иной срок не согласован сторонами.
@@ -551,11 +588,21 @@ defineProps({
                         18. Контакты
                     </h2>
                     <p class="mt-3 text-slate-600">
-                        По вопросам Соглашения:
+                        По вопросам Соглашения и поддержке — Telegram:
                         <a
-                            :href="`mailto:${contactEmail}`"
+                            :href="supportBotUrl"
                             class="text-indigo-600 hover:underline"
-                            >{{ contactEmail }}</a
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >{{ supportBotHandle }}</a
+                        ><br />
+                        Новости и изменения правил — группа:
+                        <a
+                            :href="newsGroupUrl"
+                            class="text-indigo-600 hover:underline"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Новости ErlanPro</a
                         ><br />
                         Сайт:
                         <a

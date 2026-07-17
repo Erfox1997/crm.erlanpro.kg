@@ -1,5 +1,6 @@
 <script setup>
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 
 defineProps({
     variant: {
@@ -7,6 +8,14 @@ defineProps({
         default: 'light',
     },
 });
+
+const page = usePage();
+
+const newsGroupUrl = computed(
+    () =>
+        page.props.publicTelegram?.newsGroupUrl ||
+        'https://t.me/+XAExfDN7j8Q1NWRi',
+);
 
 const linkClass = (variant) =>
     variant === 'dark'
@@ -51,6 +60,14 @@ const linkClass = (variant) =>
             <Link href="/terms" :class="linkClass(variant)">Соглашение</Link>
             ·
             <Link href="/updates" :class="linkClass(variant)">Обновления</Link>
+            ·
+            <a
+                :href="newsGroupUrl"
+                :class="linkClass(variant)"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Новости Telegram</a
+            >
         </p>
     </footer>
 </template>

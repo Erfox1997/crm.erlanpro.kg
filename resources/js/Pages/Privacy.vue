@@ -13,6 +13,10 @@ const props = defineProps({
         type: String,
         default: 'ErlanProtask_bot',
     },
+    newsGroupUrl: {
+        type: String,
+        default: 'https://t.me/+XAExfDN7j8Q1NWRi',
+    },
 });
 
 const supportBotHandle = computed(() =>
@@ -436,8 +440,19 @@ const supportBotUrl = computed(
                             class="text-indigo-600 hover:underline"
                             >/updates</Link
                         >
-                        и в новостной группе/канале Telegram Оператора — дата
-                        такого уведомления фиксируется сообщением Telegram.
+                        и в новостной группе Telegram
+                        <a
+                            :href="newsGroupUrl"
+                            class="text-indigo-600 hover:underline"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >«Новости ErlanPro»</a
+                        >
+                        — дата такого уведомления фиксируется сообщением
+                        Telegram. Вы можете вступить в группу по ссылке выше,
+                        чтобы следить за изменениями.
+                    </p>
+                    <p class="mt-3 text-slate-600">
                         Продолжение использования Сервиса после публикации
                         изменений означает согласие с обновлённой Политикой,
                         если иное не требуется законом.
@@ -449,14 +464,21 @@ const supportBotUrl = computed(
                         13. Контакты
                     </h2>
                     <p class="mt-3 text-slate-600">
-                        По вопросам конфиденциальности, поддержке и проблемам —
-                        только Telegram:
+                        Поддержка и проблемы — Telegram:
                         <a
                             :href="supportBotUrl"
                             class="text-indigo-600 hover:underline"
                             target="_blank"
                             rel="noopener noreferrer"
                             >{{ supportBotHandle }}</a
+                        ><br />
+                        Новости и изменения правил — группа:
+                        <a
+                            :href="newsGroupUrl"
+                            class="text-indigo-600 hover:underline"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Новости ErlanPro</a
                         ><br />
                         Сайт:
                         <a

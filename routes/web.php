@@ -74,6 +74,7 @@ Route::get('/privacy', function () {
     return Inertia::render('Privacy', [
         'appName' => config('app.name'),
         'supportTelegramUsername' => $supportBot !== '' ? $supportBot : 'ErlanProtask_bot',
+        'newsGroupUrl' => config('services.telegram.news_group_url', 'https://t.me/+XAExfDN7j8Q1NWRi'),
     ]);
 })->name('privacy');
 
@@ -84,9 +85,12 @@ Route::get('/legal', function () {
 })->name('legal');
 
 Route::get('/terms', function () {
+    $supportBot = ltrim((string) config('services.telegram.support_bot_username', 'ErlanProtask_bot'), '@');
+
     return Inertia::render('Terms', [
         'appName' => config('app.name'),
-        'contactEmail' => config('mail.from.address', 'support@erlanpro.kg'),
+        'supportTelegramUsername' => $supportBot !== '' ? $supportBot : 'ErlanProtask_bot',
+        'newsGroupUrl' => config('services.telegram.news_group_url', 'https://t.me/+XAExfDN7j8Q1NWRi'),
     ]);
 })->name('terms');
 

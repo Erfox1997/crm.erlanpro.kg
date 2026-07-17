@@ -45,6 +45,10 @@ class HandleInertiaRequests extends Middleware
                 'domain' => parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'crm.erlanpro.kg',
                 'logoUrl' => '/images/logo.jpeg',
             ],
+            'publicTelegram' => [
+                'supportUsername' => ltrim((string) config('services.telegram.support_bot_username', 'ErlanProtask_bot'), '@') ?: 'ErlanProtask_bot',
+                'newsGroupUrl' => (string) config('services.telegram.news_group_url', 'https://t.me/+XAExfDN7j8Q1NWRi'),
+            ],
             'company' => fn () => $this->sharedCompany($request),
             'subscription' => fn () => $this->sharedSubscription($request),
             'messengerUnread' => fn () => $this->sharedMessengerUnread($request),

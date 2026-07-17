@@ -12,6 +12,10 @@ defineProps({
         type: String,
         default: 'CRM',
     },
+    newsGroupUrl: {
+        type: String,
+        default: 'https://t.me/+XAExfDN7j8Q1NWRi',
+    },
 });
 </script>
 
@@ -33,9 +37,23 @@ defineProps({
                 и
                 <Link href="/privacy" class="text-indigo-600 hover:underline"
                     >Политики конфиденциальности</Link
-                >. Та же запись одновременно уходит в новостной канал Telegram —
-                дата сообщения в Telegram служит подтверждением момента
-                публикации.
+                >. Та же запись уходит в группу
+                <a
+                    :href="newsGroupUrl"
+                    class="text-indigo-600 hover:underline"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >«Новости ErlanPro»</a
+                >
+                — дата сообщения в Telegram служит подтверждением публикации.
+                Вступить в группу можно
+                <a
+                    :href="newsGroupUrl"
+                    class="text-indigo-600 hover:underline"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >по этой ссылке</a
+                >.
             </p>
 
             <div class="mt-8 space-y-4">
