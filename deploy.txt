@@ -64,17 +64,34 @@ php artisan queue:work --tries=2 --timeout=120
 
 # Локально: composer run dev уже поднимает queue:listen.
 
-5. Telegram Mini App (бот менеджеров) — один раз после деплоя:
-# В .env на проде:
+5. Три Telegram-бота платформы (после деплоя):
+
+# --- A) @crmErlanPro_bot — уведомления менеджерам + Mini App (как было) ---
 # TELEGRAM_MANAGER_BOT_TOKEN=...
 # TELEGRAM_MANAGER_BOT_USERNAME=crmErlanPro_bot
 # TELEGRAM_MANAGER_WEBHOOK_SECRET=случайная_длинная_строка
 # TELEGRAM_MANAGER_WEBAPP_URL=https://crm.erlanpro.kg/tma
-#
+php artisan telegram:manager-webhook
+# Сотрудникам: /employees → Telegram username → /start в @crmErlanPro_bot
+
+# --- B) @crmerlanpronews_bot — публикация изменений правил в группу ---
+# TELEGRAM_NEWS_BOT_TOKEN=...
+# TELEGRAM_NEWS_BOT_USERNAME=crmerlanpronews_bot
+# TELEGRAM_ANNOUNCEMENT_CHAT_ID=-1004473476529
+# Бот должен быть админом группы с правом писать.
+# Webhook не нужен (только исходящие сообщения).
+# Админка: /admin/rule-updates → опубликовать → сайт /updates + группа Telegram.
+
+# --- C) @ErlanProtask_bot — поддержка: клиент пишет боту → вам в личку ---
+# TELEGRAM_SUPPORT_BOT_TOKEN=...
+# TELEGRAM_SUPPORT_BOT_USERNAME=ErlanProtask_bot
+# TELEGRAM_SUPPORT_WEBHOOK_SECRET=случайная_длинная_строка
+# TELEGRAM_SUPPORT_OWNER_CHAT_ID=954807019
 php artisan migrate --force
 php artisan config:clear
-php artisan telegram:manager-webhook
-#
-# Сотрудникам: /employees → поле Telegram username → сотрудник жмёт /start в @crmErlanPro_bot
-# Владелец: Профиль → Telegram username → /start в том же боте
-# Чужой Telegram без записи в CRM доступа не получит.
+php artisan telegram:support-webhook
+# Клиент: пишет @ErlanProtask_bot → сообщение приходит вам (954807019).
+# Ответ: reply на сообщение бота → клиенту уйдёт ответ.
+
+php artisan migrate --force
+php artisan config:clear

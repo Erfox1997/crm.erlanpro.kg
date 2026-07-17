@@ -66,11 +66,20 @@ return [
 
     'telegram' => [
         'timeout' => (int) env('TELEGRAM_TIMEOUT', 60),
-        // Manager Mini App bot (separate from per-company client-chat bots)
+        // 1) Manager Mini App + messenger notifications (@crmErlanPro_bot)
         'manager_bot_token' => env('TELEGRAM_MANAGER_BOT_TOKEN'),
         'manager_bot_username' => env('TELEGRAM_MANAGER_BOT_USERNAME'),
         'manager_webhook_secret' => env('TELEGRAM_MANAGER_WEBHOOK_SECRET'),
         'manager_webapp_url' => env('TELEGRAM_MANAGER_WEBAPP_URL'),
+        // 2) News bot for rule updates (@crmerlanpronews_bot) → channel/group
+        'news_bot_token' => env('TELEGRAM_NEWS_BOT_TOKEN'),
+        'news_bot_username' => env('TELEGRAM_NEWS_BOT_USERNAME'),
+        'announcement_chat_id' => env('TELEGRAM_ANNOUNCEMENT_CHAT_ID'),
+        // 3) Support bot (@ErlanProtask_bot) → forwards client messages to owner
+        'support_bot_token' => env('TELEGRAM_SUPPORT_BOT_TOKEN'),
+        'support_bot_username' => env('TELEGRAM_SUPPORT_BOT_USERNAME'),
+        'support_webhook_secret' => env('TELEGRAM_SUPPORT_WEBHOOK_SECRET'),
+        'support_owner_chat_id' => env('TELEGRAM_SUPPORT_OWNER_CHAT_ID'),
     ],
 
     'openai' => [

@@ -150,6 +150,28 @@ const user = computed(() => page.props.auth.user);
                             </template>
                             Реквизиты ИП
                         </CrmSidebarLink>
+
+                        <CrmSidebarLink
+                            :href="route('admin.rule-updates.index')"
+                            :active="route().current('admin.rule-updates.*')"
+                        >
+                            <template #icon>
+                                <svg
+                                    class="h-5 w-5"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    stroke-width="1.5"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h.008v.008H15.75V7.5zm0 3h.008v.008H15.75V10.5zM3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"
+                                    />
+                                </svg>
+                            </template>
+                            Обновления правил
+                        </CrmSidebarLink>
                     </div>
                 </div>
             </nav>

@@ -49,6 +49,8 @@ const linkClass = (variant) =>
             </Link>
             ·
             <Link href="/terms" :class="linkClass(variant)">Соглашение</Link>
+            ·
+            <Link href="/updates" :class="linkClass(variant)">Обновления</Link>
         </p>
     </footer>
 </template>
