@@ -1,4 +1,5 @@
 <script setup>
+import DownloadLegalPdfButton from '@/Components/DownloadLegalPdfButton.vue';
 import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
 import { Head, Link } from '@inertiajs/vue3';
@@ -36,6 +37,7 @@ const supportBotUrl = computed(
         <PublicSiteHeader />
 
         <main class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+            <div id="terms-document" class="bg-white">
             <h1 class="text-2xl font-bold text-slate-900">
                 Пользовательское соглашение
             </h1>
@@ -613,6 +615,12 @@ const supportBotUrl = computed(
                     </p>
                 </section>
             </div>
+            </div>
+
+            <DownloadLegalPdfButton
+                target-id="terms-document"
+                filename="polzovatelskoe-soglashenie-erlanpro.pdf"
+            />
         </main>
 
         <PublicSiteFooter />
