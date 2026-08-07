@@ -1,6 +1,9 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { localeTag } from '@/i18n';
 import { Head, Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     stats: {
@@ -14,49 +17,50 @@ defineProps({
 });
 
 const page = usePage();
+const { t, locale } = useI18n();
 
 const formatMoney = (n) =>
-    new Intl.NumberFormat('ru-RU', {
+    new Intl.NumberFormat(localeTag(locale.value), {
         style: 'currency',
         currency: 'KGS',
         maximumFractionDigits: 0,
     }).format(n ?? 0);
 
-const cards = [
+const cards = computed(() => [
     {
         key: 'clients_count',
-        label: 'Клиенты',
-        hint: 'В базе CRM',
+        label: t('dashboard.stat.clients'),
+        hint: t('dashboard.stat.clientsHint'),
         accent: 'from-violet-500 to-indigo-500',
         bg: 'bg-violet-50',
     },
     {
         key: 'deals_count',
-        label: 'Все сделки',
-        hint: 'За всё время',
+        label: t('dashboard.stat.deals'),
+        hint: t('dashboard.stat.dealsHint'),
         accent: 'from-sky-500 to-cyan-500',
         bg: 'bg-sky-50',
     },
     {
         key: 'open_deals_count',
-        label: 'В работе',
-        hint: 'Открытые сделки',
+        label: t('dashboard.stat.inProgress'),
+        hint: t('dashboard.stat.inProgressHint'),
         accent: 'from-amber-500 to-orange-500',
         bg: 'bg-amber-50',
     },
     {
         key: 'revenue',
-        label: 'Выручка',
-        hint: 'Успешные сделки',
+        label: t('dashboard.stat.revenue'),
+        hint: t('dashboard.stat.revenueHint'),
         accent: 'from-emerald-500 to-teal-500',
         bg: 'bg-emerald-50',
         money: true,
     },
-];
+]);
 </script>
 
 <template>
-    <Head title="Дашборд" />
+    <Head :title="t('dashboard.title')" />
 
     <AuthenticatedLayout>
         <template #header>
@@ -65,7 +69,7 @@ const cards = [
             >
                 <div>
                     <p class="text-sm font-medium text-indigo-600">
-                        Добро пожаловать
+                        {{ t('dashboard.welcome') }}
                     </p>
                     <h2 class="text-2xl font-bold tracking-tight text-slate-900">
                         {{ page.props.auth.user.name }}
@@ -82,13 +86,13 @@ const cards = [
                         :href="route('funnels.index')"
                         class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
                     >
-                        Воронки
+                        {{ t('nav.funnels') }}
                     </Link>
                     <Link
                         :href="route('messenger.index')"
                         class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
                     >
-                        Мессенджер
+                        {{ t('nav.messenger') }}
                     </Link>
                 </div>
             </div>
@@ -141,17 +145,16 @@ const cards = [
                         class="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm"
                     >
                         <h3 class="text-lg font-semibold text-slate-900">
-                            Быстрый старт
+                            {{ t('dashboard.quickStart') }}
                         </h3>
                         <p class="mt-2 text-sm text-slate-500">
-                            Подключите каналы и ведите переписку с клиентами в
-                            одном окне.
+                            {{ t('dashboard.quickStartDesc') }}
                         </p>
                         <Link
                             :href="route('integrations.index')"
                             class="mt-4 inline-flex rounded-xl bg-gradient-to-r from-indigo-600 to-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
                         >
-                            Настроить интеграции
+                            {{ t('dashboard.setupIntegrations') }}
                         </Link>
                     </div>
 
@@ -159,13 +162,13 @@ const cards = [
                         class="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-900 to-indigo-950 p-6 text-white shadow-sm"
                     >
                         <h3 class="text-lg font-semibold">
-                            Сумма в воронке
+                            {{ t('dashboard.pipelineSum') }}
                         </h3>
                         <p class="mt-2 text-3xl font-bold">
                             {{ formatMoney(stats.pipeline_value) }}
                         </p>
                         <p class="mt-2 text-sm text-slate-300">
-                            Открытые сделки, которые ещё можно закрыть.
+                            {{ t('dashboard.pipelineSumDesc') }}
                         </p>
                     </div>
                 </div>

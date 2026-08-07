@@ -2,6 +2,7 @@
 import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
 import { Head, Link, usePage } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     canLogin: {
@@ -18,10 +19,13 @@ defineProps({
 
 const page = usePage();
 const branding = page.props.branding ?? {};
+const { t } = useI18n();
+
+const domain = branding.domain ?? 'crm.erlanpro.kg';
 </script>
 
 <template>
-    <Head title="CRM ErlanPro — crm.erlanpro.kg" />
+    <Head :title="t('welcome.headTitle', { domain })" />
 
     <div class="min-h-screen bg-slate-950 text-slate-100">
         <div
@@ -43,18 +47,17 @@ const branding = page.props.branding ?? {};
                     <p
                         class="inline-flex rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-200"
                     >
-                        Запуск за несколько минут · бесплатная регистрация
+                        {{ t('welcome.badge') }}
                     </p>
                     <h1
                         class="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl sm:leading-tight"
                     >
-                        Управляйте клиентами и сделками в одном месте
+                        {{ t('welcome.headline') }}
                     </h1>
                     <p
                         class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-400"
                     >
-                        Воронки продаж, карточки сделок, база клиентов и
-                        командная работа — для компаний любого масштаба.
+                        {{ t('welcome.sub') }}
                     </p>
 
                     <div
@@ -66,13 +69,13 @@ const branding = page.props.branding ?? {};
                             :href="route('register')"
                             class="inline-flex w-full justify-center rounded-xl bg-emerald-500 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-400 sm:w-auto"
                         >
-                            Начать бесплатно
+                            {{ t('welcome.ctaStart') }}
                         </Link>
                         <Link
                             :href="route('login')"
                             class="inline-flex w-full justify-center rounded-xl border border-white/15 bg-white/5 px-8 py-3.5 text-base font-semibold text-white backdrop-blur transition hover:bg-white/10 sm:w-auto"
                         >
-                            Уже есть аккаунт
+                            {{ t('welcome.ctaLogin') }}
                         </Link>
                     </div>
                 </div>
@@ -101,10 +104,10 @@ const branding = page.props.branding ?? {};
                             </svg>
                         </div>
                         <h2 class="mt-4 text-lg font-semibold text-white">
-                            Воронка продаж
+                            {{ t('welcome.feature.funnel') }}
                         </h2>
                         <p class="mt-2 text-sm leading-relaxed text-slate-400">
-                            Этапы сделок, drag-and-drop, понятный статус.
+                            {{ t('welcome.feature.funnelDesc') }}
                         </p>
                     </div>
 
@@ -129,10 +132,10 @@ const branding = page.props.branding ?? {};
                             </svg>
                         </div>
                         <h2 class="mt-4 text-lg font-semibold text-white">
-                            Клиенты
+                            {{ t('welcome.feature.clients') }}
                         </h2>
                         <p class="mt-2 text-sm leading-relaxed text-slate-400">
-                            База контактов с телефоном и email.
+                            {{ t('welcome.feature.clientsDesc') }}
                         </p>
                     </div>
 
@@ -160,7 +163,7 @@ const branding = page.props.branding ?? {};
                             Instagram
                         </h2>
                         <p class="mt-2 text-sm leading-relaxed text-slate-400">
-                            Входящие Direct-сообщения в одном окне.
+                            {{ t('welcome.feature.igDesc') }}
                         </p>
                     </div>
 
@@ -188,7 +191,7 @@ const branding = page.props.branding ?? {};
                             Facebook
                         </h2>
                         <p class="mt-2 text-sm leading-relaxed text-slate-400">
-                            Диалоги Messenger без переключения вкладок.
+                            {{ t('welcome.feature.fbDesc') }}
                         </p>
                     </div>
                 </div>
@@ -199,7 +202,7 @@ const branding = page.props.branding ?? {};
                     ИП АСАНАЛИЕВ ЭРЛАН МАЛИКОВИЧ
                 </p>
                 <p class="mt-1 text-xs text-slate-500">
-                    Сервис CRM ErlanPro · {{ branding.domain ?? 'crm.erlanpro.kg' }}
+                    {{ t('welcome.footerService', { domain }) }}
                 </p>
             </footer>
 

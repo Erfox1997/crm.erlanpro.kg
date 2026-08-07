@@ -5,14 +5,19 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     sales: { type: Object, required: true },
     date: { type: String, required: true },
     totals: { type: Object, required: true },
     shopConnected: { type: Boolean, default: false },
-    pageTitle: { type: String, default: 'История продаж' },
+    pageTitle: { type: String, default: null },
 });
+
+const title = computed(() => props.pageTitle || t('shopSales.title'));
 
 const editing = ref(null);
 const editForm = useForm({
@@ -67,7 +72,7 @@ function saveEdit() {
 }
 
 function cancelSale(sale) {
-    if (! confirm('Отменить продажу? Клиенту уйдёт уведомление.')) {
+    if (! confirm(t('shopSales.confirmCancel'))) {
         return;
     }
 
@@ -96,17 +101,17 @@ function statusClass(status) {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="title" />
 
     <AuthenticatedLayout>
         <template #header>
             <div class="flex flex-wrap items-center justify-between gap-3">
-                <h2 class="text-xl font-semibold text-gray-800">{{ pageTitle }}</h2>
+                <h2 class="text-xl font-semibold text-gray-800">{{ title }}</h2>
                 <Link
                     :href="route('shop-sales.report')"
                     class="text-sm font-medium text-amber-700 hover:text-amber-800"
                 >
-                    Отчёт по менеджерам →
+                    {{ t('shopSales.reportLink') }}
                 </Link>
             </div>
         </template>
@@ -124,13 +129,13 @@ function statusClass(status) {
                     v-if="!shopConnected"
                     class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
                 >
-                    Магазин не подключён.
-                    <Link :href="route('integrations.index')" class="font-medium underline">Интеграции</Link>
+                    {{ t('shopSales.shopMissing') }}
+                    <Link :href="route('integrations.index')" class="font-medium underline">{{ t('shopSales.integrations') }}</Link>
                 </div>
 
                 <div class="mb-4 flex flex-wrap items-end justify-between gap-4 rounded-xl border bg-white p-4 shadow-sm">
                     <div>
-                        <label class="block text-sm font-medium text-slate-700">Дата</label>
+                        <label class="block text-sm font-medium text-slate-700">{{ t('common.date') }}</label>
                         <input
                             type="date"
                             class="mt-1 rounded-md border-slate-300 shadow-sm focus:border-amber-500 focus:ring-amber-500"
@@ -139,7 +144,7 @@ function statusClass(status) {
                         >
                     </div>
                     <div class="text-right">
-                        <p class="text-xs text-slate-500">Сумма за день</p>
+                        <p class="text-xs text-slate-500">{{ t('shopSales.dayTotal') }}</p>
                         <p class="mt-1 text-2xl font-semibold text-slate-900">{{ money(totals.total_amount) }}</p>
                     </div>
                 </div>
@@ -149,12 +154,12 @@ function statusClass(status) {
                         <table class="min-w-full divide-y divide-slate-200 text-sm">
                             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 <tr>
-                                    <th class="px-4 py-3">Чек</th>
-                                    <th class="px-4 py-3">Дата</th>
-                                    <th class="px-4 py-3">Клиент</th>
-                                    <th class="px-4 py-3">Менеджер</th>
-                                    <th class="px-4 py-3">Сумма</th>
-                                    <th class="px-4 py-3">Статус</th>
+                                    <th class="px-4 py-3">{{ t('shopSales.receipt') }}</th>
+                                    <th class="px-4 py-3">{{ t('common.date') }}</th>
+                                    <th class="px-4 py-3">{{ t('common.client') }}</th>
+                                    <th class="px-4 py-3">{{ t('shopSales.manager') }}</th>
+                                    <th class="px-4 py-3">{{ t('common.amount') }}</th>
+                                    <th class="px-4 py-3">{{ t('common.status') }}</th>
                                     <th class="px-4 py-3"></th>
                                 </tr>
                             </thead>
@@ -180,21 +185,21 @@ function statusClass(status) {
                                                 class="text-xs font-medium text-amber-700 hover:underline"
                                                 @click="openEdit(sale)"
                                             >
-                                                Изменить
+                                                {{ t('common.edit') }}
                                             </button>
                                             <button
                                                 type="button"
                                                 class="text-xs font-medium text-red-600 hover:underline"
                                                 @click="cancelSale(sale)"
                                             >
-                                                Удалить
+                                                {{ t('common.delete') }}
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
                                 <tr v-if="rows.length === 0">
                                     <td colspan="7" class="px-4 py-10 text-center text-slate-500">
-                                        Нет продаж за выбранную дату.
+                                        {{ t('shopSales.emptyDay') }}
                                     </td>
                                 </tr>
                             </tbody>
@@ -221,7 +226,7 @@ function statusClass(status) {
         <Modal :show="!!editing" max-width="lg" @close="editing = null">
             <div class="p-5" v-if="editing">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    Изменить чек #{{ editing.number || editing.shop_document_id }}
+                    {{ t('shopSales.editReceipt', { id: editing.number || editing.shop_document_id }) }}
                 </h3>
                 <div class="mt-4 space-y-3">
                     <div
@@ -252,13 +257,13 @@ function statusClass(status) {
                     </div>
                 </div>
                 <div class="mt-5 flex justify-end gap-2">
-                    <SecondaryButton type="button" @click="editing = null">Отмена</SecondaryButton>
+                    <SecondaryButton type="button" @click="editing = null">{{ t('common.cancel') }}</SecondaryButton>
                     <PrimaryButton
                         type="button"
                         :disabled="editForm.processing || !editForm.items.length"
                         @click="saveEdit"
                     >
-                        Сохранить и переотправить
+                        {{ t('shopSales.saveResend') }}
                     </PrimaryButton>
                 </div>
             </div>

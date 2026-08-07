@@ -4,6 +4,9 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import InputError from '@/Components/InputError.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     provider: {
@@ -30,16 +33,16 @@ function submit() {
 </script>
 
 <template>
-    <Head title="Выбор Facebook-страницы" />
+    <Head :title="t('integrations.oauthTitle')" />
 
     <AuthenticatedLayout>
         <template #header>
             <div>
                 <h2 class="text-xl font-semibold text-gray-800">
-                    Выбор Facebook-страницы
+                    {{ t('integrations.oauthTitle') }}
                 </h2>
                 <p class="mt-1 text-sm text-gray-500">
-                    Подключение {{ providerLabel }} через Meta OAuth
+                    {{ t('integrations.oauthConnect', { provider: providerLabel }) }}
                 </p>
             </div>
         </template>
@@ -51,8 +54,7 @@ function submit() {
                     @submit.prevent="submit"
                 >
                     <p class="text-sm text-gray-600">
-                        У вашего Facebook-аккаунта несколько страниц. Выберите,
-                        какую подключить к CRM.
+                        {{ t('integrations.oauthHint') }}
                     </p>
 
                     <div class="mt-4 space-y-3">
@@ -94,11 +96,11 @@ function submit() {
                             type="submit"
                             :disabled="form.processing || !form.page_id"
                         >
-                            Подключить выбранную страницу
+                            {{ t('integrations.oauthSubmit') }}
                         </PrimaryButton>
                         <Link :href="route('integrations.index')">
                             <SecondaryButton type="button">
-                                Отмена
+                                {{ t('common.cancel') }}
                             </SecondaryButton>
                         </Link>
                     </div>

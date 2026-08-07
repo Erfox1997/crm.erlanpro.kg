@@ -6,6 +6,9 @@ import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
 
 const props = defineProps({
     instagramConnected: {
@@ -39,6 +42,8 @@ const replyForm = useForm({
 });
 
 const selectedMediaId = computed(() => props.selectedMedia?.id ?? null);
+
+const dateLocaleTag = computed(() => (locale.value === 'en' ? 'en-US' : 'ru-RU'));
 
 function selectMedia(id) {
     router.get(route('comments.index'), { media: id }, {
@@ -85,7 +90,7 @@ function formatDate(value) {
         return '';
     }
 
-    return new Date(value).toLocaleString('ru-RU', {
+    return new Date(value).toLocaleString(dateLocaleTag.value, {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -99,12 +104,12 @@ function displayName(comment) {
         return `@${comment.author_username}`;
     }
 
-    return comment.author_name || 'Клиент';
+    return comment.author_name || t('comments.authorFallback');
 }
 
 function captionPreview(caption) {
     if (!caption) {
-        return 'Публикация без подписи';
+        return t('comments.noCaption');
     }
 
     return caption.length > 80 ? `${caption.slice(0, 80)}…` : caption;
@@ -112,14 +117,14 @@ function captionPreview(caption) {
 </script>
 
 <template>
-    <Head title="Комментарии Instagram" />
+    <Head :title="t('comments.title')" />
 
     <AuthenticatedLayout full-height>
         <div class="flex h-full min-h-0 flex-col">
             <div class="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
                 <div>
                     <h1 class="text-lg font-semibold text-slate-900">
-                        Комментарии Instagram
+                        {{ t('comments.title') }}
                     </h1>
                     <p
                         v-if="instagramAccount?.username"
@@ -134,14 +139,14 @@ function captionPreview(caption) {
                         :disabled="syncing || !instagramConnected"
                         @click="syncComments"
                     >
-                        {{ syncing ? 'Обновление…' : 'Обновить' }}
+                        {{ syncing ? t('common.refreshing') : t('common.refresh') }}
                     </SecondaryButton>
                     <Link
                         v-if="!instagramConnected"
                         :href="route('integrations.index')"
                         class="text-sm font-medium text-pink-600 hover:text-pink-700"
                     >
-                        Подключить Instagram
+                        {{ t('comments.connect') }}
                     </Link>
                 </div>
             </div>
@@ -163,7 +168,7 @@ function captionPreview(caption) {
             <div class="flex min-h-0 flex-1 overflow-hidden">
                 <aside class="flex w-full shrink-0 flex-col border-r border-slate-200 bg-white lg:w-[360px]">
                     <div class="border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-700">
-                        Публикации
+                        {{ t('comments.posts') }}
                     </div>
 
                     <div class="min-h-0 flex-1 overflow-y-auto">
@@ -197,7 +202,7 @@ function captionPreview(caption) {
                                     </span>
                                 </div>
                                 <p class="mt-1 text-xs text-slate-500">
-                                    {{ item.comment_count }} коммент.
+                                    {{ t('comments.count', { n: item.comment_count }) }}
                                     <span v-if="item.last_comment_at"> · {{ formatDate(item.last_comment_at) }}</span>
                                 </p>
                             </div>
@@ -208,10 +213,10 @@ function captionPreview(caption) {
                             class="px-4 py-8 text-center text-sm text-slate-500"
                         >
                             <template v-if="instagramConnected">
-                                Нажмите «Обновить», чтобы загрузить публикации.
+                                {{ t('comments.loadHint') }}
                             </template>
                             <template v-else>
-                                Подключите Instagram в разделе «Интеграции».
+                                {{ t('comments.needIg') }}
                             </template>
                         </div>
                     </div>
@@ -231,7 +236,7 @@ function captionPreview(caption) {
                                 </div>
                                 <div class="min-w-0 flex-1">
                                     <p class="text-sm text-slate-800">
-                                        {{ selectedMedia.caption || 'Публикация без подписи' }}
+                                        {{ selectedMedia.caption || t('comments.noCaption') }}
                                     </p>
                                     <div class="mt-2 flex items-center gap-3 text-xs text-slate-500">
                                         <span v-if="selectedMedia.published_at">
@@ -244,7 +249,7 @@ function captionPreview(caption) {
                                             rel="noopener noreferrer"
                                             class="font-medium text-pink-600 hover:text-pink-700"
                                         >
-                                            Открыть в Instagram
+                                            {{ t('comments.openIg') }}
                                         </a>
                                     </div>
                                 </div>
@@ -272,7 +277,7 @@ function captionPreview(caption) {
                                         class="text-sm font-medium text-pink-600 hover:text-pink-700"
                                         @click="openReply(comment.id)"
                                     >
-                                        Ответить
+                                        {{ t('comments.reply') }}
                                     </button>
                                 </div>
 
@@ -308,7 +313,7 @@ function captionPreview(caption) {
                                     <TextInput
                                         v-model="replyForm.body"
                                         class="w-full"
-                                        placeholder="Введите ответ клиенту…"
+                                        :placeholder="t('comments.replyPh')"
                                         @keyup.enter.exact="submitReply(comment.id)"
                                     />
                                     <InputError
@@ -320,10 +325,10 @@ function captionPreview(caption) {
                                             :disabled="replyForm.processing"
                                             @click="submitReply(comment.id)"
                                         >
-                                            Отправить
+                                            {{ t('messenger.send') }}
                                         </PrimaryButton>
                                         <SecondaryButton @click="cancelReply">
-                                            Отмена
+                                            {{ t('common.cancel') }}
                                         </SecondaryButton>
                                     </div>
                                 </div>
@@ -333,7 +338,7 @@ function captionPreview(caption) {
                                 v-if="comments.length === 0"
                                 class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center text-sm text-slate-500"
                             >
-                                Комментариев пока нет. Нажмите «Обновить», чтобы синхронизировать.
+                                {{ t('comments.emptySync') }}
                             </div>
                         </div>
                     </template>
@@ -342,7 +347,7 @@ function captionPreview(caption) {
                         v-else
                         class="flex flex-1 items-center justify-center px-6 text-sm text-slate-500"
                     >
-                        Выберите публикацию слева, чтобы посмотреть комментарии.
+                        {{ t('comments.selectPost') }}
                     </div>
                 </section>
             </div>

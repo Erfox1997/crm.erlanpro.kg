@@ -2,6 +2,10 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import { Head, useForm } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     mode: {
@@ -18,9 +22,11 @@ const props = defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Распределение чата',
+        default: null,
     },
 });
+
+const title = computed(() => props.pageTitle || t('chatDistribution.title'));
 
 const form = useForm({
     mode: props.mode,
@@ -34,7 +40,7 @@ function submit() {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="title" />
 
     <AuthenticatedLayout>
         <div class="bg-slate-100 py-8 sm:py-10">
@@ -47,9 +53,9 @@ function submit() {
                 </div>
 
                 <div class="mb-6">
-                    <h1 class="text-xl font-semibold text-slate-900">Распределение чата</h1>
+                    <h1 class="text-xl font-semibold text-slate-900">{{ t('chatDistribution.title') }}</h1>
                     <p class="mt-1 text-sm text-slate-500">
-                        Выберите, как новые входящие диалоги будут попадать к сотрудникам.
+                        {{ t('chatDistribution.subtitleFull') }}
                     </p>
                 </div>
 
@@ -89,13 +95,13 @@ function submit() {
                     <div class="border-t border-slate-100 bg-slate-50 px-5 py-4 sm:px-6">
                         <div class="mb-4">
                             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Сотрудники с доступом к Месенджеру
+                                {{ t('chatDistribution.agentsWithAccess') }}
                             </p>
                             <p
                                 v-if="eligibleAgents.length === 0"
                                 class="mt-2 text-sm text-amber-700"
                             >
-                                Пока нет сотрудников с доступом к Месенджеру. Создайте должности с этим правом и назначьте сотрудников.
+                                {{ t('chatDistribution.noAgents') }}
                             </p>
                             <ul v-else class="mt-2 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
                                 <li
@@ -108,7 +114,7 @@ function submit() {
                                         <p class="truncate text-slate-500">{{ agent.email }}</p>
                                     </div>
                                     <span class="shrink-0 text-xs text-slate-400">
-                                        {{ agent.position_name || 'Без должности' }}
+                                        {{ agent.position_name || t('chatDistribution.noPosition') }}
                                     </span>
                                 </li>
                             </ul>
@@ -116,7 +122,7 @@ function submit() {
 
                         <div class="flex justify-end">
                             <PrimaryButton :disabled="form.processing || form.mode === mode">
-                                {{ form.processing ? 'Сохранение...' : 'Сохранить' }}
+                                {{ form.processing ? t('chatDistribution.saving') : t('common.save') }}
                             </PrimaryButton>
                         </div>
                     </div>

@@ -1,6 +1,8 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
+import { localeTag } from '@/i18n';
 
 defineProps({
     tariffs: {
@@ -9,21 +11,24 @@ defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Тарифы',
+        default: '',
     },
 });
 
+const { t, locale } = useI18n();
+
 function formatPrice(value, original = null) {
+    const tag = localeTag(locale.value);
     if (original && original > value) {
-        return `${Number(original).toLocaleString('ru-RU')} → ${Number(value).toLocaleString('ru-RU')}`;
+        return `${Number(original).toLocaleString(tag)} → ${Number(value).toLocaleString(tag)}`;
     }
 
-    return Number(value).toLocaleString('ru-RU');
+    return Number(value).toLocaleString(tag);
 }
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="t('admin.tariffsPlans')" />
 
     <AdminLayout>
         <template #header>
@@ -32,15 +37,17 @@ function formatPrice(value, original = null) {
             >
                 <div>
                     <h1 class="text-2xl font-bold text-slate-900">
-                        {{ pageTitle }}
+                        {{ t('admin.tariffsPlans') }}
                     </h1>
-                    <p class="mt-1 text-sm text-slate-500">Тариф</p>
+                    <p class="mt-1 text-sm text-slate-500">
+                        {{ t('admin.tariffs.planLabel') }}
+                    </p>
                 </div>
                 <Link
                     :href="route('admin.tariffs.create')"
                     class="inline-flex rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500"
                 >
-                    Создать тариф
+                    {{ t('admin.tariffs.create') }}
                 </Link>
             </div>
         </template>
@@ -54,37 +61,37 @@ function formatPrice(value, original = null) {
                         <th
                             class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
-                            Название
+                            {{ t('admin.tariffs.name') }}
                         </th>
                         <th
                             class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
-                            Цена
+                            {{ t('admin.tariffs.price') }}
                         </th>
                         <th
                             class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
-                            Срок (дней)
+                            {{ t('admin.tariffs.durationDays') }}
                         </th>
                         <th
                             class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
-                            Сотрудники
+                            {{ t('admin.tariffs.employees') }}
                         </th>
                         <th
                             class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
-                            Сообщения
+                            {{ t('admin.tariffs.messages') }}
                         </th>
                         <th
                             class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
-                            Бесплатный
+                            {{ t('admin.tariffs.free') }}
                         </th>
                         <th
                             class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
-                            Статус
+                            {{ t('common.status') }}
                         </th>
                         <th class="px-4 py-3" />
                     </tr>
@@ -99,12 +106,12 @@ function formatPrice(value, original = null) {
                                 v-if="tariff.original_price && tariff.original_price > tariff.price"
                                 class="mr-2 text-slate-400 line-through"
                             >
-                                {{ Number(tariff.original_price).toLocaleString('ru-RU') }}
+                                {{ Number(tariff.original_price).toLocaleString(localeTag(locale)) }}
                             </span>
                             {{ formatPrice(tariff.price, tariff.original_price) }}
                         </td>
                         <td class="px-4 py-4 text-sm text-slate-600">
-                            {{ tariff.duration_days }} дн.
+                            {{ tariff.duration_days }} {{ t('common.daysShort') }}
                         </td>
                         <td class="px-4 py-4 text-sm text-slate-600">
                             {{ tariff.max_employees ?? '∞' }}
@@ -112,12 +119,12 @@ function formatPrice(value, original = null) {
                         <td class="px-4 py-4 text-sm text-slate-600">
                             {{
                                 tariff.message_retention_days
-                                    ? `${tariff.message_retention_days} дн.`
+                                    ? `${tariff.message_retention_days} ${t('common.daysShort')}`
                                     : '∞'
                             }}
                         </td>
                         <td class="px-4 py-4 text-sm text-slate-600">
-                            {{ tariff.is_free ? 'Да' : 'Нет' }}
+                            {{ tariff.is_free ? t('common.yes') : t('common.no') }}
                         </td>
                         <td class="px-4 py-4">
                             <span
@@ -128,7 +135,11 @@ function formatPrice(value, original = null) {
                                         : 'bg-slate-100 text-slate-600'
                                 "
                             >
-                                {{ tariff.is_active ? 'Активен' : 'Выключен' }}
+                                {{
+                                    tariff.is_active
+                                        ? t('admin.tariffs.active')
+                                        : t('admin.tariffs.disabled')
+                                }}
                             </span>
                         </td>
                         <td class="px-4 py-4 text-right">
@@ -136,7 +147,7 @@ function formatPrice(value, original = null) {
                                 :href="route('admin.tariffs.edit', tariff.id)"
                                 class="text-sm font-semibold text-indigo-600 hover:text-indigo-500"
                             >
-                                Изменить
+                                {{ t('common.edit') }}
                             </Link>
                         </td>
                     </tr>

@@ -5,6 +5,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
     legal: {
@@ -13,9 +14,11 @@ const props = defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Реквизиты ИП',
+        default: '',
     },
 });
+
+const { t } = useI18n();
 
 const form = useForm({
     legal_name: props.legal.legal_name ?? '',
@@ -36,16 +39,16 @@ function submit() {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="t('admin.legalRequisites')" />
 
     <AdminLayout>
         <template #header>
             <div>
                 <h1 class="text-2xl font-bold text-slate-900">
-                    {{ pageTitle }}
+                    {{ t('admin.legalRequisites') }}
                 </h1>
                 <p class="mt-1 text-sm text-slate-500">
-                    Текст страницы
+                    {{ t('admin.legal.pageText') }}
                     <Link
                         :href="route('legal')"
                         class="font-medium text-indigo-600 hover:text-indigo-500"
@@ -53,8 +56,7 @@ function submit() {
                     >
                         /legal
                     </Link>
-                    для публичного сайта. По умолчанию подставлены текущие
-                    реквизиты ИП.
+                    {{ t('admin.legal.hint') }}
                 </p>
             </div>
         </template>
@@ -64,7 +66,7 @@ function submit() {
             @submit.prevent="submit"
         >
             <div>
-                <InputLabel for="legal_name" value="Наименование ИП" />
+                <InputLabel for="legal_name" :value="t('admin.legal.name')" />
                 <TextInput
                     id="legal_name"
                     v-model="form.legal_name"
@@ -75,7 +77,7 @@ function submit() {
 
             <div class="grid gap-5 sm:grid-cols-2">
                 <div>
-                    <InputLabel for="pin" value="ПИН" />
+                    <InputLabel for="pin" :value="t('admin.legal.pin')" />
                     <TextInput
                         id="pin"
                         v-model="form.pin"
@@ -84,7 +86,7 @@ function submit() {
                     <InputError class="mt-2" :message="form.errors.pin" />
                 </div>
                 <div>
-                    <InputLabel for="activity" value="Вид деятельности" />
+                    <InputLabel for="activity" :value="t('admin.legal.activity')" />
                     <TextInput
                         id="activity"
                         v-model="form.activity"
@@ -95,7 +97,7 @@ function submit() {
             </div>
 
             <div>
-                <InputLabel for="address" value="Юридический адрес" />
+                <InputLabel for="address" :value="t('admin.legal.address')" />
                 <textarea
                     id="address"
                     v-model="form.address"
@@ -106,7 +108,7 @@ function submit() {
             </div>
 
             <div>
-                <InputLabel for="about" value="О сервисе" />
+                <InputLabel for="about" :value="t('admin.legal.about')" />
                 <textarea
                     id="about"
                     v-model="form.about"
@@ -114,14 +116,14 @@ function submit() {
                     class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                 />
                 <p class="mt-2 text-sm text-slate-500">
-                    Абзацы разделяйте пустой строкой.
+                    {{ t('admin.legal.paragraphs') }}
                 </p>
                 <InputError class="mt-2" :message="form.errors.about" />
             </div>
 
             <div class="grid gap-5 sm:grid-cols-2">
                 <div>
-                    <InputLabel for="contact_email" value="Email" />
+                    <InputLabel for="contact_email" :value="t('common.email')" />
                     <TextInput
                         id="contact_email"
                         v-model="form.contact_email"
@@ -134,7 +136,7 @@ function submit() {
                     />
                 </div>
                 <div>
-                    <InputLabel for="contact_phone" value="Телефон" />
+                    <InputLabel for="contact_phone" :value="t('common.phone')" />
                     <TextInput
                         id="contact_phone"
                         v-model="form.contact_phone"
@@ -148,7 +150,7 @@ function submit() {
             </div>
 
             <div>
-                <InputLabel for="site_url" value="Сайт" />
+                <InputLabel for="site_url" :value="t('admin.legal.site')" />
                 <TextInput
                     id="site_url"
                     v-model="form.site_url"
@@ -157,7 +159,9 @@ function submit() {
                 <InputError class="mt-2" :message="form.errors.site_url" />
             </div>
 
-            <PrimaryButton :disabled="form.processing">Сохранить</PrimaryButton>
+            <PrimaryButton :disabled="form.processing">
+                {{ t('common.save') }}
+            </PrimaryButton>
         </form>
     </AdminLayout>
 </template>

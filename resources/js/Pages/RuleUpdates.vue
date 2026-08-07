@@ -2,6 +2,7 @@
 import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
 import { Head, Link } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     updates: {
@@ -17,42 +18,44 @@ defineProps({
         default: 'https://t.me/+XAExfDN7j8Q1NWRi',
     },
 });
+
+const { t } = useI18n();
 </script>
 
 <template>
-    <Head title="Обновления правил" />
+    <Head :title="t('updates.title')" />
 
     <div class="min-h-screen bg-slate-50 text-slate-800">
         <PublicSiteHeader />
 
         <main class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
             <h1 class="text-2xl font-bold text-slate-900">
-                Обновления правил
+                {{ t('updates.title') }}
             </h1>
             <p class="mt-2 text-sm text-slate-500">
-                Здесь публикуются изменения
-                <Link href="/terms" class="text-indigo-600 hover:underline"
-                    >Пользовательского соглашения</Link
-                >
-                и
-                <Link href="/privacy" class="text-indigo-600 hover:underline"
-                    >Политики конфиденциальности</Link
-                >. Та же запись уходит в группу
+                {{ t('updates.subtitleBefore') }}
+                <Link href="/terms" class="text-indigo-600 hover:underline">{{
+                    t('terms.title')
+                }}</Link>
+                {{ t('updates.subtitleAnd') }}
+                <Link href="/privacy" class="text-indigo-600 hover:underline">{{
+                    t('privacy.title')
+                }}</Link
+                >. {{ t('updates.subtitleTelegram') }}
                 <a
                     :href="newsGroupUrl"
                     class="text-indigo-600 hover:underline"
                     target="_blank"
                     rel="noopener noreferrer"
-                    >«Новости ErlanPro»</a
+                    >{{ t('updates.newsGroup') }}</a
                 >
-                — дата сообщения в Telegram служит подтверждением публикации.
-                Вступить в группу можно
+                {{ t('updates.subtitleProof') }}
                 <a
                     :href="newsGroupUrl"
                     class="text-indigo-600 hover:underline"
                     target="_blank"
                     rel="noopener noreferrer"
-                    >по этой ссылке</a
+                    >{{ t('updates.joinLink') }}</a
                 >.
             </p>
 
@@ -61,7 +64,7 @@ defineProps({
                     v-if="updates.length === 0"
                     class="rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-500"
                 >
-                    Пока нет опубликованных изменений.
+                    {{ t('updates.empty') }}
                 </p>
 
                 <article
@@ -74,7 +77,7 @@ defineProps({
                         <span
                             v-if="item.telegram_sent"
                             class="ms-2 text-emerald-600"
-                            >· также в Telegram</span
+                            >{{ t('updates.alsoTelegram') }}</span
                         >
                     </p>
                     <h2 class="mt-1 text-lg font-semibold text-slate-900">

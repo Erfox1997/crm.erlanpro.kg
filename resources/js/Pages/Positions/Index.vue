@@ -8,6 +8,9 @@ import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { computed, nextTick, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     positions: {
@@ -20,9 +23,11 @@ const props = defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Должности',
+        default: null,
     },
 });
+
+const title = computed(() => props.pageTitle || t('positions.title'));
 
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
@@ -49,11 +54,11 @@ const permissionLabels = computed(() => {
 
 function permissionSummary(permissions) {
     if (!permissions?.length) {
-        return 'Нет доступа к страницам';
+        return t('positions.noPageAccess');
     }
 
     if (permissions.length === props.pageOptions.length) {
-        return 'Все страницы';
+        return t('positions.allPages');
     }
 
     return permissions
@@ -117,7 +122,7 @@ function submitEdit() {
 }
 
 function destroyPosition(position) {
-    if (!confirm(`Удалить должность «${position.name}»?`)) {
+    if (!confirm(t('positions.confirmDelete', { name: position.name }))) {
         return;
     }
 
@@ -128,7 +133,7 @@ function destroyPosition(position) {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="title" />
 
     <AuthenticatedLayout>
         <div class="bg-slate-100 py-8 sm:py-10">
@@ -142,9 +147,9 @@ function destroyPosition(position) {
 
                 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h1 class="text-xl font-semibold text-slate-900">Должности</h1>
+                        <h1 class="text-xl font-semibold text-slate-900">{{ t('positions.title') }}</h1>
                         <p class="mt-1 text-sm text-slate-500">
-                            Создайте должности и выберите, к каким страницам есть доступ.
+                            {{ t('positions.subtitle') }}
                         </p>
                     </div>
                     <button
@@ -152,7 +157,7 @@ function destroyPosition(position) {
                         class="inline-flex items-center justify-center rounded-lg bg-slate-800 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700"
                         @click="openCreateModal"
                     >
-                        Добавить должность
+                        {{ t('positions.add') }}
                     </button>
                 </div>
 
@@ -161,7 +166,7 @@ function destroyPosition(position) {
                         v-if="positions.length === 0"
                         class="px-6 py-16 text-center text-sm text-slate-400"
                     >
-                        Должности ещё не созданы
+                        {{ t('positions.notCreated') }}
                     </div>
 
                     <ul v-else class="divide-y divide-slate-100">
@@ -178,7 +183,7 @@ function destroyPosition(position) {
                                     {{ permissionSummary(position.permissions) }}
                                 </p>
                                 <p class="mt-1 text-xs text-slate-400">
-                                    Сотрудников: {{ position.users_count }}
+                                    {{ t('positions.employeesCount', { n: position.users_count }) }}
                                 </p>
                             </div>
 
@@ -186,7 +191,7 @@ function destroyPosition(position) {
                                 <button
                                     type="button"
                                     class="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-                                    title="Редактировать"
+                                    :title="t('positions.editTitleAttr')"
                                     @click="openEditModal(position)"
                                 >
                                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
@@ -196,7 +201,7 @@ function destroyPosition(position) {
                                 <button
                                     type="button"
                                     class="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                                    title="Удалить"
+                                    :title="t('positions.deleteTitleAttr')"
                                     @click="destroyPosition(position)"
                                 >
                                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
@@ -212,33 +217,33 @@ function destroyPosition(position) {
 
         <Modal :show="showCreateModal" max-width="2xl" @close="showCreateModal = false">
             <form class="p-6" @submit.prevent="submitCreate">
-                <h3 class="text-lg font-semibold text-slate-900">Новая должность</h3>
+                <h3 class="text-lg font-semibold text-slate-900">{{ t('positions.new') }}</h3>
                 <p class="mt-1 text-sm text-slate-500">
-                    Укажите название и отметьте доступные разделы CRM.
+                    {{ t('positions.newHint') }}
                 </p>
 
                 <div class="mt-5">
-                    <InputLabel for="position-name" value="Название должности" />
+                    <InputLabel for="position-name" :value="t('positions.name')" />
                     <TextInput
                         id="position-name"
                         ref="nameInput"
                         v-model="createForm.name"
                         type="text"
                         class="mt-1 block w-full"
-                        placeholder="Например: Менеджер"
+                        :placeholder="t('positions.namePh')"
                     />
                     <InputError class="mt-2" :message="createForm.errors.name" />
                 </div>
 
                 <div class="mt-5">
                     <div class="mb-2 flex items-center justify-between gap-2">
-                        <InputLabel value="Доступ к страницам" />
+                        <InputLabel :value="t('positions.pageAccess')" />
                         <div class="flex gap-2 text-xs">
                             <button type="button" class="text-indigo-600 hover:text-indigo-700" @click="selectAll(createForm)">
-                                Выбрать все
+                                {{ t('positions.selectAll') }}
                             </button>
                             <button type="button" class="text-slate-500 hover:text-slate-700" @click="clearAll(createForm)">
-                                Сбросить
+                                {{ t('common.reset') }}
                             </button>
                         </div>
                     </div>
@@ -262,10 +267,10 @@ function destroyPosition(position) {
 
                 <div class="mt-6 flex justify-end gap-2">
                     <SecondaryButton type="button" @click="showCreateModal = false">
-                        Отмена
+                        {{ t('common.cancel') }}
                     </SecondaryButton>
                     <PrimaryButton :disabled="createForm.processing">
-                        Создать
+                        {{ t('common.create') }}
                     </PrimaryButton>
                 </div>
             </form>
@@ -273,10 +278,10 @@ function destroyPosition(position) {
 
         <Modal :show="showEditModal" max-width="2xl" @close="showEditModal = false">
             <form class="p-6" @submit.prevent="submitEdit">
-                <h3 class="text-lg font-semibold text-slate-900">Редактировать должность</h3>
+                <h3 class="text-lg font-semibold text-slate-900">{{ t('positions.edit') }}</h3>
 
                 <div class="mt-5">
-                    <InputLabel for="edit-position-name" value="Название должности" />
+                    <InputLabel for="edit-position-name" :value="t('positions.name')" />
                     <TextInput
                         id="edit-position-name"
                         v-model="editForm.name"
@@ -288,13 +293,13 @@ function destroyPosition(position) {
 
                 <div class="mt-5">
                     <div class="mb-2 flex items-center justify-between gap-2">
-                        <InputLabel value="Доступ к страницам" />
+                        <InputLabel :value="t('positions.pageAccess')" />
                         <div class="flex gap-2 text-xs">
                             <button type="button" class="text-indigo-600 hover:text-indigo-700" @click="selectAll(editForm)">
-                                Выбрать все
+                                {{ t('positions.selectAll') }}
                             </button>
                             <button type="button" class="text-slate-500 hover:text-slate-700" @click="clearAll(editForm)">
-                                Сбросить
+                                {{ t('common.reset') }}
                             </button>
                         </div>
                     </div>
@@ -318,10 +323,10 @@ function destroyPosition(position) {
 
                 <div class="mt-6 flex justify-end gap-2">
                     <SecondaryButton type="button" @click="showEditModal = false">
-                        Отмена
+                        {{ t('common.cancel') }}
                     </SecondaryButton>
                     <PrimaryButton :disabled="editForm.processing">
-                        Сохранить
+                        {{ t('common.save') }}
                     </PrimaryButton>
                 </div>
             </form>

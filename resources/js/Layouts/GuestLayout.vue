@@ -1,14 +1,16 @@
 <script setup>
 import BrandLogo from '@/Components/BrandLogo.vue';
+import LanguageSwitcher from '@/Components/LanguageSwitcher.vue';
 import { Link, usePage } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const page = usePage();
 const branding = page.props.branding ?? {};
 </script>
 
 <template>
     <div class="min-h-screen bg-slate-950 lg:flex">
-        <!-- Брендовая колонка -->
         <div
             class="relative hidden overflow-hidden lg:flex lg:w-[44%] lg:flex-col lg:justify-between lg:px-12 lg:py-14"
         >
@@ -23,21 +25,23 @@ const branding = page.props.branding ?? {};
             />
 
             <div class="relative z-10">
-                <Link href="/" class="inline-flex items-center gap-3 text-white">
-                    <BrandLogo
-                        light
-                        :name="branding.name ?? 'ErlanPro'"
-                        :domain="branding.domain ?? 'crm.erlanpro.kg'"
-                    />
-                </Link>
+                <div class="flex items-start justify-between gap-4">
+                    <Link href="/" class="inline-flex items-center gap-3 text-white">
+                        <BrandLogo
+                            light
+                            :name="branding.name ?? 'ErlanPro'"
+                            :domain="branding.domain ?? 'crm.erlanpro.kg'"
+                        />
+                    </Link>
+                    <LanguageSwitcher />
+                </div>
                 <p
                     class="mt-10 max-w-sm text-2xl font-semibold leading-snug text-white"
                 >
-                    Управляйте клиентами и сделками в одном месте
+                    {{ t('guest.tagline') }}
                 </p>
                 <p class="mt-4 max-w-sm text-sm leading-relaxed text-slate-300">
-                    Воронки продаж, карточки сделок, база клиентов и командная
-                    работа — для компаний любого масштаба.
+                    {{ t('guest.subtitle') }}
                 </p>
             </div>
 
@@ -47,7 +51,6 @@ const branding = page.props.branding ?? {};
             </p>
         </div>
 
-        <!-- Форма -->
         <div
             class="flex flex-1 flex-col justify-center bg-slate-50 px-4 py-10 sm:px-8"
         >
@@ -60,6 +63,7 @@ const branding = page.props.branding ?? {};
                             icon-class="h-9 w-9"
                         />
                     </Link>
+                    <LanguageSwitcher variant="light" />
                 </div>
 
                 <div

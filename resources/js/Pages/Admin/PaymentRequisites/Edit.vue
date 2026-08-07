@@ -6,6 +6,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
     requisites: {
@@ -14,10 +15,11 @@ const props = defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Реквизиты',
+        default: '',
     },
 });
 
+const { t } = useI18n();
 const qrPreview = ref(props.requisites.qr_url);
 
 const form = useForm({
@@ -44,16 +46,16 @@ function submit() {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="t('admin.payment.title')" />
 
     <AdminLayout>
         <template #header>
             <div>
                 <h1 class="text-2xl font-bold text-slate-900">
-                    {{ pageTitle }}
+                    {{ t('admin.payment.title') }}
                 </h1>
                 <p class="mt-1 text-sm text-slate-500">
-                    Реквизиты, QR-код и WhatsApp для оплаты подписки
+                    {{ t('admin.payment.subtitle') }}
                 </p>
             </div>
         </template>
@@ -63,21 +65,21 @@ function submit() {
             @submit.prevent="submit"
         >
             <div>
-                <InputLabel for="text" value="Платёжные реквизиты" />
+                <InputLabel for="text" :value="t('admin.payment.text')" />
                 <textarea
                     id="text"
                     v-model="form.text"
                     rows="8"
                     class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    placeholder="Банк, получатель, счёт, назначение платежа..."
+                    :placeholder="t('admin.payment.textPh')"
                 />
                 <InputError class="mt-2" :message="form.errors.text" />
             </div>
 
             <div>
-                <InputLabel for="qr" value="QR для оплаты" />
+                <InputLabel for="qr" :value="t('admin.payment.qr')" />
                 <p class="mt-1 text-sm text-slate-500">
-                    Загрузите изображение QR-кода банка для оплаты подписки.
+                    {{ t('admin.payment.qrHint') }}
                 </p>
                 <input
                     id="qr"
@@ -90,13 +92,13 @@ function submit() {
                 <img
                     v-if="qrPreview"
                     :src="qrPreview"
-                    alt="QR для оплаты"
+                    :alt="t('admin.payment.qr')"
                     class="mt-4 max-h-56 rounded-lg border border-slate-200"
                 />
             </div>
 
             <div>
-                <InputLabel for="whatsapp" value="WhatsApp" />
+                <InputLabel for="whatsapp" :value="t('admin.payment.whatsapp')" />
                 <TextInput
                     id="whatsapp"
                     v-model="form.whatsapp"
@@ -104,12 +106,14 @@ function submit() {
                     placeholder="+996..."
                 />
                 <p class="mt-2 text-sm text-slate-500">
-                    После оплаты клиент может отправить скриншот чека в WhatsApp.
+                    {{ t('admin.payment.afterPay') }}
                 </p>
                 <InputError class="mt-2" :message="form.errors.whatsapp" />
             </div>
 
-            <PrimaryButton :disabled="form.processing">Сохранить</PrimaryButton>
+            <PrimaryButton :disabled="form.processing">
+                {{ t('common.save') }}
+            </PrimaryButton>
         </form>
     </AdminLayout>
 </template>

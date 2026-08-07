@@ -9,6 +9,9 @@ import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     quickReplies: {
@@ -41,32 +44,43 @@ const importForm = useForm({
     file: null,
 });
 
-const typeMeta = {
+const typeMetaBase = {
     text: {
-        label: 'Текст',
         badge: 'bg-violet-100 text-violet-700 ring-violet-200',
         iconWrap: 'bg-violet-100 text-violet-600',
         icon: 'M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z',
         card: 'from-violet-500/10 to-indigo-500/5 border-violet-100',
         dot: 'bg-violet-500',
+        typeKey: 'text',
     },
     audio: {
-        label: 'Голос',
         badge: 'bg-sky-100 text-sky-700 ring-sky-200',
         iconWrap: 'bg-sky-100 text-sky-600',
         icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z',
         card: 'from-sky-500/10 to-cyan-500/5 border-sky-100',
         dot: 'bg-sky-500',
+        typeKey: 'voice',
     },
     image: {
-        label: 'Картинка',
         badge: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
         iconWrap: 'bg-emerald-100 text-emerald-600',
         icon: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z',
         card: 'from-emerald-500/10 to-teal-500/5 border-emerald-100',
         dot: 'bg-emerald-500',
+        typeKey: 'image',
     },
 };
+
+const typeMeta = computed(() => {
+    const result = {};
+    for (const [type, meta] of Object.entries(typeMetaBase)) {
+        result[type] = {
+            ...meta,
+            label: t(`quickReplies.type.${meta.typeKey}`),
+        };
+    }
+    return result;
+});
 
 const stats = computed(() => ({
     total: props.quickReplies.length,
@@ -86,7 +100,7 @@ const filteredQuickReplies = computed(() => {
         const haystack = [
             item.title,
             item.body,
-            typeMeta[item.type]?.label,
+            typeMeta.value[item.type]?.label,
         ]
             .filter(Boolean)
             .join(' ')
@@ -98,11 +112,11 @@ const filteredQuickReplies = computed(() => {
 
 const createAttachmentLabel = computed(() => {
     if (createForm.type === 'audio') {
-        return 'Аудиофайл (M4A, MP3, WAV)';
+        return t('quickReplies.audioFile');
     }
 
     if (createForm.type === 'image') {
-        return 'Изображение (JPG, PNG, WEBP)';
+        return t('quickReplies.imageFile');
     }
 
     return '';
@@ -110,18 +124,18 @@ const createAttachmentLabel = computed(() => {
 
 const editAttachmentLabel = computed(() => {
     if (editForm.type === 'audio') {
-        return 'Новый аудиофайл (необязательно)';
+        return t('quickReplies.newAudioOptional');
     }
 
     if (editForm.type === 'image') {
-        return 'Новое изображение (необязательно)';
+        return t('quickReplies.newImageOptional');
     }
 
     return '';
 });
 
 function metaFor(type) {
-    return typeMeta[type] || typeMeta.text;
+    return typeMeta.value[type] || typeMeta.value.text;
 }
 
 function openCreateModal() {
@@ -186,7 +200,7 @@ function submitEdit() {
 }
 
 function removeSelected() {
-    if (!selectedItem.value || !window.confirm('Удалить этот быстрый ответ?')) {
+    if (!selectedItem.value || !window.confirm(t('quickReplies.confirmDelete'))) {
         return;
     }
 
@@ -224,14 +238,14 @@ function previewText(item) {
     }
 
     if (item.type === 'audio') {
-        return item.body || 'Голосовой шаблон';
+        return item.body || t('quickReplies.voiceTemplate');
     }
 
-    return item.body || 'Изображение без подписи';
+    return item.body || t('quickReplies.imageNoCaption');
 }
 
 function deleteItem(item) {
-    if (!window.confirm(`Удалить шаблон «/${item.title}»?`)) {
+    if (!window.confirm(t('quickReplies.confirmDeleteNamed', { title: item.title }))) {
         return;
     }
 
@@ -242,7 +256,7 @@ function deleteItem(item) {
 </script>
 
 <template>
-    <Head title="CRM" />
+    <Head :title="t('quickReplies.title')" />
 
     <AuthenticatedLayout>
         <div class="py-5 sm:py-6">
@@ -254,7 +268,7 @@ function deleteItem(item) {
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
                             </svg>
                             <div>
-                                <p class="text-[10px] font-medium uppercase tracking-wide text-slate-400">Всего</p>
+                                <p class="text-[10px] font-medium uppercase tracking-wide text-slate-400">{{ t('common.total') }}</p>
                                 <p class="text-sm font-bold text-slate-900">{{ stats.total }}</p>
                             </div>
                         </div>
@@ -264,7 +278,7 @@ function deleteItem(item) {
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
                             </svg>
                             <div>
-                                <p class="text-[10px] font-medium uppercase tracking-wide text-violet-500">Текст</p>
+                                <p class="text-[10px] font-medium uppercase tracking-wide text-violet-500">{{ t('quickReplies.type.text') }}</p>
                                 <p class="text-sm font-bold text-slate-900">{{ stats.text }}</p>
                             </div>
                         </div>
@@ -274,7 +288,7 @@ function deleteItem(item) {
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                             </svg>
                             <div>
-                                <p class="text-[10px] font-medium uppercase tracking-wide text-sky-500">Голос</p>
+                                <p class="text-[10px] font-medium uppercase tracking-wide text-sky-500">{{ t('quickReplies.type.voice') }}</p>
                                 <p class="text-sm font-bold text-slate-900">{{ stats.audio }}</p>
                             </div>
                         </div>
@@ -284,7 +298,7 @@ function deleteItem(item) {
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
                             </svg>
                             <div>
-                                <p class="text-[10px] font-medium uppercase tracking-wide text-emerald-500">Картинка</p>
+                                <p class="text-[10px] font-medium uppercase tracking-wide text-emerald-500">{{ t('quickReplies.type.image') }}</p>
                                 <p class="text-sm font-bold text-slate-900">{{ stats.image }}</p>
                             </div>
                         </div>
@@ -316,7 +330,7 @@ function deleteItem(item) {
                                 <input
                                     v-model="searchQuery"
                                     type="search"
-                                    placeholder="Поиск по названию или тексту..."
+                                    :placeholder="t('quickReplies.searchPh')"
                                     class="w-full rounded-xl border-slate-200 bg-white py-2 pl-9 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-violet-400 focus:ring-violet-400"
                                 >
                             </div>
@@ -329,7 +343,7 @@ function deleteItem(item) {
                                     <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3" />
                                     </svg>
-                                    Образец Excel
+                                    {{ t('quickReplies.excelSample') }}
                                 </a>
                                 <button
                                     type="button"
@@ -340,7 +354,7 @@ function deleteItem(item) {
                                     <svg class="h-4 w-4 text-slate-500" :class="{ 'animate-spin': importForm.processing }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                                     </svg>
-                                    {{ importForm.processing ? 'Импорт...' : 'Импорт Excel' }}
+                                    {{ importForm.processing ? t('quickReplies.importing') : t('quickReplies.import') }}
                                 </button>
                                 <input
                                     ref="importInput"
@@ -357,7 +371,7 @@ function deleteItem(item) {
                                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                     </svg>
-                                    Создать шаблон
+                                    {{ t('quickReplies.create') }}
                                 </button>
                             </div>
                         </div>
@@ -385,10 +399,10 @@ function deleteItem(item) {
                             </svg>
                         </div>
                         <h3 class="mt-6 text-lg font-semibold text-slate-900">
-                            Пока нет шаблонов
+                            {{ t('quickReplies.empty') }}
                         </h3>
                         <p class="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
-                            Создайте первый шаблон или загрузите готовые ответы из Excel. В мессенджере они будут доступны через команду «/».
+                            {{ t('quickReplies.emptyHintFull') }}
                         </p>
                         <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
                             <button
@@ -396,14 +410,14 @@ function deleteItem(item) {
                                 class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20"
                                 @click="openCreateModal"
                             >
-                                Создать шаблон
+                                {{ t('quickReplies.create') }}
                             </button>
                             <button
                                 type="button"
                                 class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 shadow-sm"
                                 @click="triggerImport"
                             >
-                                Импорт из Excel
+                                {{ t('quickReplies.importFromExcel') }}
                             </button>
                         </div>
                     </div>
@@ -413,7 +427,7 @@ function deleteItem(item) {
                         class="px-6 py-14 text-center"
                     >
                         <p class="text-sm text-slate-500">
-                            По запросу «{{ searchQuery }}» ничего не найдено.
+                            {{ t('quickReplies.noneForQuery', { q: searchQuery }) }}
                         </p>
                     </div>
 
@@ -500,14 +514,14 @@ function deleteItem(item) {
                                     class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                                     @click="openEditModal(item)"
                                 >
-                                    Редактировать
+                                    {{ t('common.edit') }}
                                 </button>
                                 <button
                                     type="button"
                                     class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-red-600 transition hover:border-red-200 hover:bg-red-50"
                                     @click="deleteItem(item)"
                                 >
-                                    Удалить
+                                    {{ t('common.delete') }}
                                 </button>
                             </div>
                         </div>
@@ -523,10 +537,10 @@ function deleteItem(item) {
         >
             <div class="border-b border-slate-100 bg-slate-50/80 px-6 py-5">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    Новый шаблон
+                    {{ t('quickReplies.newTitle') }}
                 </h3>
                 <p class="mt-1 text-sm text-slate-500">
-                    Создайте быстрый ответ для мессенджера
+                    {{ t('quickReplies.createHint') }}
                 </p>
             </div>
 
@@ -535,7 +549,7 @@ function deleteItem(item) {
                 @submit.prevent="submitCreate"
             >
                 <div>
-                    <InputLabel value="Тип шаблона" />
+                    <InputLabel :value="t('quickReplies.typeLabel')" />
                     <div class="mt-2 grid grid-cols-3 gap-2">
                         <button
                             v-for="(meta, type) in typeMeta"
@@ -555,7 +569,7 @@ function deleteItem(item) {
                 <div>
                     <InputLabel
                         for="create-title"
-                        value="Название команды"
+                        :value="t('messenger.qrModal.command')"
                     />
                     <div class="relative mt-1">
                         <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-slate-400">/</span>
@@ -563,12 +577,12 @@ function deleteItem(item) {
                             id="create-title"
                             v-model="createForm.title"
                             class="block w-full pl-7"
-                            placeholder="компофф"
+                            :placeholder="t('quickReplies.commandPh')"
                         />
                     </div>
                     <p class="mt-1.5 text-xs text-slate-500">
-                        В чате будет доступно как
-                        <span class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-700">/{{ createForm.title || 'название' }}</span>
+                        {{ t('quickReplies.availableAs') }}
+                        <span class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-700">/{{ createForm.title || t('messenger.qrModal.namePlaceholder') }}</span>
                     </p>
                     <InputError
                         class="mt-1"
@@ -579,14 +593,14 @@ function deleteItem(item) {
                 <div v-if="createForm.type === 'text'">
                     <InputLabel
                         for="create-body"
-                        value="Текст сообщения"
+                        :value="t('quickReplies.body')"
                     />
                     <textarea
                         id="create-body"
                         v-model="createForm.body"
                         rows="6"
                         class="mt-1 block w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-400 focus:ring-indigo-400"
-                        placeholder="Здравствуйте! Чем могу помочь?"
+                        :placeholder="t('quickReplies.bodyPh')"
                     />
                     <InputError
                         class="mt-1"
@@ -617,10 +631,10 @@ function deleteItem(item) {
                             />
                         </svg>
                         <span class="mt-3 text-sm font-medium text-slate-700">
-                            {{ createForm.attachment?.name || 'Нажмите, чтобы выбрать файл' }}
+                            {{ createForm.attachment?.name || t('quickReplies.pickFile') }}
                         </span>
                         <span class="mt-1 text-xs text-slate-500">
-                            До 16 МБ
+                            {{ t('quickReplies.maxSize') }}
                         </span>
                     </label>
                     <input
@@ -638,7 +652,7 @@ function deleteItem(item) {
                     <div class="mt-4">
                         <InputLabel
                             for="create-caption"
-                            value="Подпись (необязательно)"
+                            :value="t('quickReplies.caption')"
                         />
                         <textarea
                             id="create-caption"
@@ -654,10 +668,10 @@ function deleteItem(item) {
                         type="button"
                         @click="closeCreateModal"
                     >
-                        Отмена
+                        {{ t('common.cancel') }}
                     </SecondaryButton>
                     <PrimaryButton :disabled="createForm.processing">
-                        Сохранить шаблон
+                        {{ t('quickReplies.saveTemplate') }}
                     </PrimaryButton>
                 </div>
             </form>
@@ -684,7 +698,7 @@ function deleteItem(item) {
                     </h3>
                 </div>
                 <p class="mt-1 text-sm text-slate-500">
-                    Редактирование шаблона
+                    {{ t('quickReplies.editTitle') }}
                 </p>
             </div>
 
@@ -694,7 +708,7 @@ function deleteItem(item) {
                 @submit.prevent="submitEdit"
             >
                 <div>
-                    <InputLabel value="Тип шаблона" />
+                    <InputLabel :value="t('quickReplies.typeLabel')" />
                     <div class="mt-2 grid grid-cols-3 gap-2">
                         <button
                             v-for="(meta, type) in typeMeta"
@@ -712,7 +726,7 @@ function deleteItem(item) {
                 </div>
 
                 <div>
-                    <InputLabel value="Название команды" />
+                    <InputLabel :value="t('messenger.qrModal.command')" />
                     <div class="relative mt-1">
                         <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-slate-400">/</span>
                         <TextInput
@@ -727,7 +741,7 @@ function deleteItem(item) {
                 </div>
 
                 <div v-if="editForm.type === 'text'">
-                    <InputLabel value="Текст сообщения" />
+                    <InputLabel :value="t('quickReplies.body')" />
                     <textarea
                         v-model="editForm.body"
                         rows="6"
@@ -771,7 +785,7 @@ function deleteItem(item) {
                             for="edit-attachment"
                             class="mt-2 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 transition hover:border-indigo-300 hover:bg-indigo-50/40"
                         >
-                            {{ editForm.attachment?.name || 'Выбрать новый файл' }}
+                            {{ editForm.attachment?.name || t('quickReplies.pickNewFile') }}
                         </label>
                         <input
                             id="edit-attachment"
@@ -787,7 +801,7 @@ function deleteItem(item) {
                     </div>
 
                     <div class="mt-4">
-                        <InputLabel value="Подпись (необязательно)" />
+                        <InputLabel :value="t('quickReplies.caption')" />
                         <textarea
                             v-model="editForm.body"
                             rows="3"
@@ -801,17 +815,17 @@ function deleteItem(item) {
                         type="button"
                         @click="removeSelected"
                     >
-                        Удалить
+                        {{ t('common.delete') }}
                     </DangerButton>
                     <div class="flex gap-3">
                         <SecondaryButton
                             type="button"
                             @click="closeEditModal"
                         >
-                            Отмена
+                            {{ t('common.cancel') }}
                         </SecondaryButton>
                         <PrimaryButton :disabled="editForm.processing">
-                            Сохранить
+                            {{ t('common.save') }}
                         </PrimaryButton>
                     </div>
                 </div>

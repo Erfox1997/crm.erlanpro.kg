@@ -7,7 +7,10 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { reactive } from 'vue';
+import { computed, reactive } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     integrations: {
@@ -16,7 +19,7 @@ const props = defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Интеграции',
+        default: null,
     },
     wappiWebhookUrl: {
         type: String,
@@ -35,6 +38,8 @@ const props = defineProps({
         ],
     },
 });
+
+const title = computed(() => props.pageTitle || t('integrations.title'));
 
 const page = usePage();
 const showManualToken = reactive({
@@ -137,7 +142,7 @@ function saveWappi() {
 }
 
 function disconnect(provider) {
-    if (!confirm('Отключить интеграцию?')) {
+    if (!confirm(t('integrations.confirmDisconnect'))) {
         return;
     }
     router.delete(route('integrations.destroy', provider), {
@@ -222,12 +227,12 @@ function wappiCanSave() {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="title" />
 
     <AuthenticatedLayout>
         <template #header>
             <h2 class="text-xl font-semibold text-gray-800">
-                {{ pageTitle }}
+                {{ title }}
             </h2>
         </template>
 
@@ -264,13 +269,13 @@ function wappiCanSave() {
                                         v-if="item.has_token"
                                         class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800"
                                     >
-                                        Подключено
+                                        {{ t('integrations.connected') }}
                                     </span>
                                     <span
                                         v-else
                                         class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
                                     >
-                                        Не подключено
+                                        {{ t('integrations.disconnected') }}
                                     </span>
                                 </div>
                                 <p class="mt-1 text-sm text-slate-600">
@@ -300,14 +305,14 @@ function wappiCanSave() {
                                     :href="item.oauth_url"
                                     class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-indigo-500"
                                 >
-                                    {{ item.has_token ? 'Переподключить' : 'Подключить' }}
+                                    {{ item.has_token ? t('integrations.reconnect') : t('integrations.connect') }}
                                 </a>
                                 <SecondaryButton
                                     v-if="item.has_token"
                                     type="button"
                                     @click="disconnect(item.provider)"
                                 >
-                                    Отключить
+                                    {{ t('integrations.disconnect') }}
                                 </SecondaryButton>
                             </div>
 
@@ -316,7 +321,7 @@ function wappiCanSave() {
                                 class="text-xs text-slate-500 hover:text-slate-700"
                                 @click="showManualToken[item.provider] = !showManualToken[item.provider]"
                             >
-                                {{ showManualToken[item.provider] ? 'Скрыть' : 'Токен вручную' }}
+                                {{ showManualToken[item.provider] ? t('common.hide') : t('integrations.manualToken') }}
                             </button>
 
                             <form
@@ -327,7 +332,7 @@ function wappiCanSave() {
                                 <div>
                                     <InputLabel
                                         :for="'token_' + item.provider"
-                                        value="Page token"
+                                        :value="t('integrations.token')"
                                     />
                                     <TextInput
                                         :id="'token_' + item.provider"
@@ -349,7 +354,7 @@ function wappiCanSave() {
                                         !tokenInputs[item.provider]?.trim()
                                     "
                                 >
-                                    Сохранить
+                                    {{ t('common.save') }}
                                 </PrimaryButton>
                             </form>
                         </div>
@@ -362,7 +367,7 @@ function wappiCanSave() {
                             <div>
                                 <InputLabel
                                     for="wappi_api_token"
-                                    value="Токен API"
+                                    :value="t('integrations.apiToken')"
                                 />
                                 <TextInput
                                     id="wappi_api_token"
@@ -371,8 +376,8 @@ function wappiCanSave() {
                                     class="mt-1 block w-full font-mono text-sm"
                                     :placeholder="
                                         item.has_token
-                                            ? 'Новый токен API'
-                                            : 'Токен API из личного кабинета Wappi'
+                                            ? t('integrations.newApiToken')
+                                            : t('integrations.wappiTokenHint')
                                     "
                                     autocomplete="off"
                                 />
@@ -385,7 +390,7 @@ function wappiCanSave() {
                             <div>
                                 <InputLabel
                                     for="wappi_profile_id"
-                                    value="ID профиля"
+                                    :value="t('integrations.profileId')"
                                 />
                                 <TextInput
                                     id="wappi_profile_id"
@@ -406,7 +411,7 @@ function wappiCanSave() {
                                 class="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 text-xs text-emerald-900"
                             >
                                 <p class="font-medium">
-                                    Webhook (настраивается автоматически при сохранении)
+                                    {{ t('integrations.webhookAuto') }}
                                 </p>
                                 <p class="mt-1 break-all font-mono text-[11px] text-emerald-800">
                                     {{ wappiWebhookUrl }}
@@ -418,14 +423,14 @@ function wappiCanSave() {
                                     type="submit"
                                     :disabled="!wappiCanSave()"
                                 >
-                                    Сохранить
+                                    {{ t('common.save') }}
                                 </PrimaryButton>
                                 <SecondaryButton
                                     v-if="item.has_token"
                                     type="button"
                                     @click="disconnect(item.provider)"
                                 >
-                                    Отключить
+                                    {{ t('integrations.disconnect') }}
                                 </SecondaryButton>
                             </div>
                         </form>
@@ -438,7 +443,7 @@ function wappiCanSave() {
                             <div>
                                 <InputLabel
                                     for="telegram_api_token"
-                                    value="Токен бота"
+                                    :value="t('integrations.botToken')"
                                 />
                                 <TextInput
                                     id="telegram_api_token"
@@ -447,14 +452,13 @@ function wappiCanSave() {
                                     class="mt-1 block w-full font-mono text-sm"
                                     :placeholder="
                                         item.has_token
-                                            ? 'Новый токен бота'
-                                            : 'Токен от @BotFather'
+                                            ? t('integrations.newBotToken')
+                                            : t('integrations.botFatherHint')
                                     "
                                     autocomplete="off"
                                 />
                                 <p class="mt-2 text-xs text-slate-500">
-                                    Создайте бота через @BotFather и вставьте HTTP API токен.
-                                    Клиенты должны сначала написать боту в Telegram.
+                                    {{ t('integrations.telegramHint') }}
                                 </p>
                                 <InputError
                                     class="mt-2"
@@ -467,7 +471,7 @@ function wappiCanSave() {
                                 class="rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2.5 text-xs text-sky-900"
                             >
                                 <p class="font-medium">
-                                    Webhook (настраивается автоматически при сохранении)
+                                    {{ t('integrations.webhookAuto') }}
                                 </p>
                                 <p class="mt-1 break-all font-mono text-[11px] text-sky-800">
                                     {{ item.webhook_url }}
@@ -482,14 +486,14 @@ function wappiCanSave() {
                                         !tokenInputs.telegram?.trim()
                                     "
                                 >
-                                    Сохранить
+                                    {{ t('common.save') }}
                                 </PrimaryButton>
                                 <SecondaryButton
                                     v-if="item.has_token"
                                     type="button"
                                     @click="disconnect(item.provider)"
                                 >
-                                    Отключить
+                                    {{ t('integrations.disconnect') }}
                                 </SecondaryButton>
                             </div>
                         </form>
@@ -502,7 +506,7 @@ function wappiCanSave() {
                             <div>
                                 <InputLabel
                                     for="shop_url"
-                                    value="URL магазина"
+                                    :value="t('integrations.shopUrl')"
                                 />
                                 <TextInput
                                     id="shop_url"
@@ -521,7 +525,7 @@ function wappiCanSave() {
                             <div>
                                 <InputLabel
                                     for="shop_api_token"
-                                    value="API-ключ"
+                                    :value="t('integrations.apiKey')"
                                 />
                                 <TextInput
                                     id="shop_api_token"
@@ -530,14 +534,13 @@ function wappiCanSave() {
                                     class="mt-1 block w-full font-mono text-sm"
                                     :placeholder="
                                         item.has_token
-                                            ? 'Новый ключ из магазина'
-                                            : 'sk_… из раздела «Ключ API» в магазине'
+                                            ? t('integrations.newShopKey')
+                                            : t('integrations.shopKeyPh')
                                     "
                                     autocomplete="off"
                                 />
                                 <p class="mt-2 text-xs text-slate-500">
-                                    Ключ создаётся в магазине: Настройки → Ключ API.
-                                    После сохранения можно продавать из мессенджера.
+                                    {{ t('integrations.shopHint') }}
                                 </p>
                                 <InputError
                                     class="mt-2"
@@ -550,14 +553,14 @@ function wappiCanSave() {
                                     type="submit"
                                     :disabled="!shopCanSave()"
                                 >
-                                    Сохранить
+                                    {{ t('common.save') }}
                                 </PrimaryButton>
                                 <SecondaryButton
                                     v-if="item.has_token"
                                     type="button"
                                     @click="disconnect(item.provider)"
                                 >
-                                    Отключить
+                                    {{ t('integrations.disconnect') }}
                                 </SecondaryButton>
                             </div>
                         </form>
@@ -570,7 +573,7 @@ function wappiCanSave() {
                             <div>
                                 <InputLabel
                                     for="chatgpt_api_token"
-                                    value="API-ключ OpenAI"
+                                    :value="t('integrations.openaiKey')"
                                 />
                                 <TextInput
                                     id="chatgpt_api_token"
@@ -579,20 +582,20 @@ function wappiCanSave() {
                                     class="mt-1 block w-full font-mono text-sm"
                                     :placeholder="
                                         item.has_token
-                                            ? 'Оставьте пустым, чтобы не менять ключ'
+                                            ? t('integrations.openaiLeaveEmpty')
                                             : 'sk-...'
                                     "
                                     autocomplete="off"
                                 />
                                 <p class="mt-2 text-xs text-slate-500">
-                                    Ключ из
+                                    {{ t('integrations.openaiFrom') }}
                                     <a
                                         href="https://platform.openai.com/api-keys"
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         class="text-teal-700 underline"
                                     >platform.openai.com</a>.
-                                    В мессенджере появится кнопка ИИ для правки ответа.
+                                    {{ t('integrations.openaiMessenger') }}
                                 </p>
                                 <InputError
                                     class="mt-2"
@@ -603,7 +606,7 @@ function wappiCanSave() {
                             <div>
                                 <InputLabel
                                     for="chatgpt_model"
-                                    value="Модель"
+                                    :value="t('integrations.model')"
                                 />
                                 <select
                                     id="chatgpt_model"
@@ -625,8 +628,7 @@ function wappiCanSave() {
                                     </option>
                                 </select>
                                 <p class="mt-2 text-xs text-slate-500">
-                                    Если модель недоступна в Limits проекта OpenAI — выберите другую
-                                    или разрешите её в настройках проекта.
+                                    {{ t('integrations.modelHint') }}
                                 </p>
                                 <InputError
                                     class="mt-2"
@@ -639,14 +641,14 @@ function wappiCanSave() {
                                     type="submit"
                                     :disabled="!chatGptCanSave(item)"
                                 >
-                                    Сохранить
+                                    {{ t('common.save') }}
                                 </PrimaryButton>
                                 <SecondaryButton
                                     v-if="item.has_token"
                                     type="button"
                                     @click="disconnect(item.provider)"
                                 >
-                                    Отключить
+                                    {{ t('integrations.disconnect') }}
                                 </SecondaryButton>
                             </div>
                         </form>
@@ -659,7 +661,7 @@ function wappiCanSave() {
                             <div>
                                 <InputLabel
                                     :for="'token_' + item.provider"
-                                    value="API токен"
+                                    :value="t('integrations.apiTokenGeneric')"
                                 />
                                 <TextInput
                                     :id="'token_' + item.provider"
@@ -668,8 +670,8 @@ function wappiCanSave() {
                                     class="mt-1 block w-full font-mono text-sm"
                                     :placeholder="
                                         item.has_token
-                                            ? 'Новый токен'
-                                            : 'API токен'
+                                            ? t('integrations.newToken')
+                                            : t('integrations.apiTokenGeneric')
                                     "
                                     autocomplete="off"
                                 />
@@ -689,14 +691,14 @@ function wappiCanSave() {
                                         !tokenInputs[item.provider]?.trim()
                                     "
                                 >
-                                    Сохранить
+                                    {{ t('common.save') }}
                                 </PrimaryButton>
                                 <SecondaryButton
                                     v-if="item.has_token"
                                     type="button"
                                     @click="disconnect(item.provider)"
                                 >
-                                    Отключить
+                                    {{ t('integrations.disconnect') }}
                                 </SecondaryButton>
                             </div>
                         </form>

@@ -6,6 +6,9 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     client: Object,
@@ -23,18 +26,18 @@ const submit = () => {
 };
 
 const deleteClient = () => {
-    if (confirm('Удалить этого клиента?')) {
+    if (confirm(t('clients.confirmDelete'))) {
         router.delete(route('clients.destroy', props.client.id));
     }
 };
 </script>
 
 <template>
-    <Head title="Клиент" />
+    <Head :title="t('clients.headEdit')" />
 
     <AuthenticatedLayout>
         <template #header>
-            <h2 class="text-xl font-semibold text-gray-800">Редактирование клиента</h2>
+            <h2 class="text-xl font-semibold text-gray-800">{{ t('clients.editTitle') }}</h2>
         </template>
 
         <div class="py-8">
@@ -44,7 +47,7 @@ const deleteClient = () => {
                     class="space-y-6 rounded-lg bg-white p-6 shadow ring-1 ring-gray-900/5"
                 >
                     <div>
-                        <InputLabel for="name" value="Имя / название *" />
+                        <InputLabel for="name" :value="t('clients.fieldName')" />
                         <TextInput
                             id="name"
                             v-model="form.name"
@@ -57,7 +60,7 @@ const deleteClient = () => {
                     </div>
 
                     <div>
-                        <InputLabel for="phone" value="Телефон" />
+                        <InputLabel for="phone" :value="t('common.phone')" />
                         <TextInput
                             id="phone"
                             v-model="form.phone"
@@ -68,7 +71,7 @@ const deleteClient = () => {
                     </div>
 
                     <div>
-                        <InputLabel for="email" value="Email" />
+                        <InputLabel for="email" :value="t('common.email')" />
                         <TextInput
                             id="email"
                             v-model="form.email"
@@ -79,7 +82,7 @@ const deleteClient = () => {
                     </div>
 
                     <div>
-                        <InputLabel for="notes" value="Заметки" />
+                        <InputLabel for="notes" :value="t('common.notes')" />
                         <textarea
                             id="notes"
                             v-model="form.notes"
@@ -91,20 +94,20 @@ const deleteClient = () => {
 
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <DangerButton type="button" @click="deleteClient">
-                            Удалить
+                            {{ t('common.delete') }}
                         </DangerButton>
                         <div class="flex items-center gap-3">
                             <Link
                                 :href="route('clients.index')"
                                 class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-widest text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                             >
-                                Отмена
+                                {{ t('common.cancel') }}
                             </Link>
                             <PrimaryButton
                                 :class="{ 'opacity-25': form.processing }"
                                 :disabled="form.processing"
                             >
-                                Сохранить
+                                {{ t('common.save') }}
                             </PrimaryButton>
                         </div>
                     </div>

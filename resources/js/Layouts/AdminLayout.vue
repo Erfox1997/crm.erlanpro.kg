@@ -1,9 +1,12 @@
 <script setup>
 import BrandLogo from '@/Components/BrandLogo.vue';
 import CrmSidebarLink from '@/Components/CrmSidebarLink.vue';
+import LanguageSwitcher from '@/Components/LanguageSwitcher.vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const page = usePage();
 const branding = page.props.branding ?? {};
 const user = computed(() => page.props.auth.user);
@@ -15,15 +18,18 @@ const user = computed(() => page.props.auth.user);
             class="flex w-full shrink-0 flex-col border-e border-slate-800 bg-gradient-to-b from-slate-950 via-indigo-950 to-slate-950 text-slate-100 lg:fixed lg:inset-y-0 lg:w-72"
         >
             <div class="border-b border-white/10 px-5 py-5">
-                <Link :href="route('admin.dashboard')" class="inline-flex">
-                    <BrandLogo
-                        light
-                        :name="branding.name ?? 'ErlanPro'"
-                        :domain="branding.domain ?? 'crm.erlanpro.kg'"
-                        icon-class="h-10 w-10"
-                    />
-                </Link>
-                <p class="mt-3 text-xs text-slate-400">Панель управления</p>
+                <div class="flex items-start justify-between gap-2">
+                    <Link :href="route('admin.dashboard')" class="inline-flex">
+                        <BrandLogo
+                            light
+                            :name="branding.name ?? 'ErlanPro'"
+                            :domain="branding.domain ?? 'crm.erlanpro.kg'"
+                            icon-class="h-10 w-10"
+                        />
+                    </Link>
+                    <LanguageSwitcher />
+                </div>
+                <p class="mt-3 text-xs text-slate-400">{{ t('admin.panel') }}</p>
             </div>
 
             <nav class="flex-1 space-y-6 overflow-y-auto px-3 py-5">
@@ -31,7 +37,7 @@ const user = computed(() => page.props.auth.user);
                     <p
                         class="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"
                     >
-                        Основное
+                        {{ t('admin.sectionMain') }}
                     </p>
                     <CrmSidebarLink
                         :href="route('admin.dashboard')"
@@ -52,7 +58,7 @@ const user = computed(() => page.props.auth.user);
                                 />
                             </svg>
                         </template>
-                        Главное
+                        {{ t('admin.home') }}
                     </CrmSidebarLink>
                 </div>
 
@@ -60,7 +66,7 @@ const user = computed(() => page.props.auth.user);
                     <p
                         class="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"
                     >
-                        Управление
+                        {{ t('admin.sectionManage') }}
                     </p>
                     <div class="space-y-1">
                         <CrmSidebarLink
@@ -82,7 +88,7 @@ const user = computed(() => page.props.auth.user);
                                     />
                                 </svg>
                             </template>
-                            Тарифы (Планы)
+                            {{ t('admin.tariffsPlans') }}
                         </CrmSidebarLink>
 
                         <CrmSidebarLink
@@ -104,7 +110,7 @@ const user = computed(() => page.props.auth.user);
                                     />
                                 </svg>
                             </template>
-                            Список клиентов
+                            {{ t('admin.companiesList') }}
                         </CrmSidebarLink>
 
                         <CrmSidebarLink
@@ -126,7 +132,7 @@ const user = computed(() => page.props.auth.user);
                                     />
                                 </svg>
                             </template>
-                            Реквизиты для клиентов
+                            {{ t('admin.paymentRequisites') }}
                         </CrmSidebarLink>
 
                         <CrmSidebarLink
@@ -148,7 +154,7 @@ const user = computed(() => page.props.auth.user);
                                     />
                                 </svg>
                             </template>
-                            Реквизиты ИП
+                            {{ t('admin.legalRequisites') }}
                         </CrmSidebarLink>
 
                         <CrmSidebarLink
@@ -170,7 +176,7 @@ const user = computed(() => page.props.auth.user);
                                     />
                                 </svg>
                             </template>
-                            Обновления правил
+                            {{ t('admin.ruleUpdates') }}
                         </CrmSidebarLink>
                     </div>
                 </div>
@@ -181,14 +187,14 @@ const user = computed(() => page.props.auth.user);
                     class="rounded-xl bg-white/5 px-4 py-3 text-sm text-slate-200"
                 >
                     <p class="font-medium">{{ user?.name }}</p>
-                    <p class="text-xs text-slate-400">Программист</p>
+                    <p class="text-xs text-slate-400">{{ t('admin.programmer') }}</p>
                     <Link
                         :href="route('logout')"
                         method="post"
                         as="button"
                         class="mt-2 text-xs text-indigo-300 hover:text-indigo-200"
                     >
-                        Выйти
+                        {{ t('admin.logout') }}
                     </Link>
                 </div>
             </div>

@@ -5,6 +5,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
     company: {
@@ -17,9 +18,11 @@ const props = defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Компания',
+        default: '',
     },
 });
+
+const { t } = useI18n();
 
 const form = useForm({
     tariff_id: props.company.tariff_id,
@@ -35,7 +38,7 @@ function submit() {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="company.name" />
 
     <AdminLayout>
         <template #header>
@@ -44,7 +47,7 @@ function submit() {
                     :href="route('admin.companies.index')"
                     class="text-sm text-indigo-600 hover:text-indigo-500"
                 >
-                    ← К списку клиентов
+                    {{ t('admin.companies.back') }}
                 </Link>
                 <h1 class="mt-2 text-2xl font-bold text-slate-900">
                     {{ company.name }}
@@ -57,41 +60,41 @@ function submit() {
                 class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
             >
                 <h2 class="text-lg font-semibold text-slate-900">
-                    Информация
+                    {{ t('admin.companies.info') }}
                 </h2>
                 <dl class="mt-4 space-y-3 text-sm">
                     <div class="flex justify-between gap-4">
-                        <dt class="text-slate-500">Владелец</dt>
+                        <dt class="text-slate-500">{{ t('admin.companies.owner') }}</dt>
                         <dd class="text-right text-slate-900">
                             {{ company.owner_name ?? '—' }}
                         </dd>
                     </div>
                     <div class="flex justify-between gap-4">
-                        <dt class="text-slate-500">Email</dt>
+                        <dt class="text-slate-500">{{ t('common.email') }}</dt>
                         <dd class="text-right text-slate-900">
                             {{ company.owner_email ?? '—' }}
                         </dd>
                     </div>
                     <div class="flex justify-between gap-4">
-                        <dt class="text-slate-500">Регистрация</dt>
+                        <dt class="text-slate-500">{{ t('admin.companies.registered') }}</dt>
                         <dd class="text-right text-slate-900">
                             {{ company.created_at ?? '—' }}
                         </dd>
                     </div>
                     <div class="flex justify-between gap-4">
-                        <dt class="text-slate-500">Пользователей</dt>
+                        <dt class="text-slate-500">{{ t('admin.companies.usersCount') }}</dt>
                         <dd class="text-right text-slate-900">
                             {{ company.users_count ?? 0 }}
                         </dd>
                     </div>
                     <div class="flex justify-between gap-4">
-                        <dt class="text-slate-500">Клиентов CRM</dt>
+                        <dt class="text-slate-500">{{ t('admin.companies.crmClients') }}</dt>
                         <dd class="text-right text-slate-900">
                             {{ company.clients_count ?? 0 }}
                         </dd>
                     </div>
                     <div class="flex justify-between gap-4">
-                        <dt class="text-slate-500">Сделок</dt>
+                        <dt class="text-slate-500">{{ t('admin.companies.deals') }}</dt>
                         <dd class="text-right text-slate-900">
                             {{ company.deals_count ?? 0 }}
                         </dd>
@@ -103,11 +106,13 @@ function submit() {
                 class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
                 @submit.prevent="submit"
             >
-                <h2 class="text-lg font-semibold text-slate-900">Подписка</h2>
+                <h2 class="text-lg font-semibold text-slate-900">
+                    {{ t('admin.companies.subscription') }}
+                </h2>
 
                 <div class="mt-4 space-y-4">
                     <div>
-                        <InputLabel for="tariff_id" value="Тариф" />
+                        <InputLabel for="tariff_id" :value="t('admin.companies.tariff')" />
                         <select
                             id="tariff_id"
                             v-model="form.tariff_id"
@@ -130,7 +135,7 @@ function submit() {
                     <div>
                         <InputLabel
                             for="subscription_ends_at"
-                            value="Действует до"
+                            :value="t('admin.companies.validUntil')"
                         />
                         <TextInput
                             id="subscription_ends_at"
@@ -150,12 +155,12 @@ function submit() {
                             type="checkbox"
                             class="rounded border-slate-300 text-indigo-600"
                         />
-                        Активна
+                        {{ t('admin.companies.active') }}
                     </label>
                 </div>
 
                 <PrimaryButton class="mt-6" :disabled="form.processing">
-                    Сохранить
+                    {{ t('common.save') }}
                 </PrimaryButton>
             </form>
         </div>

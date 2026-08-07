@@ -9,8 +9,12 @@ import Modal from '@/Components/Modal.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
+import { localeTag } from '@/i18n';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
 
 const props = defineProps({
     instagramConnected: {
@@ -563,7 +567,7 @@ function toggleQuickReplyTarget(messageId) {
 }
 
 function onSalePending({ clientId, total, currency: saleCurrency }) {
-    const totalLabel = Number(total || 0).toLocaleString('ru-RU', {
+    const totalLabel = Number(total || 0).toLocaleString(localeTag(locale.value), {
         minimumFractionDigits: 0,
         maximumFractionDigits: 2,
     });
@@ -578,21 +582,24 @@ function onSalePending({ clientId, total, currency: saleCurrency }) {
             attachments: [{
                 type: 'image',
                 url: '',
-                name: 'Чек',
+                name: t('messenger.receipt'),
                 mime_type: 'image/png',
                 loading: true,
             }],
             status: 'pending',
             pending_kind: 'receipt',
             sent_at: new Date().toISOString(),
-            loading_label: `Чек · ${totalLabel} ${saleCurrency || ''}`.trim(),
+            loading_label: t('messenger.saleCurrencyLabel', {
+                total: totalLabel,
+                currency: saleCurrency || '',
+            }).trim(),
         },
     ];
     shouldStickToBottom = true;
     scrollToBottom();
     touchConversationAfterSend(
         { id: props.selectedConversation?.id, last_message_at: new Date().toISOString() },
-        'Чек',
+        t('messenger.receipt'),
     );
 }
 
@@ -611,18 +618,18 @@ async function onSaleFinished({ clientId, ok, message, warning }) {
             ? {
                 ...item,
                 status: 'failed',
-                body: message || 'Не удалось создать продажу',
+                body: message || t('messenger.err.saleCreate'),
                 attachments: [{
                     type: 'image',
                     url: '',
-                    name: 'Чек',
+                    name: t('messenger.receipt'),
                     loading: false,
                     failed: true,
                 }],
             }
             : item
     ));
-    sendError.value = message || 'Не удалось создать продажу.';
+    sendError.value = message || t('messenger.err.saleCreate');
 }
 
 async function onQuoteFinished({ ok, message }) {
@@ -633,7 +640,7 @@ async function onQuoteFinished({ ok, message }) {
         return;
     }
 
-    sendError.value = message || 'Не удалось отправить расчёт.';
+    sendError.value = message || t('messenger.err.calcSend');
 }
 
 function openFilterModal() {
@@ -693,8 +700,8 @@ async function applyQuickReply(reply) {
 
     const clientId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const previewBody = reply.type === 'audio'
-        ? '🎤 Голосовое сообщение'
-        : (reply.body || '🖼 Изображение');
+        ? t('messenger.voiceLabel')
+        : (reply.body || t('messenger.imageLabel'));
 
     localMessages.value = [
         ...localMessages.value,
@@ -739,7 +746,7 @@ async function applyQuickReply(reply) {
         ));
         sendError.value = error?.response?.data?.message
             || error?.response?.data?.errors?.body?.[0]
-            || 'Не удалось отправить шаблон.';
+            || t('messenger.err.template');
     }
 }
 
@@ -749,10 +756,10 @@ function quickReplyPreview(reply) {
     }
 
     if (reply.type === 'audio') {
-        return reply.body || '🎤 Голосовое сообщение';
+        return reply.body || t('messenger.voiceLabel');
     }
 
-    return reply.body || '🖼 Изображение';
+    return reply.body || t('messenger.imageLabel');
 }
 
 function onMessageInputKeydown(event) {
@@ -827,7 +834,7 @@ async function sendMessage() {
     scrollToBottom();
     touchConversationAfterSend(
         { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
-        body || '🖼 Изображение',
+        body || t('messenger.imageLabel'),
     );
 
     try {
@@ -856,7 +863,7 @@ async function sendMessage() {
         ));
         sendError.value = error?.response?.data?.message
             || error?.response?.data?.errors?.body?.[0]
-            || 'Не удалось отправить сообщение.';
+            || t('messenger.err.message');
         if (!sendForm.body && body) {
             sendForm.body = body;
         }
@@ -870,7 +877,7 @@ async function improveWithAi() {
 
     const body = sendForm.body.trim();
     if (!body) {
-        aiError.value = 'Сначала введите текст сообщения';
+        aiError.value = t('messenger.err.aiEmpty');
         return;
     }
 
@@ -885,7 +892,7 @@ async function improveWithAi() {
         }
     } catch (error) {
         aiError.value = error?.response?.data?.message
-            || 'Не удалось улучшить текст через ИИ';
+            || t('messenger.err.ai');
     } finally {
         aiImproving.value = false;
     }
@@ -1102,7 +1109,7 @@ async function startRecording() {
     }
 
     if (!navigator.mediaDevices?.getUserMedia) {
-        window.alert('Запись голоса не поддерживается в этом браузере.');
+        window.alert(t('messenger.err.voiceUnsupported'));
         return;
     }
 
@@ -1113,7 +1120,7 @@ async function startRecording() {
         if (props.selectedConversation.channel === 'instagram' && ! mimeType) {
             stopRecordingTracks();
             window.alert(
-                'Для Instagram нужен формат M4A/MP4. Откройте CRM в Safari или Edge и попробуйте снова.',
+                t('messenger.igFormatLong'),
             );
 
             return;
@@ -1143,7 +1150,7 @@ async function startRecording() {
         }, 1000);
     } catch {
         stopRecordingTracks();
-        window.alert('Не удалось получить доступ к микрофону.');
+        window.alert(t('messenger.err.mic'));
     }
 }
 
@@ -1208,7 +1215,7 @@ async function sendVoiceMessage() {
     scrollToBottom();
     touchConversationAfterSend(
         { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
-        '🎤 Голосовое сообщение',
+        t('messenger.voiceLabel'),
     );
 
     const formData = new FormData();
@@ -1228,7 +1235,7 @@ async function sendVoiceMessage() {
             mergeMessages([data.message]);
         }
         if (data?.conversation) {
-            touchConversationAfterSend(data.conversation, '🎤 Голосовое сообщение');
+            touchConversationAfterSend(data.conversation, t('messenger.voiceLabel'));
         }
     } catch (error) {
         localMessages.value = localMessages.value.map((message) => (
@@ -1238,7 +1245,7 @@ async function sendVoiceMessage() {
         ));
         sendError.value = error?.response?.data?.message
             || error?.response?.data?.errors?.body?.[0]
-            || 'Не удалось отправить голосовое сообщение.';
+            || t('messenger.err.voiceSend');
     }
 }
 
@@ -1254,7 +1261,7 @@ function formatTime(iso) {
         return '';
     }
 
-    return new Date(iso).toLocaleString('ru-RU', {
+    return new Date(iso).toLocaleString(localeTag(locale.value), {
         day: '2-digit',
         month: '2-digit',
         hour: '2-digit',
@@ -1272,13 +1279,13 @@ function formatListTime(iso) {
     const isToday = date.toDateString() === now.toDateString();
 
     if (isToday) {
-        return date.toLocaleTimeString('ru-RU', {
+        return date.toLocaleTimeString(localeTag(locale.value), {
             hour: '2-digit',
             minute: '2-digit',
         });
     }
 
-    return date.toLocaleDateString('ru-RU', {
+    return date.toLocaleDateString(localeTag(locale.value), {
         day: '2-digit',
         month: '2-digit',
     });
@@ -1289,7 +1296,7 @@ function formatMessageTime(iso) {
         return '';
     }
 
-    return new Date(iso).toLocaleTimeString('ru-RU', {
+    return new Date(iso).toLocaleTimeString(localeTag(locale.value), {
         hour: '2-digit',
         minute: '2-digit',
     });
@@ -1316,14 +1323,14 @@ function formatMessageDateLabel(iso) {
     yesterday.setDate(yesterday.getDate() - 1);
 
     if (date.toDateString() === now.toDateString()) {
-        return 'Сегодня';
+        return t('messenger.today');
     }
 
     if (date.toDateString() === yesterday.toDateString()) {
-        return 'Вчера';
+        return t('messenger.yesterday');
     }
 
-    return date.toLocaleDateString('ru-RU', {
+    return date.toLocaleDateString(localeTag(locale.value), {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -1407,15 +1414,15 @@ function avatarInitials(conversation) {
 function attachmentLabel(type) {
     switch (type) {
     case 'audio':
-        return 'Голосовое сообщение';
+        return t('messenger.voicePlain');
     case 'image':
-        return 'Фото';
+        return t('messenger.photo');
     case 'video':
-        return 'Видео';
+        return t('messenger.video');
     case 'file':
-        return 'Файл';
+        return t('messenger.file');
     default:
-        return 'Вложение';
+        return t('messenger.attachment');
     }
 }
 
@@ -1449,7 +1456,7 @@ function openSaveQuickReplyModal(message) {
 
     saveQuickReplyMessageId = message.id;
     saveQuickReplyPreview.value = message.body?.trim()
-        || (message.attachments?.[0]?.type === 'image' ? 'Фото' : 'Голосовое сообщение');
+        || (message.attachments?.[0]?.type === 'image' ? t('messenger.photo') : t('messenger.voicePlain'));
     saveQuickReplyForm.clearErrors();
     saveQuickReplyForm.title = '';
     showSaveQuickReplyModal.value = true;
@@ -1527,7 +1534,7 @@ function scrollToBottom() {
 </script>
 
 <template>
-    <Head title="Мессенджер" />
+    <Head :title="t('messenger.title')" />
 
     <AuthenticatedLayout full-height>
         <div
@@ -1550,7 +1557,7 @@ function scrollToBottom() {
         <div
             class="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-[#d1d7db] bg-white shadow-sm"
         >
-            <!-- Список чатов -->
+            <!-- Chat list -->
             <aside
                 class="flex h-full min-h-0 w-full flex-col border-[#d1d7db] bg-white lg:w-[360px] lg:shrink-0 lg:border-r"
                 :class="selectedConversation ? 'hidden lg:flex' : 'flex'"
@@ -1559,7 +1566,7 @@ function scrollToBottom() {
                     class="flex items-center justify-between gap-3 bg-[#f0f2f5] px-4 py-3"
                 >
                     <h2 class="text-lg font-semibold text-[#111b21]">
-                        Чаты
+                        {{ t('messenger.chats') }}
                     </h2>
                     <div class="flex items-center gap-1">
                         <button
@@ -1569,7 +1576,7 @@ function scrollToBottom() {
                             :class="funnelFilterActive
                                 ? 'bg-[#d9fdd3] text-[#008069]'
                                 : 'text-[#54656f]'"
-                            title="Фильтр по воронке"
+:title="t('messenger.filterTitleAttr')"
                             @click="openFilterModal"
                         >
                             <svg
@@ -1590,7 +1597,7 @@ function scrollToBottom() {
                             v-if="messengerConnected"
                             :href="route('messenger.quick-replies.index')"
                             class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
-                            title="Быстрые ответы"
+:title="t('messenger.quickRepliesTitle')"
                         >
                             <svg
                                 class="h-5 w-5"
@@ -1611,7 +1618,7 @@ function scrollToBottom() {
                             type="button"
                             class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
                             :disabled="syncing"
-                            title="Обновить новые сообщения"
+:title="t('messenger.refreshTitle')"
                             @click="syncConversations"
                         >
                         <svg
@@ -1650,7 +1657,7 @@ function scrollToBottom() {
                         <input
                             v-model="searchQuery"
                             type="search"
-                            placeholder="Поиск или новый чат"
+:placeholder="t('messenger.searchPh')"
                             class="w-full rounded-lg border-0 bg-[#f0f2f5] py-2 pl-10 pr-3 text-sm text-[#111b21] placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30"
                         />
                     </div>
@@ -1660,12 +1667,12 @@ function scrollToBottom() {
                     v-if="!messengerConnected"
                     class="flex flex-1 items-center justify-center px-6 text-center text-sm text-[#667781]"
                 >
-                    Подключите Instagram, Facebook, WhatsApp или Telegram в
+                    {{ t('messenger.connectPrefix') }}
                     <Link
                         :href="route('integrations.index')"
                         class="ml-1 text-[#00a884] hover:underline"
                     >
-                        интеграциях
+                        {{ t('messenger.connectIntegrations') }}
                     </Link>.
                 </div>
 
@@ -1673,8 +1680,7 @@ function scrollToBottom() {
                     v-else-if="conversations.length === 0"
                     class="flex flex-1 items-center justify-center px-6 text-center text-sm text-[#667781]"
                 >
-                    Диалогов пока нет. Нажмите обновить или дождитесь
-                    входящего сообщения.
+                    {{ t('messenger.empty') }}
                 </div>
 
                 <ul
@@ -1753,7 +1759,7 @@ function scrollToBottom() {
                         v-if="filteredConversations.length === 0"
                         class="px-4 py-8 text-center text-sm text-[#667781]"
                     >
-                        Ничего не найдено
+                        {{ t('messenger.noneFound') }}
                     </li>
                 </ul>
             </aside>
@@ -1776,7 +1782,7 @@ function scrollToBottom() {
                         CRM ErlanPro Messenger
                     </h3>
                     <p class="mt-2 max-w-sm text-sm text-[#667781]">
-                        Выберите чат слева, чтобы читать и отвечать клиентам.
+                        {{ t('messenger.selectChat') }}
                     </p>
                 </div>
 
@@ -1835,25 +1841,25 @@ function scrollToBottom() {
                             v-if="shopConnected"
                             type="button"
                             class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-amber-600 sm:px-3 sm:text-xs"
-                            title="Продать"
+:title="t('messenger.sell.btn')"
                             @click="sellModalOpen = true"
                         >
                             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
                             </svg>
-                            <span class="hidden sm:inline">Продать</span>
+<span class="hidden sm:inline">{{ t('messenger.sell.btn') }}</span>
                         </button>
 
                         <button
                             type="button"
                             class="inline-flex shrink-0 items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-indigo-700 sm:px-3 sm:text-xs"
-                            title="Задача"
+:title="t('messenger.task')"
                             @click="openTaskModal"
                         >
                             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            <span class="hidden sm:inline">Задача</span>
+<span class="hidden sm:inline">{{ t('messenger.task') }}</span>
                         </button>
 
                         <button
@@ -1861,7 +1867,7 @@ function scrollToBottom() {
                             class="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-medium text-[#008069] shadow-sm transition hover:bg-[#f0f2f5] sm:px-3 sm:py-1.5 sm:text-xs"
                             @click="openClientModal"
                         >
-                            {{ linkedClient ? 'Данные клиента' : 'Сохранить контакт' }}
+{{ linkedClient ? t('messenger.clientData') : t('messenger.saveContact') }}
                         </button>
                     </div>
 
@@ -1899,7 +1905,7 @@ function scrollToBottom() {
                             v-if="messages.length === 0"
                             class="py-12 text-center text-sm text-[#667781]"
                         >
-                            Сообщений пока нет.
+                            {{ t('messenger.noMessages') }}
                         </div>
 
                         <template
@@ -1935,7 +1941,7 @@ function scrollToBottom() {
                                     type="button"
                                     class="absolute -top-2 right-1 z-10 rounded-full bg-white p-1 text-[#54656f] opacity-0 shadow-sm ring-1 ring-[#d1d7db] transition hover:bg-[#f0f2f5] hover:text-[#008069] sm:group-hover:opacity-100"
                                     :class="{ 'opacity-100': quickReplyTargetId === item.message.id }"
-                                    title="В быстрые ответы"
+:title="t('messenger.toQuickReplies')"
                                     @click.stop="openSaveQuickReplyModal(item.message)"
                                 >
                                     <svg
@@ -1986,7 +1992,7 @@ function scrollToBottom() {
                                                 v-if="!attachment.url"
                                                 class="text-[10px] opacity-70"
                                             >
-                                                (нажмите «Обновить» в списке чатов)
+{{ t('messenger.refreshHint') }}
                                             </span>
                                         </p>
 
@@ -1999,7 +2005,7 @@ function scrollToBottom() {
                                                 aria-hidden="true"
                                             />
                                             <span class="px-2 text-center text-xs text-[#54656f]">
-                                                {{ item.message.loading_label || 'Чек загружается…' }}
+{{ item.message.loading_label || t('messenger.receiptLoading') }}
                                             </span>
                                         </div>
 
@@ -2015,7 +2021,7 @@ function scrollToBottom() {
                                             v-else-if="attachment.type === 'image' && attachment.failed"
                                             class="text-xs text-red-600"
                                         >
-                                            Не удалось загрузить чек
+                                            {{ t('messenger.receiptFailed') }}
                                         </p>
 
                                         <p
@@ -2059,7 +2065,7 @@ function scrollToBottom() {
                                     <span
                                         v-if="item.message.direction === 'outbound'"
                                         :class="outboundTicksClass(item.message)"
-                                        :title="item.message.status === 'failed' ? 'Не отправлено' : ''"
+                                        :title="item.message.status === 'failed' ? t('messenger.notSent') : ''"
                                     >
                                         {{ outboundTicks(item.message) }}
                                     </span>
@@ -2080,14 +2086,14 @@ function scrollToBottom() {
                         >
                             <span class="flex items-center gap-2">
                                 <span class="inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
-                                Запись {{ formatRecordingTime(recordingSeconds) }}
+{{ t('messenger.recording', { time: formatRecordingTime(recordingSeconds) }) }}
                             </span>
                             <button
                                 type="button"
                                 class="rounded-full bg-[#00a884] px-3 py-1 text-xs font-medium text-white"
                                 @click="stopRecording"
                             >
-                                Отправить
+                                {{ t('messenger.send') }}
                             </button>
                         </div>
 
@@ -2104,21 +2110,21 @@ function scrollToBottom() {
                         >
                             <img
                                 :src="imagePreviewUrl"
-                                alt="Предпросмотр"
+:alt="t('messenger.preview')"
                                 class="h-16 w-16 rounded-md object-cover"
                             >
                             <div class="min-w-0 flex-1">
                                 <p class="truncate text-sm text-[#111b21]">
-                                    {{ sendForm.image?.name || 'Изображение' }}
+{{ sendForm.image?.name || t('messenger.image') }}
                                 </p>
                                 <p class="text-xs text-[#667781]">
-                                    Будет отправлено как фото
+                                    {{ t('messenger.willSendAsPhoto') }}
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 class="rounded-full p-2 text-[#667781] hover:bg-[#f0f2f5]"
-                                title="Убрать"
+:title="t('messenger.remove')"
                                 @click="clearImagePreview"
                             >
                                 ✕
@@ -2138,7 +2144,7 @@ function scrollToBottom() {
                                 type="button"
                                 class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f0f2f5] text-[#54656f] transition hover:bg-[#e9edef] disabled:opacity-40 sm:h-10 sm:w-10"
                                 :disabled="isRecording"
-                                title="Прикрепить изображение"
+:title="t('messenger.attachImage')"
                                 @click="imageInput?.click()"
                             >
                                 <svg
@@ -2164,7 +2170,7 @@ function scrollToBottom() {
                                     ? 'bg-[#10a37f] text-white'
                                     : 'bg-[#f0f2f5] text-[#10a37f] hover:bg-[#e6f6f1]'"
                                 :disabled="isRecording || aiImproving || !sendForm.body.trim()"
-                                title="Улучшить текст с ИИ"
+:title="t('messenger.improveAi')"
                                 @click="improveWithAi"
                             >
                                 <svg
@@ -2229,7 +2235,7 @@ function scrollToBottom() {
                                     ref="messageInput"
                                     v-model="sendForm.body"
                                     type="text"
-                                    placeholder="Сообщение"
+:placeholder="t('messenger.messagePh')"
                                     class="w-full rounded-lg border-0 bg-white px-3 py-2 text-[13px] text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30 sm:px-4 sm:py-2.5 sm:text-sm"
                                     :disabled="isRecording"
                                     @keydown="onMessageInputKeydown"
@@ -2241,7 +2247,7 @@ function scrollToBottom() {
                                 type="submit"
                                 class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#008f6f] disabled:opacity-40 sm:h-10 sm:w-10"
                                 :disabled="isRecording"
-                                title="Отправить"
+:title="t('messenger.send')"
                             >
                                 <svg
                                     class="h-5 w-5"
@@ -2261,7 +2267,7 @@ function scrollToBottom() {
                                 :class="isRecording
                                     ? 'bg-[#00a884] text-white shadow-md'
                                     : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'"
-                                title="Голосовое сообщение"
+:title="t('messenger.voice')"
                                 @click="isRecording ? stopRecording() : startRecording()"
                             >
                                 <span
@@ -2305,7 +2311,7 @@ function scrollToBottom() {
             </button>
             <img
                 :src="lightboxImageUrl"
-                alt="Изображение"
+:alt="t('messenger.image')"
                 class="max-h-[92vh] max-w-[92vw] object-contain"
                 @click.stop
             >
@@ -2314,15 +2320,15 @@ function scrollToBottom() {
         <Modal :show="showTaskModal" max-width="md" @close="closeTaskModal">
             <form class="p-6" @submit.prevent="submitTask">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    Новая задача
+                    {{ t('messenger.taskModal.title') }}
                 </h3>
                 <p class="mt-1 text-sm text-slate-600">
-                    Дата и заметка по этому чату. Задачи смотрите в меню «Задачи».
+                    {{ t('messenger.taskModal.hint') }}
                 </p>
 
                 <div class="mt-5 space-y-4">
                     <div>
-                        <InputLabel for="task_due_on" value="Дата" />
+<InputLabel for="task_due_on" :value="t('common.date')" />
                         <TextInput
                             id="task_due_on"
                             v-model="taskForm.due_on"
@@ -2334,13 +2340,13 @@ function scrollToBottom() {
                     </div>
 
                     <div>
-                        <InputLabel for="task_note" value="Заметка" />
+<InputLabel for="task_note" :value="t('messenger.note')" />
                         <textarea
                             id="task_note"
                             v-model="taskForm.note"
                             rows="4"
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                            placeholder="Например: перезвонить завтра"
+:placeholder="t('messenger.taskModal.notePh')"
                             required
                         />
                         <InputError class="mt-2" :message="taskForm.errors.note" />
@@ -2349,13 +2355,13 @@ function scrollToBottom() {
 
                 <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <SecondaryButton type="button" @click="closeTaskModal">
-                        Отмена
+                        {{ t('common.cancel') }}
                     </SecondaryButton>
                     <PrimaryButton
                         type="submit"
                         :disabled="taskForm.processing || !taskForm.note.trim() || !taskForm.due_on"
                     >
-                        Сохранить
+                        {{ t('common.save') }}
                     </PrimaryButton>
                 </div>
             </form>
@@ -2364,11 +2370,10 @@ function scrollToBottom() {
         <Modal :show="showSaveQuickReplyModal" max-width="md" @close="closeSaveQuickReplyModal">
             <form class="p-6" @submit.prevent="submitSaveQuickReply">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    В быстрые ответы
+                    {{ t('messenger.qrModal.title') }}
                 </h3>
                 <p class="mt-1 text-sm text-slate-600">
-                    Сообщение сохранится как шаблон. В чате его можно вызвать через
-                    <span class="font-mono">/</span> и название.
+{{ t('messenger.qrModal.hint') }}
                 </p>
 
                 <div
@@ -2379,7 +2384,7 @@ function scrollToBottom() {
                 </div>
 
                 <div class="mt-4">
-                    <InputLabel for="save_quick_reply_title" value="Название команды" />
+<InputLabel for="save_quick_reply_title" :value="t('messenger.qrModal.command')" />
                     <div class="mt-1 flex items-center gap-2">
                         <span class="text-sm font-semibold text-slate-500">/</span>
                         <TextInput
@@ -2387,14 +2392,14 @@ function scrollToBottom() {
                             v-model="saveQuickReplyForm.title"
                             type="text"
                             class="block w-full"
-                            placeholder="например: мбанк"
+:placeholder="t('messenger.commandPh')"
                             maxlength="120"
                             autocomplete="off"
                         />
                     </div>
                     <p class="mt-1 text-xs text-slate-500">
-                        Будет доступно как
-                        <span class="font-mono">/{{ saveQuickReplyForm.title || 'название' }}</span>
+{{ t('messenger.qrModal.availableAs') }}
+                        <span class="font-mono">/{{ saveQuickReplyForm.title || t('messenger.qrModal.namePlaceholder') }}</span>
                     </p>
                     <InputError
                         class="mt-2"
@@ -2407,13 +2412,13 @@ function scrollToBottom() {
                         type="button"
                         @click="closeSaveQuickReplyModal"
                     >
-                        Отмена
+                        {{ t('common.cancel') }}
                     </SecondaryButton>
                     <PrimaryButton
                         type="submit"
                         :disabled="saveQuickReplyForm.processing || !saveQuickReplyForm.title.trim()"
                     >
-                        Сохранить
+                        {{ t('common.save') }}
                     </PrimaryButton>
                 </div>
             </form>
@@ -2422,22 +2427,22 @@ function scrollToBottom() {
         <Modal :show="showFilterModal" max-width="md" @close="showFilterModal = false">
             <div class="p-6">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    Фильтр чатов
+                    {{ t('messenger.filterTitle') }}
                 </h3>
                 <p class="mt-1 text-sm text-slate-600">
-                    Покажем только клиентов из выбранной воронки. Этап можно не указывать.
+                    {{ t('messenger.filterHint') }}
                 </p>
 
                 <div class="mt-5 space-y-4">
                     <div>
-                        <InputLabel for="filter_pipeline" value="Воронка" />
+<InputLabel for="filter_pipeline" :value="t('messenger.pipeline')" />
                         <select
                             id="filter_pipeline"
                             v-model="draftFilter.pipeline_id"
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                             @change="onDraftPipelineChange"
                         >
-                            <option value="">— выберите воронку —</option>
+<option value="">{{ t('messenger.selectPipeline') }}</option>
                             <option
                                 v-for="pipeline in filterPipelines"
                                 :key="pipeline.id"
@@ -2449,13 +2454,13 @@ function scrollToBottom() {
                     </div>
 
                     <div v-if="draftFilter.pipeline_id">
-                        <InputLabel for="filter_stage" value="Этап (необязательно)" />
+<InputLabel for="filter_stage" :value="t('messenger.stageOptional')" />
                         <select
                             id="filter_stage"
                             v-model="draftFilter.stage_id"
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                         >
-                            <option value="">Все этапы</option>
+<option value="">{{ t('messenger.allStages') }}</option>
                             <option
                                 v-for="stage in draftFilterStages"
                                 :key="stage.id"
@@ -2473,21 +2478,21 @@ function scrollToBottom() {
                         type="button"
                         @click="clearFunnelFilter"
                     >
-                        Сбросить
+                        {{ t('common.reset') }}
                     </SecondaryButton>
                     <div class="flex flex-col-reverse gap-2 sm:ml-auto sm:flex-row">
                         <SecondaryButton
                             type="button"
                             @click="showFilterModal = false"
                         >
-                            Отмена
+                            {{ t('common.cancel') }}
                         </SecondaryButton>
                         <PrimaryButton
                             type="button"
                             :disabled="!draftFilter.pipeline_id"
                             @click="applyFunnelFilter"
                         >
-                            Применить
+                            {{ t('common.apply') }}
                         </PrimaryButton>
                     </div>
                 </div>
@@ -2497,19 +2502,19 @@ function scrollToBottom() {
         <Modal :show="showClientModal" @close="showClientModal = false">
             <div class="p-6">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    {{ linkedClient ? 'Данные клиента' : 'Сохранить контакт' }}
+{{ linkedClient ? t('messenger.clientData') : t('messenger.saveContact') }}
                 </h3>
 
                 <div
                     v-if="clientFieldDefinitions.length === 0"
                     class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
                 >
-                    Сначала добавьте поля в разделе
+                    {{ t('messenger.fieldsPrefix') }}
                     <Link
                         :href="route('client-fields.index')"
                         class="font-medium underline"
                     >
-                        «Данные клиента»
+{{ t('messenger.clientData') }}
                     </Link>.
                 </div>
 
@@ -2543,7 +2548,7 @@ function scrollToBottom() {
                                 class="block min-w-0 flex-1 rounded-md border-slate-300 shadow-sm"
                             >
                                 <option value="">
-                                    Выберите...
+                                    {{ t('messenger.selectEllipsis') }}
                                 </option>
                                 <option
                                     v-for="option in definition.options"
@@ -2567,7 +2572,7 @@ function scrollToBottom() {
                                     v-if="messengerApiName"
                                     type="button"
                                     class="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
-                                    :title="`Имя: ${messengerApiName}`"
+                                    :title="t('messenger.nameTitle', { name: messengerApiName })"
                                     @click="applyMessengerNameToField(definition.key)"
                                 >
                                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
@@ -2578,7 +2583,7 @@ function scrollToBottom() {
                                     v-if="messengerApiContact"
                                     type="button"
                                     class="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
-                                    :title="`Контакт: ${messengerApiContact}`"
+                                    :title="t('messenger.contactTitle', { contact: messengerApiContact })"
                                     @click="applyMessengerContactToField(definition.key)"
                                 >
                                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
@@ -2604,13 +2609,13 @@ function scrollToBottom() {
                             type="button"
                             @click="showClientModal = false"
                         >
-                            Отмена
+                            {{ t('common.cancel') }}
                         </SecondaryButton>
                         <PrimaryButton
                             type="submit"
                             :disabled="clientForm.processing"
                         >
-                            Сохранить
+                            {{ t('common.save') }}
                         </PrimaryButton>
                     </div>
                 </form>
@@ -2637,7 +2642,7 @@ function scrollToBottom() {
             v-if="messengerConnected && webhookUrl"
             class="mt-2 hidden text-xs text-slate-400 sm:block"
         >
-            Webhook для Meta: {{ webhookUrl }}
+            {{ t('messenger.webhookMeta', { url: webhookUrl }) }}
         </p>
     </AuthenticatedLayout>
 </template>

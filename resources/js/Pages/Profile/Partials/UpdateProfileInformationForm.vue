@@ -4,6 +4,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     mustVerifyEmail: {
@@ -22,6 +23,7 @@ defineProps({
     },
 });
 
+const { t } = useI18n();
 const user = usePage().props.auth.user;
 
 const form = useForm({
@@ -35,11 +37,11 @@ const form = useForm({
     <section>
         <header>
             <h2 class="text-lg font-medium text-gray-900">
-                Профиль
+                {{ t('profile.title') }}
             </h2>
 
             <p class="mt-1 text-sm text-gray-600">
-                Имя, email и Telegram для входа в Mini App.
+                {{ t('profile.subtitle') }}
             </p>
         </header>
 
@@ -48,7 +50,7 @@ const form = useForm({
             class="mt-6 space-y-6"
         >
             <div>
-                <InputLabel for="name" value="Имя" />
+                <InputLabel for="name" :value="t('profile.name')" />
 
                 <TextInput
                     id="name"
@@ -64,7 +66,7 @@ const form = useForm({
             </div>
 
             <div>
-                <InputLabel for="email" value="Email" />
+                <InputLabel for="email" :value="t('profile.email')" />
 
                 <TextInput
                     id="email"
@@ -79,7 +81,10 @@ const form = useForm({
             </div>
 
             <div>
-                <InputLabel for="telegram_username" value="Telegram username" />
+                <InputLabel
+                    for="telegram_username"
+                    :value="t('profile.telegramUsername')"
+                />
 
                 <TextInput
                     id="telegram_username"
@@ -91,25 +96,29 @@ const form = useForm({
                 />
 
                 <p class="mt-1 text-xs text-slate-500">
-                    Без @.
+                    {{ t('profile.telegramWithoutAt') }}
                     <template v-if="managerBotUsername">
-                        Затем откройте
+                        {{ t('profile.telegramThenOpen') }}
                         <a
                             :href="`https://t.me/${managerBotUsername}`"
                             target="_blank"
                             rel="noopener"
                             class="font-medium text-sky-700 underline"
                         >@{{ managerBotUsername }}</a>
-                        и нажмите /start.
+                        {{ t('profile.telegramAndStart') }}
                     </template>
                     <template v-else>
-                        Затем нажмите /start в боте менеджеров.
+                        {{ t('profile.telegramThenStartBot') }}
                     </template>
                     <span
                         class="ml-1 font-medium"
                         :class="telegramLinked ? 'text-emerald-600' : 'text-amber-600'"
                     >
-                        {{ telegramLinked ? '✓ привязан' : 'ожидает /start' }}
+                        {{
+                            telegramLinked
+                                ? t('profile.telegramLinked')
+                                : t('profile.telegramWaiting')
+                        }}
                     </span>
                 </p>
 
@@ -118,14 +127,14 @@ const form = useForm({
 
             <div v-if="mustVerifyEmail && user.email_verified_at === null">
                 <p class="mt-2 text-sm text-gray-800">
-                    Email не подтверждён.
+                    {{ t('profile.unverified') }}
                     <Link
                         :href="route('verification.send')"
                         method="post"
                         as="button"
                         class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                     >
-                        Отправить письмо ещё раз
+                        {{ t('profile.resend') }}
                     </Link>
                 </p>
 
@@ -133,12 +142,14 @@ const form = useForm({
                     v-show="status === 'verification-link-sent'"
                     class="mt-2 text-sm font-medium text-green-600"
                 >
-                    Ссылка для подтверждения отправлена на email.
+                    {{ t('profile.verificationSent') }}
                 </div>
             </div>
 
             <div class="flex items-center gap-4">
-                <PrimaryButton :disabled="form.processing">Сохранить</PrimaryButton>
+                <PrimaryButton :disabled="form.processing">
+                    {{ t('common.save') }}
+                </PrimaryButton>
 
                 <Transition
                     enter-active-class="transition ease-in-out"
@@ -150,7 +161,7 @@ const form = useForm({
                         v-if="form.recentlySuccessful"
                         class="text-sm text-gray-600"
                     >
-                        Сохранено.
+                        {{ t('common.saved') }}
                     </p>
                 </Transition>
             </div>

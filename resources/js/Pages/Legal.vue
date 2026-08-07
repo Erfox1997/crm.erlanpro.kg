@@ -3,6 +3,7 @@ import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
 import { Head } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
     legal: {
@@ -10,6 +11,8 @@ const props = defineProps({
         required: true,
     },
 });
+
+const { t } = useI18n();
 
 const aboutParagraphs = computed(() =>
     String(props.legal.about ?? '')
@@ -20,17 +23,17 @@ const aboutParagraphs = computed(() =>
 </script>
 
 <template>
-    <Head title="Реквизиты ИП" />
+    <Head :title="t('legal.title')" />
 
     <div class="min-h-screen bg-slate-50 text-slate-800">
         <PublicSiteHeader />
 
         <main class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
             <h1 class="text-2xl font-bold text-slate-900">
-                Реквизиты и сведения об индивидуальном предпринимателе
+                {{ t('legal.heading') }}
             </h1>
             <p class="mt-2 text-sm text-slate-500">
-                Последнее обновление: {{ legal.updated_at_label }}
+                {{ t('legal.updated', { date: legal.updated_at_label }) }}
             </p>
 
             <div class="prose prose-slate mt-8 max-w-none text-sm leading-relaxed">
@@ -40,15 +43,15 @@ const aboutParagraphs = computed(() =>
                     </h2>
                     <dl class="mt-4 space-y-3 text-slate-600">
                         <div>
-                            <dt class="font-medium text-slate-800">ПИН</dt>
+                            <dt class="font-medium text-slate-800">{{ t('legal.pin') }}</dt>
                             <dd>{{ legal.pin }}</dd>
                         </div>
                         <div>
-                            <dt class="font-medium text-slate-800">Вид деятельности</dt>
+                            <dt class="font-medium text-slate-800">{{ t('legal.activity') }}</dt>
                             <dd>{{ legal.activity }}</dd>
                         </div>
                         <div>
-                            <dt class="font-medium text-slate-800">Юридический адрес</dt>
+                            <dt class="font-medium text-slate-800">{{ t('legal.address') }}</dt>
                             <dd class="whitespace-pre-line">{{ legal.address }}</dd>
                         </div>
                     </dl>
@@ -56,7 +59,7 @@ const aboutParagraphs = computed(() =>
 
                 <section class="mb-8">
                     <h2 class="text-lg font-semibold text-slate-900">
-                        Сервис CRM ErlanPro
+                        {{ t('legal.service') }}
                     </h2>
                     <p
                         v-for="(paragraph, index) in aboutParagraphs"
@@ -68,21 +71,23 @@ const aboutParagraphs = computed(() =>
                 </section>
 
                 <section class="mb-8">
-                    <h2 class="text-lg font-semibold text-slate-900">Контакты</h2>
+                    <h2 class="text-lg font-semibold text-slate-900">
+                        {{ t('legal.contacts') }}
+                    </h2>
                     <p class="mt-3 text-slate-600">
-                        Email:
+                        {{ t('common.email') }}:
                         <a
                             :href="`mailto:${legal.contact_email}`"
                             class="text-indigo-600 hover:underline"
                             >{{ legal.contact_email }}</a
                         ><br />
-                        Телефон:
+                        {{ t('common.phone') }}:
                         <a
                             :href="`tel:${legal.contact_phone.replace(/\s/g, '')}`"
                             class="text-indigo-600 hover:underline"
                             >{{ legal.contact_phone }}</a
                         ><br />
-                        Сайт:
+                        {{ t('legal.site') }}:
                         <a
                             :href="legal.site_url"
                             class="text-indigo-600 hover:underline"

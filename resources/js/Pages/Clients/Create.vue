@@ -5,6 +5,9 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const form = useForm({
     name: '',
@@ -19,11 +22,11 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Новый клиент" />
+    <Head :title="t('clients.createTitle')" />
 
     <AuthenticatedLayout>
         <template #header>
-            <h2 class="text-xl font-semibold text-gray-800">Новый клиент</h2>
+            <h2 class="text-xl font-semibold text-gray-800">{{ t('clients.createTitle') }}</h2>
         </template>
 
         <div class="py-8">
@@ -33,7 +36,7 @@ const submit = () => {
                     class="space-y-6 rounded-lg bg-white p-6 shadow ring-1 ring-gray-900/5"
                 >
                     <div>
-                        <InputLabel for="name" value="Имя / название *" />
+                        <InputLabel for="name" :value="t('clients.fieldName')" />
                         <TextInput
                             id="name"
                             v-model="form.name"
@@ -46,7 +49,7 @@ const submit = () => {
                     </div>
 
                     <div>
-                        <InputLabel for="phone" value="Телефон" />
+                        <InputLabel for="phone" :value="t('common.phone')" />
                         <TextInput
                             id="phone"
                             v-model="form.phone"
@@ -58,7 +61,7 @@ const submit = () => {
                     </div>
 
                     <div>
-                        <InputLabel for="email" value="Email" />
+                        <InputLabel for="email" :value="t('common.email')" />
                         <TextInput
                             id="email"
                             v-model="form.email"
@@ -70,7 +73,7 @@ const submit = () => {
                     </div>
 
                     <div>
-                        <InputLabel for="notes" value="Заметки" />
+                        <InputLabel for="notes" :value="t('common.notes')" />
                         <textarea
                             id="notes"
                             v-model="form.notes"
@@ -85,13 +88,13 @@ const submit = () => {
                             :href="route('clients.index')"
                             class="text-sm text-gray-600 underline hover:text-gray-900"
                         >
-                            Отмена
+                            {{ t('common.cancel') }}
                         </Link>
                         <PrimaryButton
                             :class="{ 'opacity-25': form.processing }"
                             :disabled="form.processing"
                         >
-                            Сохранить
+                            {{ t('common.save') }}
                         </PrimaryButton>
                     </div>
                 </form>

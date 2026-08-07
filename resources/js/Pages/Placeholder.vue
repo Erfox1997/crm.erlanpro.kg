@@ -1,6 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     title: {
@@ -8,6 +9,8 @@ defineProps({
         required: true,
     },
 });
+
+const { t } = useI18n();
 </script>
 
 <template>
@@ -26,7 +29,7 @@ defineProps({
                     class="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm"
                 >
                     <p class="text-slate-600">
-                        Раздел в разработке. Скоро здесь появится функционал.
+                        {{ t('common.underConstruction') }}
                     </p>
                 </div>
             </div>

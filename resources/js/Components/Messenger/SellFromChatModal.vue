@@ -4,8 +4,12 @@ import InputLabel from '@/Components/InputLabel.vue';
 import Modal from '@/Components/Modal.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import { localeTag } from '@/i18n';
 import { useForm } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
 
 const props = defineProps({
     show: { type: Boolean, default: false },
@@ -74,7 +78,7 @@ const categoryCards = computed(() => {
     if (uncategorized > 0) {
         list.push({
             id: 0,
-            name: 'Без категории',
+            name: t('messenger.sell.uncategorized'),
             count: uncategorized,
             is_service: false,
         });
@@ -202,13 +206,13 @@ async function loadCatalog() {
         } catch {
             throw new Error(
                 response.ok
-                    ? 'Некорректный ответ сервера'
-                    : `Ошибка сервера (${response.status}). Проверьте деплой CRM и магазина.`,
+                    ? t('messenger.sell.errBadJson')
+                    : t('messenger.sell.errServer', { status: response.status }),
             );
         }
 
         if (! response.ok) {
-            throw new Error(data.message || `Не удалось загрузить каталог (${response.status})`);
+            throw new Error(data.message || t('messenger.sell.errCatalogStatus', { status: response.status }));
         }
 
         products.value = data.products || [];
@@ -228,10 +232,10 @@ async function loadCatalog() {
         paymentCard.value = 0;
 
         if (! products.value.length && ! warehouses.value.length) {
-            loadError.value = 'Каталог пуст. Добавьте товары и склады в магазине.';
+            loadError.value = t('messenger.sell.errEmptyCatalog');
         }
     } catch (error) {
-        loadError.value = error.message || 'Ошибка загрузки';
+        loadError.value = error.message || t('messenger.sell.errLoad');
     } finally {
         loading.value = false;
     }
@@ -255,7 +259,7 @@ async function loadDraft() {
 
         applyDraft(draft);
         hasDraft.value = true;
-        draftStatus.value = 'Черновик загружен';
+        draftStatus.value = t('messenger.sell.draftLoaded');
     } catch {
         // ignore — fresh cart is fine
     }
@@ -273,7 +277,7 @@ function applyDraft(draft) {
     }
     cart.value = (draft.items || []).map((item) => ({
         product_id: item.product_id,
-        name: item.name || products.value.find((p) => p.id === item.product_id)?.name || 'Товар',
+        name: item.name || products.value.find((p) => p.id === item.product_id)?.name || t('messenger.sell.product'),
         price: Number(item.price || 0),
         quantity: Number(item.quantity || 1),
         unit_type: item.unit_type || 'primary',
@@ -325,12 +329,12 @@ async function saveDraft() {
         });
         const data = await response.json().catch(() => ({}));
         if (! response.ok) {
-            throw new Error(data.message || 'Не удалось сохранить черновик');
+            throw new Error(data.message || t('messenger.sell.errDraft'));
         }
         hasDraft.value = true;
-        draftStatus.value = 'Черновик сохранён';
+        draftStatus.value = t('messenger.sell.draftSaved');
     } catch (error) {
-        actionError.value = error.message || 'Ошибка сохранения черновика';
+        actionError.value = error.message || t('messenger.sell.errDraftSave');
     } finally {
         draftSaving.value = false;
     }
@@ -477,7 +481,7 @@ async function submitQuote() {
         const message = error?.response?.data?.message
             || error?.response?.data?.errors?.quote?.[0]
             || Object.values(error?.response?.data?.errors || {})[0]?.[0]
-            || 'Не удалось отправить расчёт';
+            || t('messenger.sell.errCalc');
         emit('quote-finished', { ok: false, message });
     } finally {
         submittingQuote.value = false;
@@ -490,13 +494,16 @@ async function submit() {
     }
 
     if (! isFullyPaid.value) {
-        actionError.value = `Нужна полная оплата. Осталось: ${money(remainingToPay.value)} ${currency.value}`;
+        actionError.value = t('messenger.sell.needFullPay', {
+            amount: money(remainingToPay.value),
+            currency: currency.value,
+        });
         return;
     }
 
     const paymentPayload = buildPaymentPayload();
     if (! Object.keys(paymentPayload).length) {
-        actionError.value = 'Укажите оплату наличными или безналом.';
+        actionError.value = t('messenger.sell.needPayment');
         return;
     }
 
@@ -537,7 +544,7 @@ async function submit() {
         const message = error?.response?.data?.message
             || error?.response?.data?.errors?.shop?.[0]
             || Object.values(error?.response?.data?.errors || {})[0]?.[0]
-            || 'Не удалось создать продажу.';
+            || t('messenger.err.saleCreate');
         emit('sale-finished', {
             clientId,
             ok: false,
@@ -557,7 +564,7 @@ function roundQty(value) {
 }
 
 function money(value) {
-    return Number(value || 0).toLocaleString('ru-RU', {
+    return Number(value || 0).toLocaleString(localeTag(locale.value), {
         minimumFractionDigits: 0,
         maximumFractionDigits: 2,
     });
@@ -569,9 +576,9 @@ function money(value) {
         <div class="flex max-h-[90vh] flex-col">
             <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <div>
-                    <h3 class="text-base font-semibold text-slate-900">Продажа</h3>
+                    <h3 class="text-base font-semibold text-slate-900">{{ t('messenger.sell.title') }}</h3>
                     <p class="text-xs text-slate-500">
-                        Расчёт текстом · продажа только с полной оплатой
+                        {{ t('messenger.sell.subtitle') }}
                     </p>
                 </div>
                 <button
@@ -585,7 +592,7 @@ function money(value) {
 
             <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
                 <div v-if="loading" class="py-10 text-center text-sm text-slate-500">
-                    Загрузка каталога…
+                    {{ t('messenger.sell.loadingCatalog') }}
                 </div>
                 <div v-else-if="loadError" class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
                     {{ loadError }}
@@ -595,20 +602,20 @@ function money(value) {
                         v-if="hasDraft || draftStatus"
                         class="flex items-center justify-between gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800"
                     >
-                        <span>{{ draftStatus || 'Есть сохранённый черновик' }}</span>
+                        <span>{{ draftStatus || t('messenger.sell.draftExists') }}</span>
                         <button
                             v-if="hasDraft"
                             type="button"
                             class="font-medium text-sky-700 underline"
                             @click="clearDraft"
                         >
-                            Очистить
+                            {{ t('messenger.sell.clear') }}
                         </button>
                     </div>
 
                     <div class="grid gap-3 sm:grid-cols-2">
                         <div>
-                            <InputLabel value="Склад" />
+                            <InputLabel :value="t('messenger.sell.warehouse')" />
                             <select
                                 v-model="warehouseId"
                                 class="mt-1 block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-amber-500 focus:ring-amber-500"
@@ -624,7 +631,7 @@ function money(value) {
                             <InputError class="mt-1" :message="form.errors.warehouse_id" />
                         </div>
                         <div>
-                            <InputLabel value="Телефон клиента" />
+                            <InputLabel :value="t('messenger.sell.clientPhone')" />
                             <input
                                 v-model="form.client_phone"
                                 type="text"
@@ -635,12 +642,12 @@ function money(value) {
                     </div>
 
                     <div class="relative">
-                        <InputLabel value="Поиск товара" />
+                        <InputLabel :value="t('messenger.sell.searchProduct')" />
                         <input
                             v-model="search"
                             type="search"
                             class="mt-1 block w-full rounded-lg border-slate-300 text-base shadow-sm focus:border-amber-500 focus:ring-amber-500"
-                            placeholder="Начните вводить название…"
+                            :placeholder="t('messenger.sell.searchPh')"
                             autocomplete="off"
                             @focus="searchOpen = search.trim().length > 0"
                             @blur="closeSearchSoon"
@@ -659,8 +666,8 @@ function money(value) {
                                 <div class="min-w-0">
                                     <p class="truncate text-sm font-medium text-slate-900">{{ product.name }}</p>
                                     <p class="truncate text-xs text-slate-500">
-                                        {{ product.category_name || 'Без категории' }}
-                                        · ост. {{ stockFor(product) }}
+                                        {{ product.category_name || t('messenger.sell.uncategorized') }}
+                                        · {{ t('messenger.sell.stock') }} {{ stockFor(product) }}
                                     </p>
                                 </div>
                                 <span class="shrink-0 text-sm font-semibold text-amber-700">
@@ -672,12 +679,12 @@ function money(value) {
                             v-else-if="searchOpen && search.trim() && !searchResults.length"
                             class="absolute z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 shadow-lg"
                         >
-                            Ничего не найдено
+                            {{ t('common.noResults') }}
                         </p>
                     </div>
 
                     <div v-if="selectedCategoryId === null" class="space-y-2">
-                        <p class="text-sm font-semibold text-slate-900">Категории</p>
+                        <p class="text-sm font-semibold text-slate-900">{{ t('messenger.sell.categories') }}</p>
                         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
                             <button
                                 v-for="category in categoryCards"
@@ -687,11 +694,11 @@ function money(value) {
                                 @click="openCategory(category.id)"
                             >
                                 <p class="text-sm font-semibold text-slate-900">{{ category.name }}</p>
-                                <p class="mt-1 text-xs text-slate-500">{{ category.count }} тов.</p>
+                                <p class="mt-1 text-xs text-slate-500">{{ t('messenger.sell.productsCount', { n: category.count }) }}</p>
                             </button>
                         </div>
                         <p v-if="!categoryCards.length" class="text-sm text-slate-500">
-                            Нет категорий с товарами
+                            {{ t('messenger.sell.noCategories') }}
                         </p>
                     </div>
 
@@ -701,7 +708,7 @@ function money(value) {
                             class="inline-flex items-center gap-1 text-sm font-medium text-amber-700"
                             @click="backToCategories"
                         >
-                            ← Категории
+                            {{ t('messenger.sell.backCategories') }}
                         </button>
                         <p class="text-sm font-semibold text-slate-900">
                             {{ selectedCategory?.name }}
@@ -715,19 +722,19 @@ function money(value) {
                         >
                             <div class="min-w-0">
                                 <p class="truncate text-sm font-medium text-slate-900">{{ product.name }}</p>
-                                <p class="text-xs text-slate-500">Остаток: {{ stockFor(product) }}</p>
+                                <p class="text-xs text-slate-500">{{ t('messenger.sell.stockFull') }}: {{ stockFor(product) }}</p>
                             </div>
                             <span class="shrink-0 text-sm font-semibold text-amber-700">
                                 {{ money(product.sale_price) }}
                             </span>
                         </button>
                         <p v-if="!categoryProducts.length" class="text-sm text-slate-500">
-                            В категории пусто
+                            {{ t('messenger.sell.categoryEmpty') }}
                         </p>
                     </div>
 
                     <div v-if="cart.length" class="space-y-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
-                        <p class="text-sm font-semibold text-slate-900">Корзина</p>
+                        <p class="text-sm font-semibold text-slate-900">{{ t('messenger.sell.cart') }}</p>
                         <div
                             v-for="line in cart"
                             :key="line.product_id"
@@ -740,7 +747,7 @@ function money(value) {
                                     class="text-xs text-red-600"
                                     @click="removeLine(line)"
                                 >
-                                    Удалить
+                                    {{ t('common.delete') }}
                                 </button>
                             </div>
                             <div class="mt-2 flex items-center justify-between gap-2">
@@ -778,18 +785,18 @@ function money(value) {
                             </div>
                         </div>
                         <p class="text-right text-base font-semibold text-slate-900">
-                            Итого: {{ money(cartTotal) }} {{ currency }}
+                            {{ t('messenger.sell.total') }}: {{ money(cartTotal) }} {{ currency }}
                         </p>
                     </div>
 
                     <div v-if="cart.length" class="space-y-3">
-                        <p class="text-sm font-semibold text-slate-900">Оплата (только для продажи)</p>
+                        <p class="text-sm font-semibold text-slate-900">{{ t('messenger.sell.payment') }}</p>
 
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                                 <label class="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
                                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                                    Наличные
+                                    {{ t('messenger.sell.cash') }}
                                 </label>
                                 <select
                                     v-model="cashAccountId"
@@ -816,7 +823,7 @@ function money(value) {
                                     <button
                                         type="button"
                                         class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                        title="Заполнить остаток"
+                                        :title="t('messenger.sell.fillRemainder')"
                                         @click="fillPaymentRemaining('cash')"
                                     >
                                         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
@@ -827,7 +834,7 @@ function money(value) {
                             <div class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                                 <label class="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-blue-700">
                                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
-                                    Безнал
+                                    {{ t('messenger.sell.card') }}
                                 </label>
                                 <select
                                     v-model="cashlessAccountId"
@@ -854,7 +861,7 @@ function money(value) {
                                     <button
                                         type="button"
                                         class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                                        title="Заполнить остаток"
+                                        :title="t('messenger.sell.fillRemainder')"
                                         @click="fillPaymentRemaining('card')"
                                     >
                                         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
@@ -867,12 +874,12 @@ function money(value) {
                             class="rounded-lg px-3 py-2 text-xs"
                             :class="isFullyPaid ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'"
                         >
-                            Оплачено: {{ money(paidTotal) }}
+                            {{ t('messenger.sell.paid') }}: {{ money(paidTotal) }}
                             <template v-if="!isFullyPaid">
-                                · осталось внести: {{ money(remainingToPay) }} (долг нельзя)
+                                {{ t('messenger.sell.remaining', { amount: money(remainingToPay) }) }}
                             </template>
                             <template v-else>
-                                · сумма закрыта
+                                {{ t('messenger.sell.closed') }}
                             </template>
                         </p>
                     </div>
@@ -891,7 +898,7 @@ function money(value) {
                         :disabled="draftSaving || !cart.length || loading"
                         @click="saveDraft"
                     >
-                        {{ draftSaving ? 'Сохранение…' : 'Черновик' }}
+                        {{ draftSaving ? t('common.saving') : t('messenger.sell.draft') }}
                     </SecondaryButton>
                     <SecondaryButton
                         type="button"
@@ -899,12 +906,12 @@ function money(value) {
                         :disabled="submittingQuote || submittingSale || !cart.length || loading"
                         @click="submitQuote"
                     >
-                        Посчитать
+                        {{ t('messenger.sell.calculate') }}
                     </SecondaryButton>
                 </div>
                 <div class="flex gap-2">
                     <SecondaryButton type="button" class="flex-1 justify-center" @click="close">
-                        Отмена
+                        {{ t('common.cancel') }}
                     </SecondaryButton>
                     <PrimaryButton
                         type="button"
@@ -912,7 +919,7 @@ function money(value) {
                         :disabled="submittingSale || submittingQuote || !cart.length || !warehouseId || loading || !isFullyPaid"
                         @click="submit"
                     >
-                        Продать {{ cart.length ? `· ${money(cartTotal)}` : '' }}
+                        {{ t('messenger.sell.sellBtn') }}{{ cart.length ? ` · ${money(cartTotal)}` : '' }}
                     </PrimaryButton>
                 </div>
             </div>

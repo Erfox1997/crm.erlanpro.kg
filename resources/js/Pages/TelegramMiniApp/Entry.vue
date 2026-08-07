@@ -1,19 +1,23 @@
 <script setup>
 import { Head } from '@inertiajs/vue3';
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     botConfigured: { type: Boolean, default: false },
     botUsername: { type: String, default: '' },
 });
 
-const status = ref('Открываем мессенджер…');
+const { t } = useI18n();
+const status = ref('');
 const error = ref('');
 
 onMounted(async () => {
+    status.value = t('miniApp.opening');
+
     const tg = window.Telegram?.WebApp;
     if (!tg) {
-        error.value = 'Откройте эту страницу через кнопку Mini App в Telegram-боте.';
+        error.value = t('miniApp.openViaBot');
         status.value = '';
         return;
     }
@@ -23,7 +27,7 @@ onMounted(async () => {
 
     const initData = tg.initData || '';
     if (!initData) {
-        error.value = 'Нет данных Telegram. Нажмите /start в боте и откройте мессенджер снова.';
+        error.value = t('miniApp.noInitData');
         status.value = '';
         return;
     }
@@ -43,18 +47,18 @@ onMounted(async () => {
             return;
         }
 
-        error.value = 'Не удалось войти.';
+        error.value = t('miniApp.loginFailed');
         status.value = '';
     } catch (e) {
         error.value = e?.response?.data?.message
-            || 'Доступ запрещён. Попросите добавить ваш @username в «Сотрудники».';
+            || t('miniApp.accessDenied');
         status.value = '';
     }
 });
 </script>
 
 <template>
-    <Head title="Telegram Mini App" />
+    <Head :title="t('miniApp.title')" />
 
     <div class="flex min-h-screen items-center justify-center bg-[#0f172a] px-6 text-center text-white">
         <div class="max-w-sm space-y-3">
@@ -65,7 +69,7 @@ onMounted(async () => {
             <p v-if="status" class="text-sm text-slate-200">{{ status }}</p>
             <p v-if="error" class="text-sm text-rose-300">{{ error }}</p>
             <p v-if="!botConfigured" class="text-xs text-amber-300">
-                Бот менеджеров не настроен на сервере.
+                {{ t('miniApp.botNotConfigured') }}
             </p>
         </div>
     </div>

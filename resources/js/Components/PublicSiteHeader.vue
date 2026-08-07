@@ -1,6 +1,8 @@
 <script setup>
 import BrandLogo from '@/Components/BrandLogo.vue';
+import LanguageSwitcher from '@/Components/LanguageSwitcher.vue';
 import { Link, usePage } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     variant: {
@@ -17,6 +19,7 @@ defineProps({
     },
 });
 
+const { t } = useI18n();
 const page = usePage();
 const branding = page.props.branding ?? {};
 
@@ -48,6 +51,8 @@ const isDark = (variant) => variant === 'dark';
             </Link>
 
             <nav class="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+                <LanguageSwitcher :variant="isDark(variant) ? 'dark' : 'public'" />
+
                 <Link
                     :href="route('legal')"
                     :class="
@@ -57,7 +62,7 @@ const isDark = (variant) => variant === 'dark';
                     "
                     title="ИП АСАНАЛИЕВ ЭРЛАН МАЛИКОВИЧ"
                 >
-                    Реквизиты ИП
+                    {{ t('public.header.legal') }}
                 </Link>
 
                 <template v-if="canLogin">
@@ -70,7 +75,7 @@ const isDark = (variant) => variant === 'dark';
                                 : 'rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500'
                         "
                     >
-                        Перейти в CRM
+                        {{ t('public.header.goCrm') }}
                     </Link>
 
                     <template v-else>
@@ -82,7 +87,7 @@ const isDark = (variant) => variant === 'dark';
                                     : 'rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:text-slate-900 sm:px-4 sm:py-2.5'
                             "
                         >
-                            Вход
+                            {{ t('public.header.login') }}
                         </Link>
                         <Link
                             v-if="canRegister"
@@ -93,7 +98,7 @@ const isDark = (variant) => variant === 'dark';
                                     : 'rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500'
                             "
                         >
-                            Создать аккаунт
+                            {{ t('public.header.register') }}
                         </Link>
                     </template>
                 </template>

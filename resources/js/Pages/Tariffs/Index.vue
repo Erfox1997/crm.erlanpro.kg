@@ -2,6 +2,9 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     currentSubscription: {
@@ -30,7 +33,9 @@ const whatsappLink = computed(() => {
         return props.payment.whatsapp_url;
     }
 
-    const message = `Здравствуйте! Оплатил тариф «${selectedTariff.value.name}» в CRM ErlanPro. Отправляю скриншот чека.`;
+    const message = t('tariffs.whatsappPayMessage', {
+        name: selectedTariff.value.name,
+    });
 
     const digits = props.payment.whatsapp.replace(/\D+/g, '');
     if (!digits) {
@@ -46,7 +51,7 @@ function formatPrice(value) {
 
 function priceLabel(tariff) {
     if (tariff.is_free) {
-        return 'Бесплатно';
+        return t('tariffs.free');
     }
 
     return `${formatPrice(tariff.price)} KGS`;
@@ -63,18 +68,18 @@ function selectTariff(tariff) {
 
 function tariffFeatures(tariff) {
     const items = [
-        'Полный доступ ко всем функциям',
-        `Срок действия — ${tariff.duration_days} дн.`,
+        t('tariffs.featureFull'),
+        t('tariffs.featureDuration', { days: tariff.duration_days }),
         tariff.max_employees
-            ? `До ${tariff.max_employees} сотрудников`
-            : 'Без ограничения по сотрудникам',
+            ? t('tariffs.featureEmployees', { n: tariff.max_employees })
+            : t('tariffs.featureEmployeesUnlimited'),
         tariff.message_retention_days
-            ? `Хранение сообщений — ${tariff.message_retention_days} дн.`
-            : 'Хранение сообщений без ограничения',
+            ? t('tariffs.featureMessages', { n: tariff.message_retention_days })
+            : t('tariffs.featureMessagesUnlimited'),
     ];
 
     if (!tariff.is_free) {
-        items.push('Поддержка при подключении');
+        items.push(t('tariffs.featureSupport'));
     }
 
     return items;
@@ -82,22 +87,21 @@ function tariffFeatures(tariff) {
 </script>
 
 <template>
-    <Head title="Тарифы" />
+    <Head :title="t('tariffs.title')" />
 
     <AuthenticatedLayout>
         <template #header>
-            <h2 class="text-xl font-semibold text-gray-800">Тарифы</h2>
+            <h2 class="text-xl font-semibold text-gray-800">{{ t('tariffs.title') }}</h2>
         </template>
 
         <div class="py-8">
             <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
                 <div class="mb-10 text-center">
                     <h1 class="text-3xl font-bold tracking-tight text-slate-900">
-                        Тарифы
+                        {{ t('tariffs.title') }}
                     </h1>
                     <p class="mx-auto mt-3 max-w-2xl text-slate-600">
-                        Прозрачные условия — выберите подходящий план и
-                        продолжайте работу без ограничений
+                        {{ t('tariffs.subtitle') }}
                     </p>
                 </div>
 
@@ -118,7 +122,7 @@ function tariffFeatures(tariff) {
                             v-if="tariff.is_current"
                             class="bg-gradient-to-r from-teal-600 to-emerald-500 px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-white"
                         >
-                            Ваш тариф
+                            {{ t('tariffs.yourPlan') }}
                         </div>
 
                         <div class="flex flex-1 flex-col p-6">
@@ -146,7 +150,7 @@ function tariffFeatures(tariff) {
                                     {{ priceLabel(tariff) }}
                                 </p>
                                 <p class="mt-1 text-sm text-slate-500">
-                                    за {{ tariff.duration_days }} дн.
+                                    {{ t('tariffs.perDays', { days: tariff.duration_days }) }}
                                 </p>
                             </div>
 
@@ -179,8 +183,8 @@ function tariffFeatures(tariff) {
                             >
                                 {{
                                     tariff.is_current
-                                        ? 'Ваш тариф'
-                                        : 'Выбрать тариф'
+                                        ? t('tariffs.yourPlan')
+                                        : t('tariffs.select')
                                 }}
                             </button>
                         </div>
@@ -195,10 +199,7 @@ function tariffFeatures(tariff) {
                         v-if="selectedTariff"
                         class="mb-6 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900"
                     >
-                        Вы выбрали тариф
-                        <strong>{{ selectedTariff.name }}</strong>
-                        — оплатите по реквизитам ниже и отправьте скриншот
-                        чека в WhatsApp.
+                        {{ t('tariffs.selectedHint', { name: selectedTariff.name }) }}
                     </div>
 
                     <div class="grid gap-8 lg:grid-cols-[1fr_auto]">
@@ -206,7 +207,7 @@ function tariffFeatures(tariff) {
                             <p
                                 class="text-xs font-semibold uppercase tracking-wide text-slate-500"
                             >
-                                Платёжные реквизиты
+                                {{ t('tariffs.paymentDetails') }}
                             </p>
                             <div
                                 v-if="payment.text"
@@ -218,8 +219,7 @@ function tariffFeatures(tariff) {
                                 v-else
                                 class="mt-4 text-sm text-slate-500"
                             >
-                                Реквизиты пока не добавлены. Обратитесь к
-                                администратору.
+                                {{ t('tariffs.noRequisites') }}
                             </p>
 
                             <div
@@ -230,8 +230,7 @@ function tariffFeatures(tariff) {
                                     WhatsApp: {{ payment.whatsapp }}
                                 </p>
                                 <p class="mt-2 text-emerald-800">
-                                    После оплаты отправьте скриншот чека в
-                                    WhatsApp и укажите выбранный тариф.
+                                    {{ t('tariffs.afterPayHint') }}
                                 </p>
                                 <a
                                     v-if="whatsappLink"
@@ -240,7 +239,7 @@ function tariffFeatures(tariff) {
                                     rel="noopener noreferrer"
                                     class="mt-4 inline-flex rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500"
                                 >
-                                    Написать в WhatsApp
+                                    {{ t('tariffs.writeWhatsapp') }}
                                 </a>
                             </div>
                         </div>
@@ -249,11 +248,11 @@ function tariffFeatures(tariff) {
                             <p
                                 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
                             >
-                                QR для оплаты
+                                {{ t('tariffs.qrLabel') }}
                             </p>
                             <img
                                 :src="payment.qr_url"
-                                alt="QR для оплаты"
+                                :alt="t('tariffs.qrAlt')"
                                 class="mx-auto max-h-56 rounded-xl border border-slate-200"
                             />
                         </div>

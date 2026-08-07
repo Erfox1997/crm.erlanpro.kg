@@ -9,6 +9,9 @@ import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
 
 const props = defineProps({
     pipelines: {
@@ -37,7 +40,7 @@ const props = defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Воронки',
+        default: '',
     },
 });
 
@@ -79,14 +82,16 @@ const showDeleteStageModal = ref(false);
 const editingStage = ref(null);
 const deletingStage = ref(null);
 
-const stageColorPresets = [
-    { value: '#94a3b8', label: 'Серый' },
-    { value: '#3b82f6', label: 'Синий' },
-    { value: '#22c55e', label: 'Зелёный' },
-    { value: '#ef4444', label: 'Красный' },
-    { value: '#f59e0b', label: 'Оранжевый' },
-    { value: '#8b5cf6', label: 'Фиолетовый' },
-];
+const stageColorPresets = computed(() => [
+    { value: '#94a3b8', label: t('funnels.colors.gray') },
+    { value: '#3b82f6', label: t('funnels.colors.blue') },
+    { value: '#22c55e', label: t('funnels.colors.green') },
+    { value: '#ef4444', label: t('funnels.colors.red') },
+    { value: '#f59e0b', label: t('funnels.colors.orange') },
+    { value: '#8b5cf6', label: t('funnels.colors.purple') },
+]);
+
+const numberLocaleTag = computed(() => (locale.value === 'en' ? 'en-US' : 'ru-RU'));
 
 const displayStages = computed(() =>
     reorderMode.value ? orderedStages.value : props.stages,
@@ -223,7 +228,7 @@ const submitStage = () => {
         .filter((s) => s.name);
 
     if (!stages.length) {
-        stageForm.setError('stages', 'Укажите хотя бы один этап');
+        stageForm.setError('stages', t('funnels.needOneStage'));
 
         return;
     }
@@ -333,7 +338,7 @@ const confirmDeleteStage = () => {
 };
 
 const formatMoney = (n) =>
-    new Intl.NumberFormat('ru-RU', {
+    new Intl.NumberFormat(numberLocaleTag.value, {
         style: 'currency',
         currency: 'KGS',
         maximumFractionDigits: 0,
@@ -373,7 +378,7 @@ function onDropStage(e, stageId) {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="pageTitle || t('funnels.title')" />
 
     <AuthenticatedLayout>
         <div class="py-4">
@@ -383,15 +388,14 @@ function onDropStage(e, stageId) {
                     class="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center"
                 >
                     <p class="text-slate-600">
-                        Сначала создайте воронку — без неё некуда добавлять
-                        сделки.
+                        {{ t('funnels.empty') }}
                     </p>
                     <button
                         type="button"
                         class="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#2fc26e] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#26a85f]"
                         @click="showCreateModal = true"
                     >
-                        Создать воронку
+                        {{ t('funnels.create') }}
                     </button>
                 </div>
 
@@ -417,7 +421,7 @@ function onDropStage(e, stageId) {
                                 <span
                                     v-if="p.is_default"
                                     class="text-amber-300"
-                                    title="Основная воронка"
+                                    :title="t('funnels.primary')"
                                 >★</span>
                                 <span class="max-w-[12rem] truncate">{{
                                     p.name
@@ -426,7 +430,7 @@ function onDropStage(e, stageId) {
                             <button
                                 type="button"
                                 class="flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 hover:border-[#2fc26e] hover:text-[#26a85f]"
-                                title="Новая воронка"
+                                :title="t('funnels.new')"
                                 @click="showCreateModal = true"
                             >
                                 <span class="text-lg leading-none">+</span>
@@ -447,7 +451,7 @@ function onDropStage(e, stageId) {
                                         v-if="!reorderMode"
                                         type="button"
                                         class="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600"
-                                        title="Переименовать воронку"
+                                        :title="t('funnels.rename')"
                                         @click="openEditPipeline"
                                     >
                                         <svg
@@ -472,7 +476,7 @@ function onDropStage(e, stageId) {
                                     class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
                                     @click="startReorder"
                                 >
-                                    Изменить порядок
+                                    {{ t('funnels.reorder') }}
                                 </button>
                             </div>
                         </div>
@@ -482,7 +486,7 @@ function onDropStage(e, stageId) {
                         v-if="!pipeline"
                         class="rounded-lg bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200"
                     >
-                        Выберите воронку в списке выше.
+                        {{ t('funnels.select') }}
                     </div>
 
                     <InputError
@@ -495,22 +499,21 @@ function onDropStage(e, stageId) {
                         class="flex flex-col gap-3 rounded-lg bg-indigo-50 px-4 py-3 ring-1 ring-indigo-200 sm:flex-row sm:items-center sm:justify-between"
                     >
                         <p class="text-sm text-indigo-900">
-                            Переместите этапы стрелками влево и вправо, затем
-                            сохраните порядок.
+                            {{ t('funnels.reorderHintFull') }}
                         </p>
                         <div class="flex shrink-0 gap-2">
                             <SecondaryButton
                                 type="button"
                                 @click="cancelReorder"
                             >
-                                Отмена
+                                {{ t('common.cancel') }}
                             </SecondaryButton>
                             <PrimaryButton
                                 type="button"
                                 :disabled="reorderForm.processing"
                                 @click="saveReorder"
                             >
-                                Сохранить
+                                {{ t('common.save') }}
                             </PrimaryButton>
                         </div>
                     </div>
@@ -558,7 +561,7 @@ function onDropStage(e, stageId) {
                                     <button
                                         type="button"
                                         class="rounded p-1 text-slate-500 hover:bg-white hover:text-indigo-600 disabled:opacity-30"
-                                        title="Сдвинуть влево"
+                                        :title="t('funnels.moveLeft')"
                                         :disabled="index === 0"
                                         @click="moveStage(index, -1)"
                                     >
@@ -580,7 +583,7 @@ function onDropStage(e, stageId) {
                                     <button
                                         type="button"
                                         class="rounded p-1 text-slate-500 hover:bg-white hover:text-indigo-600 disabled:opacity-30"
-                                        title="Сдвинуть вправо"
+                                        :title="t('funnels.moveRight')"
                                         :disabled="
                                             index === displayStages.length - 1
                                         "
@@ -606,7 +609,7 @@ function onDropStage(e, stageId) {
                                     <button
                                         type="button"
                                         class="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600"
-                                        title="Настройки этапа"
+                                        :title="t('funnels.stageSettings')"
                                         @click="openEditStage(stage)"
                                     >
                                         <svg
@@ -628,7 +631,7 @@ function onDropStage(e, stageId) {
                                         v-if="canDeleteStage(stage)"
                                         type="button"
                                         class="rounded p-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
-                                        title="Удалить этап"
+                                        :title="t('funnels.deleteStageBtn')"
                                         @click="openDeleteStage(stage)"
                                     >
                                         <svg
@@ -693,7 +696,7 @@ function onDropStage(e, stageId) {
                                             class="ml-auto shrink-0 text-xs text-red-600 hover:text-red-800"
                                             preserve-scroll
                                         >
-                                            Удалить
+                                            {{ t('common.delete') }}
                                         </Link>
                                     </div>
                                 </div>
@@ -701,14 +704,14 @@ function onDropStage(e, stageId) {
                                     v-if="!stage.deals?.length"
                                     class="py-8 text-center text-xs text-slate-400"
                                 >
-                                    Перетащите сюда сделку
+                                    {{ t('funnels.dropDeal') }}
                                 </p>
                             </div>
                             <p
                                 v-else
                                 class="px-3 py-6 text-center text-xs text-slate-400"
                             >
-                                Режим сортировки
+                                {{ t('funnels.sortMode') }}
                             </p>
                         </div>
 
@@ -724,7 +727,7 @@ function onDropStage(e, stageId) {
                                 +
                             </span>
                             <span class="text-sm font-medium">
-                                Добавить этапы
+                                {{ t('funnels.addStages') }}
                             </span>
                         </button>
                     </div>
@@ -739,10 +742,10 @@ function onDropStage(e, stageId) {
         >
             <div class="p-6">
                 <h2 class="text-lg font-semibold text-gray-900">
-                    Новая воронка
+                    {{ t('funnels.new') }}
                 </h2>
                 <p class="mt-1 text-sm text-gray-600">
-                    Будут созданы этапы: Новый, В работе, Успешно, Отказ.
+                    {{ t('funnels.defaultStages') }}
                 </p>
                 <form
                     class="mt-6 space-y-4"
@@ -751,7 +754,7 @@ function onDropStage(e, stageId) {
                     <div>
                         <InputLabel
                             for="modal_pipeline_name"
-                            value="Название"
+                            :value="t('common.name')"
                         />
                         <TextInput
                             id="modal_pipeline_name"
@@ -759,7 +762,7 @@ function onDropStage(e, stageId) {
                             type="text"
                             class="mt-1 block w-full"
                             required
-                            placeholder="Например, Входящие заявки"
+                            :placeholder="t('funnels.namePh')"
                             autofocus
                         />
                         <InputError
@@ -774,13 +777,13 @@ function onDropStage(e, stageId) {
                             type="button"
                             @click="showCreateModal = false"
                         >
-                            Отмена
+                            {{ t('common.cancel') }}
                         </SecondaryButton>
                         <PrimaryButton
                             type="submit"
                             :disabled="pipelineForm.processing"
                         >
-                            Создать
+                            {{ t('common.create') }}
                         </PrimaryButton>
                     </div>
                 </form>
@@ -794,7 +797,7 @@ function onDropStage(e, stageId) {
         >
             <div class="p-6">
                 <h2 class="text-lg font-semibold text-gray-900">
-                    Переименовать воронку
+                    {{ t('funnels.rename') }}
                 </h2>
                 <form
                     class="mt-6 space-y-4"
@@ -803,7 +806,7 @@ function onDropStage(e, stageId) {
                     <div>
                         <InputLabel
                             for="edit_pipeline_name"
-                            value="Название"
+                            :value="t('common.name')"
                         />
                         <TextInput
                             id="edit_pipeline_name"
@@ -825,13 +828,13 @@ function onDropStage(e, stageId) {
                             type="button"
                             @click="showEditPipelineModal = false"
                         >
-                            Отмена
+                            {{ t('common.cancel') }}
                         </SecondaryButton>
                         <PrimaryButton
                             type="submit"
                             :disabled="editPipelineForm.processing"
                         >
-                            Сохранить
+                            {{ t('common.save') }}
                         </PrimaryButton>
                     </div>
                 </form>
@@ -845,24 +848,24 @@ function onDropStage(e, stageId) {
         >
             <div class="p-6">
                 <h2 class="text-lg font-semibold text-gray-900">
-                    Новая сделка
+                    {{ t('funnels.newDeal') }}
                 </h2>
                 <p v-if="pipeline" class="mt-1 text-sm text-gray-600">
-                    Воронка: <strong>{{ pipeline.name }}</strong>
+                    {{ t('funnels.pipelineLabel', { name: pipeline.name }) }}
                 </p>
                 <form
                     class="mt-6 space-y-4"
                     @submit.prevent="submitDeal"
                 >
                     <div>
-                        <InputLabel for="deal_title" value="Название *" />
+                        <InputLabel for="deal_title" :value="t('funnels.dealTitle')" />
                         <TextInput
                             id="deal_title"
                             v-model="dealForm.title"
                             type="text"
                             class="mt-1 block w-full"
                             required
-                            placeholder="Например, Поставка оборудования"
+                            :placeholder="t('funnels.dealTitlePh')"
                             autofocus
                         />
                         <InputError
@@ -872,7 +875,7 @@ function onDropStage(e, stageId) {
                     </div>
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div>
-                            <InputLabel for="deal_amount" value="Сумма" />
+                            <InputLabel for="deal_amount" :value="t('funnels.amount')" />
                             <TextInput
                                 id="deal_amount"
                                 v-model="dealForm.amount"
@@ -888,13 +891,13 @@ function onDropStage(e, stageId) {
                             />
                         </div>
                         <div>
-                            <InputLabel for="deal_client" value="Клиент" />
+                            <InputLabel for="deal_client" :value="t('common.client')" />
                             <select
                                 id="deal_client"
                                 v-model="dealForm.client_id"
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                             >
-                                <option value="">— не выбран —</option>
+                                <option value="">{{ t('funnels.clientNone') }}</option>
                                 <option
                                     v-for="c in clients"
                                     :key="c.id"
@@ -917,13 +920,13 @@ function onDropStage(e, stageId) {
                             type="button"
                             @click="showDealModal = false"
                         >
-                            Отмена
+                            {{ t('common.cancel') }}
                         </SecondaryButton>
                         <PrimaryButton
                             type="submit"
                             :disabled="dealForm.processing"
                         >
-                            Создать сделку
+                            {{ t('funnels.createDeal') }}
                         </PrimaryButton>
                     </div>
                 </form>
@@ -937,11 +940,10 @@ function onDropStage(e, stageId) {
         >
             <div class="p-6">
                 <h2 class="text-lg font-semibold text-gray-900">
-                    Новые этапы
+                    {{ t('funnels.newStages') }}
                 </h2>
                 <p v-if="pipeline" class="mt-1 text-sm text-gray-600">
-                    Воронка: {{ pipeline.name }}. Можно добавить сразу несколько
-                    этапов.
+                    {{ t('funnels.newStagesHint', { name: pipeline.name }) }}
                 </p>
                 <form
                     class="mt-6 space-y-4"
@@ -957,7 +959,7 @@ function onDropStage(e, stageId) {
                                 <div class="min-w-0 flex-1">
                                     <InputLabel
                                         :for="'stage_name_' + index"
-                                        :value="'Этап ' + (index + 1)"
+                                        :value="t('funnels.stageN', { n: index + 1 })"
                                     />
                                     <TextInput
                                         :id="'stage_name_' + index"
@@ -966,8 +968,8 @@ function onDropStage(e, stageId) {
                                         class="mt-1 block w-full"
                                         :placeholder="
                                             index === 0
-                                                ? 'Например, Согласование'
-                                                : 'Название этапа'
+                                                ? t('funnels.stagePh')
+                                                : t('funnels.stageName')
                                         "
                                         :autofocus="index === 0"
                                     />
@@ -984,7 +986,7 @@ function onDropStage(e, stageId) {
                                     v-if="stageForm.stages.length > 1"
                                     type="button"
                                     class="mt-7 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                                    title="Убрать строку"
+                                    :title="t('funnels.removeRow')"
                                     @click="removeStageRow(index)"
                                 >
                                     <svg
@@ -1007,7 +1009,7 @@ function onDropStage(e, stageId) {
                                 <span
                                     class="text-xs font-medium text-slate-500"
                                 >
-                                    Цвет
+                                    {{ t('funnels.color') }}
                                 </span>
                                 <div class="mt-1.5 flex flex-wrap gap-1.5">
                                     <button
@@ -1038,7 +1040,7 @@ function onDropStage(e, stageId) {
                         @click="addStageRow"
                     >
                         <span class="text-lg leading-none">+</span>
-                        Ещё этап
+                        {{ t('funnels.moreStage') }}
                     </button>
 
                     <InputError
@@ -1053,13 +1055,13 @@ function onDropStage(e, stageId) {
                             type="button"
                             @click="closeStageModal"
                         >
-                            Отмена
+                            {{ t('common.cancel') }}
                         </SecondaryButton>
                         <PrimaryButton
                             type="submit"
                             :disabled="stageForm.processing"
                         >
-                            Добавить этапы
+                            {{ t('funnels.addStages') }}
                         </PrimaryButton>
                     </div>
                 </form>
@@ -1073,7 +1075,7 @@ function onDropStage(e, stageId) {
         >
             <div class="p-6">
                 <h2 class="text-lg font-semibold text-gray-900">
-                    Настройки этапа
+                    {{ t('funnels.stageSettings') }}
                 </h2>
                 <form
                     class="mt-6 space-y-4"
@@ -1082,7 +1084,7 @@ function onDropStage(e, stageId) {
                     <div>
                         <InputLabel
                             for="edit_stage_name"
-                            value="Название этапа"
+                            :value="t('funnels.stageName')"
                         />
                         <TextInput
                             id="edit_stage_name"
@@ -1104,13 +1106,13 @@ function onDropStage(e, stageId) {
                             type="button"
                             @click="closeEditStageModal"
                         >
-                            Отмена
+                            {{ t('common.cancel') }}
                         </SecondaryButton>
                         <PrimaryButton
                             type="submit"
                             :disabled="editStageForm.processing"
                         >
-                            Сохранить
+                            {{ t('common.save') }}
                         </PrimaryButton>
                     </div>
                 </form>
@@ -1120,11 +1122,10 @@ function onDropStage(e, stageId) {
                     class="mt-8 border-t border-slate-200 pt-6"
                 >
                     <h3 class="text-sm font-semibold text-gray-900">
-                        Связка с другой воронкой
+                        {{ t('funnels.linkTitle') }}
                     </h3>
                     <p class="mt-1 text-xs text-gray-500">
-                        При переносе сделки на этот этап она автоматически
-                        попадёт в выбранный этап другой воронки.
+                        {{ t('funnels.linkHintFull') }}
                     </p>
 
                     <div
@@ -1144,7 +1145,7 @@ function onDropStage(e, stageId) {
                         <div>
                             <InputLabel
                                 for="tunnel_pipeline"
-                                value="Воронка назначения"
+                                :value="t('funnels.targetPipeline')"
                             />
                             <select
                                 id="tunnel_pipeline"
@@ -1152,7 +1153,7 @@ function onDropStage(e, stageId) {
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                                 @change="onTunnelPipelineChange"
                             >
-                                <option value="">— выберите воронку —</option>
+                                <option value="">{{ t('messenger.selectPipeline') }}</option>
                                 <option
                                     v-for="p in linkablePipelines"
                                     :key="p.id"
@@ -1165,14 +1166,14 @@ function onDropStage(e, stageId) {
                         <div v-if="tunnelTargetPipelineId">
                             <InputLabel
                                 for="tunnel_stage"
-                                value="Этап назначения"
+                                :value="t('funnels.targetStage')"
                             />
                             <select
                                 id="tunnel_stage"
                                 v-model="tunnelForm.to_stage_id"
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                             >
-                                <option value="">— выберите этап —</option>
+                                <option value="">{{ t('funnels.selectStage') }}</option>
                                 <option
                                     v-for="s in tunnelTargetStages"
                                     :key="s.id"
@@ -1200,8 +1201,8 @@ function onDropStage(e, stageId) {
                         >
                             {{
                                 editingStage?.tunnel
-                                    ? 'Обновить связку'
-                                    : 'Создать связку'
+                                    ? t('funnels.updateLink')
+                                    : t('funnels.createLink')
                             }}
                         </PrimaryButton>
                         <SecondaryButton
@@ -1209,7 +1210,7 @@ function onDropStage(e, stageId) {
                             type="button"
                             @click="removeStageTunnel"
                         >
-                            Удалить связку
+                            {{ t('funnels.deleteLink') }}
                         </SecondaryButton>
                     </div>
                 </div>
@@ -1223,11 +1224,10 @@ function onDropStage(e, stageId) {
         >
             <div class="p-6">
                 <h2 class="text-lg font-semibold text-gray-900">
-                    Удалить этап?
+                    {{ t('funnels.deleteStageTitle') }}
                 </h2>
                 <p class="mt-2 text-sm text-gray-600">
-                    Этап «{{ deletingStage?.name }}» будет удалён. На этапе не
-                    должно остаться сделок.
+                    {{ t('funnels.deleteStageBodyFull', { name: deletingStage?.name }) }}
                 </p>
                 <div
                     class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"
@@ -1236,10 +1236,10 @@ function onDropStage(e, stageId) {
                         type="button"
                         @click="closeDeleteStageModal"
                     >
-                        Отмена
+                        {{ t('common.cancel') }}
                     </SecondaryButton>
                     <DangerButton type="button" @click="confirmDeleteStage">
-                        Удалить этап
+                        {{ t('funnels.deleteStageBtn') }}
                     </DangerButton>
                 </div>
             </div>

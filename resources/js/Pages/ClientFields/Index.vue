@@ -7,7 +7,10 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, useForm } from '@inertiajs/vue3';
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     fields: {
@@ -16,24 +19,26 @@ const props = defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Данные клиента',
+        default: null,
     },
 });
+
+const title = computed(() => props.pageTitle || t('clientFields.title'));
 
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
 const selectedField = ref(null);
 const createLabelInput = ref([]);
 
-const fieldTypes = [
-    { value: 'text', label: 'Текст' },
-    { value: 'textarea', label: 'Длинный текст' },
-    { value: 'number', label: 'Число' },
-    { value: 'phone', label: 'Телефон' },
-    { value: 'email', label: 'Email' },
-    { value: 'date', label: 'Дата' },
-    { value: 'select', label: 'Список' },
-];
+const fieldTypes = computed(() => [
+    { value: 'text', label: t('clientFields.type.text') },
+    { value: 'textarea', label: t('clientFields.type.textarea') },
+    { value: 'number', label: t('clientFields.type.number') },
+    { value: 'phone', label: t('clientFields.type.phone') },
+    { value: 'email', label: t('clientFields.type.email') },
+    { value: 'date', label: t('clientFields.type.date') },
+    { value: 'select', label: t('clientFields.type.select') },
+]);
 
 const cyrToLat = {
     а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z',
@@ -177,7 +182,7 @@ function submitBatch(closeAfter = true) {
         .filter((row) => row.label !== '');
 
     if (prepared.length === 0) {
-        batchForm.setError('fields', 'Добавьте хотя бы одно поле с названием.');
+        batchForm.setError('fields', t('clientFields.needOne'));
 
         return;
     }
@@ -220,7 +225,7 @@ function submitEdit() {
 }
 
 function destroyField(field) {
-    if (!confirm(`Удалить поле «${field.label}»?`)) {
+    if (!confirm(t('clientFields.confirmDelete', { name: field.label }))) {
         return;
     }
 
@@ -231,7 +236,7 @@ function destroyField(field) {
 </script>
 
 <template>
-    <Head title="CRM" />
+    <Head :title="title" />
 
     <AuthenticatedLayout>
         <div class="bg-slate-100 py-8 sm:py-10">
@@ -249,7 +254,7 @@ function destroyField(field) {
                         class="rounded-lg bg-slate-800 px-8 py-2.5 text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-slate-700"
                         @click="openCreateModal"
                     >
-                        Добавить поля
+                        {{ t('clientFields.addFields') }}
                     </button>
                 </div>
 
@@ -268,7 +273,7 @@ function destroyField(field) {
                                 v-if="fields.length === 0"
                                 class="flex h-full min-h-[12rem] items-center justify-center py-8 text-center text-sm text-slate-400"
                             >
-                                Поля ещё не добавлены
+                                {{ t('clientFields.notAdded') }}
                             </div>
 
                             <ul v-else class="divide-y divide-slate-100">
@@ -283,7 +288,7 @@ function destroyField(field) {
                                             v-if="field.show_in_messenger"
                                             class="ml-1 text-xs font-normal text-emerald-600"
                                         >
-                                            (имя в чате)
+                                            {{ t('clientFields.chatName') }}
                                         </span>
                                     </span>
 
@@ -291,7 +296,7 @@ function destroyField(field) {
                                         <button
                                             type="button"
                                             class="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-                                            title="Редактировать"
+                                            :title="t('clientFields.editTitleAttr')"
                                             @click="openEditModal(field)"
                                         >
                                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
@@ -301,7 +306,7 @@ function destroyField(field) {
                                         <button
                                             type="button"
                                             class="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                                            title="Удалить"
+                                            :title="t('clientFields.deleteTitleAttr')"
                                             @click="destroyField(field)"
                                         >
                                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
@@ -320,10 +325,10 @@ function destroyField(field) {
         <Modal :show="showCreateModal" max-width="3xl" @close="showCreateModal = false">
             <div class="p-6">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    Новые поля
+                    {{ t('clientFields.newFields') }}
                 </h3>
                 <p class="mt-1 text-sm text-slate-500">
-                    Добавьте сразу несколько полей — например: Имя, Телефон, Адрес, Область.
+                    {{ t('clientFields.newHint') }}
                 </p>
 
                 <form
@@ -338,7 +343,7 @@ function destroyField(field) {
                         >
                             <div class="mb-3 flex items-center justify-between gap-2">
                                 <p class="text-sm font-medium text-slate-700">
-                                    Поле {{ index + 1 }}
+                                    {{ t('clientFields.fieldN', { n: index + 1 }) }}
                                 </p>
                                 <button
                                     v-if="createRows.length > 1"
@@ -346,26 +351,26 @@ function destroyField(field) {
                                     class="text-xs text-rose-600 hover:text-rose-700"
                                     @click="removeCreateRow(index)"
                                 >
-                                    Убрать
+                                    {{ t('common.remove') }}
                                 </button>
                             </div>
 
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <div>
-                                    <InputLabel :for="`create_label_${index}`" value="Название поля" />
+                                    <InputLabel :for="`create_label_${index}`" :value="t('clientFields.fieldName')" />
                                     <TextInput
                                         :id="`create_label_${index}`"
                                         :ref="(el) => { if (el) createLabelInput[index] = el }"
                                         v-model="row.label"
                                         class="mt-1 block w-full"
-                                        placeholder="Например: Имя"
+                                        :placeholder="t('clientFields.labelPh')"
                                         @input="onRowLabelInput(index)"
                                     />
                                     <InputError class="mt-2" :message="batchForm.errors[`fields.${index}.label`]" />
                                 </div>
 
                                 <div>
-                                    <InputLabel :for="`create_key_${index}`" value="Ключ (латиница)" />
+                                    <InputLabel :for="`create_key_${index}`" :value="t('clientFields.keyLatin')" />
                                     <TextInput
                                         :id="`create_key_${index}`"
                                         v-model="row.key"
@@ -379,7 +384,7 @@ function destroyField(field) {
 
                             <div class="mt-4 grid gap-4 sm:grid-cols-2">
                                 <div>
-                                    <InputLabel :for="`create_type_${index}`" value="Тип" />
+                                    <InputLabel :for="`create_type_${index}`" :value="t('clientFields.fieldType')" />
                                     <select
                                         :id="`create_type_${index}`"
                                         v-model="row.type"
@@ -402,7 +407,7 @@ function destroyField(field) {
                                         type="checkbox"
                                         class="rounded border-slate-300 text-indigo-600"
                                     >
-                                    Обязательное
+                                    {{ t('clientFields.required') }}
                                 </label>
                             </div>
 
@@ -415,15 +420,15 @@ function destroyField(field) {
                                     @change="onRowMessengerToggle(index, $event.target.checked)"
                                 >
                                 <span>
-                                    Имя в мессенджере
+                                    {{ t('clientFields.messengerName') }}
                                     <span class="block text-xs text-slate-500">
-                                        Это значение показывается в шапке чата вместо имени из Telegram / Instagram.
+                                        {{ t('clientFields.messengerHint') }}
                                     </span>
                                     <span
                                         v-if="existingMessengerFieldId() !== null"
                                         class="mt-1 block text-xs text-amber-600"
                                     >
-                                        Уже назначено другому полю — снимите галочку там или отредактируйте его.
+                                        {{ t('clientFields.messengerTaken') }}
                                     </span>
                                 </span>
                             </label>
@@ -432,13 +437,13 @@ function destroyField(field) {
                                 v-if="row.type === 'select'"
                                 class="mt-4"
                             >
-                                <InputLabel :for="`create_options_${index}`" value="Варианты (по одному в строке)" />
+                                <InputLabel :for="`create_options_${index}`" :value="t('clientFields.optionsLines')" />
                                 <textarea
                                     :id="`create_options_${index}`"
                                     v-model="row.options_text"
                                     rows="3"
                                     class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"
-                                    placeholder="Мужской&#10;Женский"
+                                    :placeholder="t('clientFields.optionsPh')"
                                 />
                                 <InputError class="mt-2" :message="batchForm.errors[`fields.${index}.options`]" />
                             </div>
@@ -452,7 +457,7 @@ function destroyField(field) {
                             type="button"
                             @click="addCreateRow"
                         >
-                            + Добавить ещё поле
+                            {{ t('clientFields.addMore') }}
                         </SecondaryButton>
 
                         <div class="flex flex-wrap gap-2">
@@ -460,20 +465,20 @@ function destroyField(field) {
                                 type="button"
                                 @click="showCreateModal = false"
                             >
-                                Отмена
+                                {{ t('common.cancel') }}
                             </SecondaryButton>
                             <SecondaryButton
                                 type="button"
                                 :disabled="batchForm.processing"
                                 @click="submitBatch(false)"
                             >
-                                Сохранить и добавить ещё
+                                {{ t('clientFields.saveAndMore') }}
                             </SecondaryButton>
                             <PrimaryButton
                                 type="submit"
                                 :disabled="batchForm.processing"
                             >
-                                Сохранить все
+                                {{ t('clientFields.saveAll') }}
                             </PrimaryButton>
                         </div>
                     </div>
@@ -484,7 +489,7 @@ function destroyField(field) {
         <Modal :show="showEditModal" @close="showEditModal = false">
             <div class="p-6">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    Редактировать поле
+                    {{ t('clientFields.editField') }}
                 </h3>
 
                 <form
@@ -492,7 +497,7 @@ function destroyField(field) {
                     @submit.prevent="submitEdit"
                 >
                     <div>
-                        <InputLabel for="edit_label" value="Название поля" />
+                        <InputLabel for="edit_label" :value="t('clientFields.fieldName')" />
                         <TextInput
                             id="edit_label"
                             v-model="editForm.label"
@@ -502,7 +507,7 @@ function destroyField(field) {
                     </div>
 
                     <div>
-                        <InputLabel for="edit_key" value="Ключ (латиница)" />
+                        <InputLabel for="edit_key" :value="t('clientFields.keyLatin')" />
                         <TextInput
                             id="edit_key"
                             v-model="editForm.key"
@@ -512,7 +517,7 @@ function destroyField(field) {
                     </div>
 
                     <div>
-                        <InputLabel for="edit_type" value="Тип" />
+                        <InputLabel for="edit_type" :value="t('clientFields.fieldType')" />
                         <select
                             id="edit_type"
                             v-model="editForm.type"
@@ -530,7 +535,7 @@ function destroyField(field) {
                     </div>
 
                     <div v-if="editForm.type === 'select'">
-                        <InputLabel for="edit_options" value="Варианты (по одному в строке)" />
+                        <InputLabel for="edit_options" :value="t('clientFields.optionsLines')" />
                         <textarea
                             id="edit_options"
                             v-model="editForm.options_text"
@@ -546,7 +551,7 @@ function destroyField(field) {
                             type="checkbox"
                             class="rounded border-slate-300 text-indigo-600"
                         >
-                        Обязательное поле
+                        {{ t('clientFields.requiredField') }}
                     </label>
 
                     <label class="flex items-start gap-2 text-sm text-slate-700">
@@ -557,9 +562,9 @@ function destroyField(field) {
                             :disabled="existingMessengerFieldId() !== null && existingMessengerFieldId() !== selectedField?.id"
                         >
                         <span>
-                            Имя в мессенджере
+                            {{ t('clientFields.messengerName') }}
                             <span class="block text-xs text-slate-500">
-                                Это значение показывается в шапке чата вместо имени из мессенджера.
+                                {{ t('clientFields.messengerHintEdit') }}
                             </span>
                         </span>
                     </label>
@@ -569,13 +574,13 @@ function destroyField(field) {
                             type="button"
                             @click="showEditModal = false"
                         >
-                            Отмена
+                            {{ t('common.cancel') }}
                         </SecondaryButton>
                         <PrimaryButton
                             type="submit"
                             :disabled="editForm.processing"
                         >
-                            Сохранить
+                            {{ t('common.save') }}
                         </PrimaryButton>
                     </div>
                 </form>

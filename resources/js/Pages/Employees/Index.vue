@@ -8,6 +8,9 @@ import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { computed, nextTick, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     employees: {
@@ -32,7 +35,7 @@ const props = defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Сотрудники',
+        default: null,
     },
     managerBotUsername: {
         type: String,
@@ -40,12 +43,17 @@ const props = defineProps({
     },
 });
 
+const title = computed(() => props.pageTitle || t('employees.title'));
+
 const limitLabel = computed(() => {
     if (props.limits.max_employees == null) {
-        return `${props.limits.employees_used} сотрудников`;
+        return t('employees.countUnlimited', { n: props.limits.employees_used });
     }
 
-    return `${props.limits.employees_used} / ${props.limits.max_employees} сотрудников`;
+    return t('employees.countLimited', {
+        used: props.limits.employees_used,
+        max: props.limits.max_employees,
+    });
 });
 
 const showCreateModal = ref(false);
@@ -143,7 +151,7 @@ function setFilter(value) {
 }
 
 function dismissEmployee(employee) {
-    if (!confirm(`Уволить «${employee.name}»?\n\nПродажи и история сохранятся, вход в кабинет будет закрыт.`)) {
+    if (!confirm(t('employees.confirmFireDetail', { name: employee.name }))) {
         return;
     }
 
@@ -153,7 +161,7 @@ function dismissEmployee(employee) {
 }
 
 function restoreEmployee(employee) {
-    if (!confirm(`Восстановить доступ для «${employee.name}»?`)) {
+    if (!confirm(t('employees.confirmRestore', { name: employee.name }))) {
         return;
     }
 
@@ -186,7 +194,7 @@ function onImportChange(event) {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="title" />
 
     <AuthenticatedLayout>
         <div class="bg-slate-100 py-8 sm:py-10">
@@ -200,24 +208,15 @@ function onImportChange(event) {
 
                 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                     <div>
-                        <h1 class="text-xl font-semibold text-slate-900">Сотрудники</h1>
+                        <h1 class="text-xl font-semibold text-slate-900">{{ t('employees.title') }}</h1>
                         <p class="mt-1 text-sm text-slate-500">
-                            Создайте аккаунты сотрудников или загрузите их из Excel.
+                            {{ t('employees.subtitle') }}
                         </p>
                         <p class="mt-1 text-sm font-medium text-slate-700">
-                            По тарифу: {{ limitLabel }}
+                            {{ t('employees.byTariff', { label: limitLabel }) }}
                         </p>
                         <p v-if="managerBotUsername" class="mt-1 text-sm text-slate-500">
-                            Telegram Mini App:
-                            <a
-                                :href="`https://t.me/${managerBotUsername}`"
-                                target="_blank"
-                                rel="noopener"
-                                class="font-medium text-sky-700 underline"
-                            >@{{ managerBotUsername }}</a>
-                            — укажите Telegram username сотрудника (без @).
-                            Доступ только у привязанных аккаунтов: сотрудник открывает бота → /start → «Открыть мессенджер».
-                            Владелец компании указывает свой Telegram в профиле.
+                            {{ t('employees.telegramMiniAppHint', { bot: managerBotUsername }) }}
                         </p>
                     </div>
                 </div>
@@ -226,16 +225,15 @@ function onImportChange(event) {
                     v-if="!limits.can_add"
                     class="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
                 >
-                    Лимит сотрудников по тарифу исчерпан. Чтобы добавить новых,
-                    смените тариф.
+                    {{ t('employees.limitExhausted') }}
                 </div>
 
                 <div
                     v-if="positions.length === 0"
                     class="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
                 >
-                    Сначала создайте хотя бы одну должность на странице
-                    <a :href="route('positions.index')" class="font-medium underline">Должности</a>.
+                    {{ t('employees.needPositions') }}
+                    <a :href="route('positions.index')" class="font-medium underline">{{ t('employees.needPositionsLink') }}</a>.
                 </div>
 
                 <div class="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
@@ -249,7 +247,7 @@ function onImportChange(event) {
                                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
                                 @click="setFilter('active')"
                             >
-                                Активные
+                                {{ t('employees.active') }}
                             </button>
                             <button
                                 type="button"
@@ -259,7 +257,7 @@ function onImportChange(event) {
                                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
                                 @click="setFilter('dismissed')"
                             >
-                                Уволенные
+                                {{ t('employees.fired') }}
                             </button>
                             <button
                                 type="button"
@@ -269,7 +267,7 @@ function onImportChange(event) {
                                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
                                 @click="setFilter('all')"
                             >
-                                Все
+                                {{ t('common.all') }}
                             </button>
                         </div>
 
@@ -287,7 +285,7 @@ function onImportChange(event) {
                                 <input
                                     v-model="searchQuery"
                                     type="search"
-                                    placeholder="Поиск по ФИО, почте или должности..."
+                                    :placeholder="t('employees.searchPh')"
                                     class="w-full rounded-xl border-slate-200 bg-white py-2 pl-9 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:ring-indigo-400"
                                 >
                             </div>
@@ -300,7 +298,7 @@ function onImportChange(event) {
                                     <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3" />
                                     </svg>
-                                    Образец Excel
+                                    {{ t('employees.excelSample') }}
                                 </a>
                                 <button
                                     type="button"
@@ -311,7 +309,7 @@ function onImportChange(event) {
                                     <svg class="h-4 w-4 text-slate-500" :class="{ 'animate-spin': importForm.processing }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                                     </svg>
-                                    {{ importForm.processing ? 'Импорт...' : 'Импорт Excel' }}
+                                    {{ importForm.processing ? t('employees.importing') : t('employees.importExcel') }}
                                 </button>
                                 <input
                                     ref="importInput"
@@ -329,31 +327,31 @@ function onImportChange(event) {
                                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                     </svg>
-                                    Добавить сотрудника
+                                    {{ t('employees.add') }}
                                 </button>
                             </div>
                         </div>
 
                         <InputError class="mt-2" :message="importForm.errors.file" />
                         <p class="mt-2 text-xs text-slate-400">
-                            Excel: колонки ФИО, Почта, Пароль, Должность (название должно совпадать с созданной должностью).
+                            {{ t('employees.excelHint') }}
                         </p>
                     </div>
 
                     <div v-if="filteredEmployees.length === 0" class="px-6 py-16 text-center text-sm text-slate-400">
-                        {{ employees.length === 0 ? 'Сотрудники ещё не добавлены' : 'Ничего не найдено' }}
+                        {{ employees.length === 0 ? t('employees.notAdded') : t('common.noResults') }}
                     </div>
 
                     <div v-else class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-100 text-left text-sm">
                             <thead class="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 <tr>
-                                    <th class="px-5 py-3">ФИО</th>
-                                    <th class="px-5 py-3">Почта</th>
-                                    <th class="px-5 py-3">Telegram</th>
-                                    <th class="px-5 py-3">Должность</th>
-                                    <th class="px-5 py-3">Статус</th>
-                                    <th class="px-5 py-3 text-right">Действия</th>
+                                    <th class="px-5 py-3">{{ t('employees.fullName') }}</th>
+                                    <th class="px-5 py-3">{{ t('employees.mail') }}</th>
+                                    <th class="px-5 py-3">{{ t('employees.telegram') }}</th>
+                                    <th class="px-5 py-3">{{ t('employees.position') }}</th>
+                                    <th class="px-5 py-3">{{ t('common.status') }}</th>
+                                    <th class="px-5 py-3 text-right">{{ t('common.actions') }}</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100">
@@ -376,7 +374,7 @@ function onImportChange(event) {
                                                 class="ml-1 text-xs"
                                                 :class="employee.telegram_linked ? 'text-emerald-600' : 'text-amber-600'"
                                             >
-                                                {{ employee.telegram_linked ? '✓' : 'ожидает /start' }}
+                                                {{ employee.telegram_linked ? '✓' : t('employees.waitingStart') }}
                                             </span>
                                         </span>
                                         <span v-else class="text-slate-400">—</span>
@@ -389,13 +387,13 @@ function onImportChange(event) {
                                             v-if="employee.dismissed"
                                             class="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700"
                                         >
-                                            Уволен{{ employee.dismissed_at ? ` ${employee.dismissed_at}` : '' }}
+                                            {{ t('employees.dismissedLabel') }}{{ employee.dismissed_at ? ` ${employee.dismissed_at}` : '' }}
                                         </span>
                                         <span
                                             v-else
                                             class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
                                         >
-                                            Активен
+                                            {{ t('common.active') }}
                                         </span>
                                     </td>
                                     <td class="px-5 py-3">
@@ -404,7 +402,7 @@ function onImportChange(event) {
                                                 v-if="!employee.dismissed"
                                                 type="button"
                                                 class="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-                                                title="Редактировать"
+                                                :title="t('employees.editTitleAttr')"
                                                 @click="openEditModal(employee)"
                                             >
                                                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
@@ -415,19 +413,19 @@ function onImportChange(event) {
                                                 v-if="!employee.dismissed"
                                                 type="button"
                                                 class="rounded-md border border-rose-200 px-2.5 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
-                                                title="Уволить"
+                                                :title="t('employees.fire')"
                                                 @click="dismissEmployee(employee)"
                                             >
-                                                Уволить
+                                                {{ t('employees.fire') }}
                                             </button>
                                             <button
                                                 v-else
                                                 type="button"
                                                 class="rounded-md border border-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
-                                                title="Восстановить"
+                                                :title="t('employees.restore')"
                                                 @click="restoreEmployee(employee)"
                                             >
-                                                Восстановить
+                                                {{ t('employees.restore') }}
                                             </button>
                                         </div>
                                     </td>
@@ -441,15 +439,15 @@ function onImportChange(event) {
 
         <Modal :show="showCreateModal" max-width="lg" @close="showCreateModal = false">
             <form class="p-6" @submit.prevent="submitCreate">
-                <h3 class="text-lg font-semibold text-slate-900">Новый сотрудник</h3>
+                <h3 class="text-lg font-semibold text-slate-900">{{ t('employees.newEmployee') }}</h3>
                 <p class="mt-1 text-sm text-slate-500">
-                    Аккаунт сразу сможет войти в CRM с указанным паролем.
+                    {{ t('employees.newHint') }}
                 </p>
                 <InputError class="mt-3" :message="createForm.errors.employee" />
 
                 <div class="mt-5 space-y-4">
                     <div>
-                        <InputLabel for="employee-name" value="ФИО" />
+                        <InputLabel for="employee-name" :value="t('employees.fullName')" />
                         <TextInput
                             id="employee-name"
                             ref="nameInput"
@@ -462,7 +460,7 @@ function onImportChange(event) {
                     </div>
 
                     <div>
-                        <InputLabel for="employee-email" value="Почта" />
+                        <InputLabel for="employee-email" :value="t('employees.mail')" />
                         <TextInput
                             id="employee-email"
                             v-model="createForm.email"
@@ -474,7 +472,7 @@ function onImportChange(event) {
                     </div>
 
                     <div>
-                        <InputLabel for="employee-password" value="Пароль" />
+                        <InputLabel for="employee-password" :value="t('common.password')" />
                         <TextInput
                             id="employee-password"
                             v-model="createForm.password"
@@ -486,7 +484,7 @@ function onImportChange(event) {
                     </div>
 
                     <div>
-                        <InputLabel for="employee-password-confirmation" value="Повтор пароля" />
+                        <InputLabel for="employee-password-confirmation" :value="t('employees.passwordConfirm')" />
                         <TextInput
                             id="employee-password-confirmation"
                             v-model="createForm.password_confirmation"
@@ -497,13 +495,13 @@ function onImportChange(event) {
                     </div>
 
                     <div>
-                        <InputLabel for="employee-position" value="Должность" />
+                        <InputLabel for="employee-position" :value="t('employees.position')" />
                         <select
                             id="employee-position"
                             v-model="createForm.position_id"
                             class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                         >
-                            <option value="" disabled>Выберите должность</option>
+                            <option value="" disabled>{{ t('employees.selectPosition') }}</option>
                             <option
                                 v-for="position in positions"
                                 :key="position.id"
@@ -516,7 +514,7 @@ function onImportChange(event) {
                     </div>
 
                     <div>
-                        <InputLabel for="employee-telegram" value="Telegram username" />
+                        <InputLabel for="employee-telegram" :value="t('employees.telegramUsername')" />
                         <TextInput
                             id="employee-telegram"
                             v-model="createForm.telegram_username"
@@ -525,7 +523,7 @@ function onImportChange(event) {
                             placeholder="ivan_manager"
                         />
                         <p class="mt-1 text-xs text-slate-500">
-                            Без @. Нужен для входа в Mini App и пушей. После создания сотрудник пишет /start боту.
+                            {{ t('employees.telegramFieldHint') }}
                         </p>
                         <InputError class="mt-2" :message="createForm.errors.telegram_username" />
                     </div>
@@ -533,10 +531,10 @@ function onImportChange(event) {
 
                 <div class="mt-6 flex justify-end gap-2">
                     <SecondaryButton type="button" @click="showCreateModal = false">
-                        Отмена
+                        {{ t('common.cancel') }}
                     </SecondaryButton>
                     <PrimaryButton :disabled="createForm.processing">
-                        Создать
+                        {{ t('common.create') }}
                     </PrimaryButton>
                 </div>
             </form>
@@ -544,11 +542,11 @@ function onImportChange(event) {
 
         <Modal :show="showEditModal" max-width="lg" @close="showEditModal = false">
             <form class="p-6" @submit.prevent="submitEdit">
-                <h3 class="text-lg font-semibold text-slate-900">Редактировать сотрудника</h3>
+                <h3 class="text-lg font-semibold text-slate-900">{{ t('employees.editEmployee') }}</h3>
 
                 <div class="mt-5 space-y-4">
                     <div>
-                        <InputLabel for="edit-employee-name" value="ФИО" />
+                        <InputLabel for="edit-employee-name" :value="t('employees.fullName')" />
                         <TextInput
                             id="edit-employee-name"
                             v-model="editForm.name"
@@ -559,7 +557,7 @@ function onImportChange(event) {
                     </div>
 
                     <div>
-                        <InputLabel for="edit-employee-email" value="Почта" />
+                        <InputLabel for="edit-employee-email" :value="t('employees.mail')" />
                         <TextInput
                             id="edit-employee-email"
                             v-model="editForm.email"
@@ -570,7 +568,7 @@ function onImportChange(event) {
                     </div>
 
                     <div>
-                        <InputLabel for="edit-employee-password" value="Новый пароль (необязательно)" />
+                        <InputLabel for="edit-employee-password" :value="t('employees.newPasswordOptional')" />
                         <TextInput
                             id="edit-employee-password"
                             v-model="editForm.password"
@@ -582,7 +580,7 @@ function onImportChange(event) {
                     </div>
 
                     <div>
-                        <InputLabel for="edit-employee-password-confirmation" value="Повтор пароля" />
+                        <InputLabel for="edit-employee-password-confirmation" :value="t('employees.passwordConfirm')" />
                         <TextInput
                             id="edit-employee-password-confirmation"
                             v-model="editForm.password_confirmation"
@@ -593,13 +591,13 @@ function onImportChange(event) {
                     </div>
 
                     <div>
-                        <InputLabel for="edit-employee-position" value="Должность" />
+                        <InputLabel for="edit-employee-position" :value="t('employees.position')" />
                         <select
                             id="edit-employee-position"
                             v-model="editForm.position_id"
                             class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                         >
-                            <option value="" disabled>Выберите должность</option>
+                            <option value="" disabled>{{ t('employees.selectPosition') }}</option>
                             <option
                                 v-for="position in positions"
                                 :key="position.id"
@@ -612,7 +610,7 @@ function onImportChange(event) {
                     </div>
 
                     <div>
-                        <InputLabel for="edit-employee-telegram" value="Telegram username" />
+                        <InputLabel for="edit-employee-telegram" :value="t('employees.telegramUsername')" />
                         <TextInput
                             id="edit-employee-telegram"
                             v-model="editForm.telegram_username"
@@ -626,10 +624,10 @@ function onImportChange(event) {
 
                 <div class="mt-6 flex justify-end gap-2">
                     <SecondaryButton type="button" @click="showEditModal = false">
-                        Отмена
+                        {{ t('common.cancel') }}
                     </SecondaryButton>
                     <PrimaryButton :disabled="editForm.processing">
-                        Сохранить
+                        {{ t('common.save') }}
                     </PrimaryButton>
                 </div>
             </form>

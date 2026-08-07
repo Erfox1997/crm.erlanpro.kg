@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
     targetId: {
@@ -12,6 +13,7 @@ const props = defineProps({
     },
 });
 
+const { t } = useI18n();
 const downloading = ref(false);
 const error = ref('');
 
@@ -22,7 +24,7 @@ async function downloadPdf() {
 
     const el = document.getElementById(props.targetId);
     if (!el) {
-        error.value = 'Не удалось найти текст документа.';
+        error.value = t('pdf.errNotFound');
         return;
     }
 
@@ -49,8 +51,7 @@ async function downloadPdf() {
             .from(el)
             .save();
     } catch (e) {
-        error.value =
-            'Не удалось сформировать PDF. Попробуйте ещё раз или используйте «Печать → сохранить как PDF» в браузере.';
+        error.value = t('pdf.errGenerate');
         console.error(e);
     } finally {
         downloading.value = false;
@@ -65,11 +66,10 @@ async function downloadPdf() {
         >
             <div>
                 <p class="text-sm font-semibold text-slate-900">
-                    Скачать документ
+                    {{ t('pdf.documentTitle') }}
                 </p>
                 <p class="mt-1 text-xs text-slate-500">
-                    PDF-файл для сохранения у себя (удобно для архива или
-                    ознакомления офлайн).
+                    {{ t('pdf.documentHint') }}
                 </p>
             </div>
             <button
@@ -91,7 +91,7 @@ async function downloadPdf() {
                         d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
                     />
                 </svg>
-                {{ downloading ? 'Формируем PDF…' : 'Скачать PDF' }}
+                {{ downloading ? t('pdf.downloading') : t('pdf.download') }}
             </button>
         </div>
         <p v-if="error" class="mt-2 text-xs text-red-600">{{ error }}</p>

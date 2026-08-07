@@ -1,9 +1,11 @@
 <script setup>
 import DownloadLegalPdfButton from '@/Components/DownloadLegalPdfButton.vue';
+import PrivacyPolicyEn from '@/Components/PrivacyPolicyEn.vue';
 import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
     appName: {
@@ -20,6 +22,8 @@ const props = defineProps({
     },
 });
 
+const { t, locale } = useI18n();
+
 const supportBotHandle = computed(() =>
     `@${String(props.supportTelegramUsername || 'ErlanProtask_bot').replace(/^@/, '')}`,
 );
@@ -31,7 +35,7 @@ const supportBotUrl = computed(
 </script>
 
 <template>
-    <Head title="Политика конфиденциальности" />
+    <Head :title="t('privacy.title')" />
 
     <div class="min-h-screen bg-slate-50 text-slate-800">
         <PublicSiteHeader />
@@ -39,13 +43,16 @@ const supportBotUrl = computed(
         <main class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
             <div id="privacy-document" class="bg-white">
             <h1 class="text-2xl font-bold text-slate-900">
-                Политика конфиденциальности
+                {{ t('privacy.title') }}
             </h1>
             <p class="mt-2 text-sm text-slate-500">
-                Последнее обновление: 17 июля 2026 г.
+                {{ t('privacy.updatedFixed') }}
+            </p>
+            <p v-if="locale === 'en'" class="mt-2 text-xs text-amber-700">
+                {{ t('privacy.authoritativeNote') }}
             </p>
 
-            <div class="prose prose-slate mt-8 max-w-none text-sm leading-relaxed">
+            <div v-if="locale !== 'en'" class="prose prose-slate mt-8 max-w-none text-sm leading-relaxed">
                 <section class="mb-8">
                     <h2 class="text-lg font-semibold text-slate-900">
                         1. Общие положения
@@ -491,6 +498,15 @@ const supportBotUrl = computed(
                     </p>
                 </section>
             </div>
+
+            <PrivacyPolicyEn
+                v-if="locale === 'en'"
+                :app-name="appName"
+                :support-bot-handle="supportBotHandle"
+                :support-bot-url="supportBotUrl"
+                :news-group-url="newsGroupUrl"
+            />
+
             </div>
 
             <DownloadLegalPdfButton

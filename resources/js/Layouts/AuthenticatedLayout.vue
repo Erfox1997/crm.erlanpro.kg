@@ -1,10 +1,12 @@
-<script setup>
+﻿<script setup>
 import BrandLogo from '@/Components/BrandLogo.vue';
 import CrmSidebarLink from '@/Components/CrmSidebarLink.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
+import LanguageSwitcher from '@/Components/LanguageSwitcher.vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
     fullHeight: {
@@ -13,6 +15,7 @@ const props = defineProps({
     },
 });
 
+const { t } = useI18n();
 const page = usePage();
 const branding = page.props.branding ?? {};
 const subscription = computed(() => page.props.subscription ?? null);
@@ -43,10 +46,10 @@ const subscriptionLine = computed(() => {
     }
 
     if (subscription.value.is_expired) {
-        return `${subscription.value.tariff_name} · истекла ${subscription.value.ends_at}`;
+        return `${subscription.value.tariff_name} ${t('nav.subscriptionExpired', { date: subscription.value.ends_at })}`;
     }
 
-    return `${subscription.value.tariff_name} · до ${subscription.value.ends_at}`;
+    return `${subscription.value.tariff_name} ${t('nav.subscriptionUntil', { date: subscription.value.ends_at })}`;
 });
 
 const subscriptionTextClass = computed(() => {
@@ -171,7 +174,7 @@ onUnmounted(() => {
             v-if="navMode === 'hidden' && !telegramMiniApp"
             type="button"
             class="fixed left-0 top-1/2 z-30 hidden -translate-y-1/2 rounded-r-lg border border-slate-700 border-l-0 bg-slate-800 px-1.5 py-8 text-slate-200 shadow-lg hover:bg-slate-700 md:block"
-            title="Показать меню"
+            :title="t('nav.showMenu')"
             @click="showSidebar"
         >
             <svg
@@ -231,8 +234,8 @@ onUnmounted(() => {
                         class="hidden rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:inline-flex"
                         :title="
                             collapseLabels
-                                ? 'Развернуть панель'
-                                : 'Свернуть в иконки'
+                                ? t('nav.expandPanel')
+                                : t('nav.collapseToIcons')
                         "
                         @click="toggleCollapse"
                     >
@@ -270,7 +273,7 @@ onUnmounted(() => {
                     <button
                         type="button"
                         class="hidden rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:inline-flex"
-                        title="Скрыть меню"
+                        :title="t('nav.hideMenu')"
                         @click="hideSidebar"
                     >
                         <svg
@@ -291,7 +294,7 @@ onUnmounted(() => {
                     <button
                         type="button"
                         class="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:hidden"
-                        aria-label="Закрыть меню"
+                        :aria-label="t('nav.closeMenu')"
                         @click="closeMobileDrawer"
                     >
                         <svg
@@ -319,13 +322,13 @@ onUnmounted(() => {
                     v-if="!collapseLabels"
                     class="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"
                 >
-                    Рабочая зона
+                    {{ t('nav.workArea') }}
                 </p>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('dashboard')"
                     :href="route('dashboard')"
-                    title="Дашборд"
+                    :title="t('nav.dashboard')"
                     :active="!!route().current('dashboard')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -346,13 +349,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Дашборд
+                    {{ t('nav.dashboard') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('shop-sales')"
                     :href="route('shop-sales.index')"
-                    title="Продажи магазина"
+                    :title="t('nav.shopSales')"
                     :active="!!route().current('shop-sales.index')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -373,13 +376,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Продажи магазина
+                    {{ t('nav.shopSales') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('shop-sales')"
                     :href="route('shop-sales.report')"
-                    title="Отчёт по менеджерам"
+                    :title="t('nav.managersReport')"
                     :active="!!route().current('shop-sales.report')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -400,13 +403,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Отчёт по менеджерам
+                    {{ t('nav.managersReport') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('messenger')"
                     :href="route('messenger.index')"
-                    title="Месенджер"
+                    :title="t('nav.messenger')"
                     :active="!!route().current('messenger.index')"
                     :badge="$page.props.messengerUnread"
                     :collapsed="collapseLabels"
@@ -428,13 +431,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Месенджер
+                    {{ t('nav.messenger') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('tasks')"
                     :href="route('tasks.index')"
-                    title="Задачи"
+                    :title="t('nav.tasks')"
                     :active="!!route().current('tasks.*')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -455,13 +458,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Задачи
+                    {{ t('nav.tasks') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('comments')"
                     :href="route('comments.index')"
-                    title="Комментарии"
+                    :title="t('nav.comments')"
                     :active="!!route().current('comments.*')"
                     :badge="$page.props.commentsUnread"
                     :collapsed="collapseLabels"
@@ -483,13 +486,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Комментарии
+                    {{ t('nav.comments') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('quick-replies')"
                     :href="route('messenger.quick-replies.index')"
-                    title="Быстрые ответы"
+                    :title="t('nav.quickReplies')"
                     :active="!!route().current('messenger.quick-replies.*')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -510,13 +513,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Быстрые ответы
+                    {{ t('nav.quickReplies') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('client-fields')"
                     :href="route('client-fields.index')"
-                    title="Данные клиента"
+                    :title="t('nav.clientFields')"
                     :active="!!route().current('client-fields.*')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -537,13 +540,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Данные клиента
+                    {{ t('nav.clientFields') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('funnels')"
                     :href="route('funnels.index')"
-                    title="Воронки"
+                    :title="t('nav.funnels')"
                     :active="
                         !!(
                             route().current('funnels.*') ||
@@ -569,13 +572,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Воронки
+                    {{ t('nav.funnels') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('broadcasts')"
                     :href="route('broadcasts.index')"
-                    title="Рассылка"
+                    :title="t('nav.broadcasts')"
                     :active="!!route().current('broadcasts.*')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -596,13 +599,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Рассылка
+                    {{ t('nav.broadcasts') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('integrations')"
                     :href="route('integrations.index')"
-                    title="Интеграции"
+                    :title="t('nav.integrations')"
                     :active="!!route().current('integrations.*')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -623,13 +626,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Интеграции
+                    {{ t('nav.integrations') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('tariffs')"
                     :href="route('tariffs.index')"
-                    title="Тарифы"
+                    :title="t('nav.tariffs')"
                     :active="!!route().current('tariffs.*')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -650,13 +653,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Тарифы
+                    {{ t('nav.tariffs') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('positions')"
                     :href="route('positions.index')"
-                    title="Должности"
+                    :title="t('nav.positions')"
                     :active="!!route().current('positions.*')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -677,13 +680,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Должности
+                    {{ t('nav.positions') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('employees')"
                     :href="route('employees.index')"
-                    title="Сотрудники"
+                    :title="t('nav.employees')"
                     :active="!!route().current('employees.*')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -704,13 +707,13 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Сотрудники
+                    {{ t('nav.employees') }}
                 </CrmSidebarLink>
 
                 <CrmSidebarLink
                     v-if="canAccessPage('chat-distribution')"
                     :href="route('chat-distribution.index')"
-                    title="Распределение чата"
+                    :title="t('nav.chatDistribution')"
                     :active="!!route().current('chat-distribution.*')"
                     :collapsed="collapseLabels"
                     @navigate="closeMobileDrawer"
@@ -731,7 +734,7 @@ onUnmounted(() => {
                             />
                         </svg>
                     </template>
-                    Распределение чата
+                    {{ t('nav.chatDistribution') }}
                 </CrmSidebarLink>
             </nav>
 
@@ -773,7 +776,7 @@ onUnmounted(() => {
                     <button
                         type="button"
                         class="inline-flex shrink-0 rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"
-                        aria-label="Открыть меню"
+                        :aria-label="t('nav.openMenu')"
                         @click="toggleMobileDrawer"
                     >
                         <svg
@@ -831,8 +834,8 @@ onUnmounted(() => {
                     >
                         {{
                             subscription?.is_expired || subscription?.expires_soon
-                                ? 'Продлить'
-                                : 'Тарифы'
+                                ? t('nav.renew')
+                                : t('nav.tariffs')
                         }}
                     </Link>
                 </div>
@@ -868,15 +871,18 @@ onUnmounted(() => {
                         </span>
                     </template>
                     <template #content>
+                        <div class="border-b border-slate-100 px-4 py-2">
+                            <LanguageSwitcher variant="light" />
+                        </div>
                         <DropdownLink :href="route('profile.edit')">
-                            Профиль
+                            {{ t('nav.profile') }}
                         </DropdownLink>
                         <DropdownLink
                             :href="route('logout')"
                             method="post"
                             as="button"
                         >
-                            Выйти
+                            {{ t('nav.logout') }}
                         </DropdownLink>
                     </template>
                 </Dropdown>

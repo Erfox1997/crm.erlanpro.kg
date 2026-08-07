@@ -3,6 +3,9 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     clients: Object,
@@ -25,19 +28,19 @@ watch(q, (value) => {
 </script>
 
 <template>
-    <Head title="Клиенты" />
+    <Head :title="t('clients.title')" />
 
     <AuthenticatedLayout>
         <template #header>
             <div
                 class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
             >
-                <h2 class="text-xl font-semibold text-gray-800">Клиенты</h2>
+                <h2 class="text-xl font-semibold text-gray-800">{{ t('clients.title') }}</h2>
                 <Link
                     :href="route('clients.create')"
                     class="inline-flex items-center rounded-md border border-transparent bg-gray-800 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-gray-700 focus:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                 >
-                    Добавить клиента
+                    {{ t('clients.add') }}
                 </Link>
             </div>
         </template>
@@ -49,7 +52,7 @@ watch(q, (value) => {
                         v-model="q"
                         type="search"
                         class="block w-full"
-                        placeholder="Поиск по имени, email, телефону"
+                        :placeholder="t('clients.searchPh')"
                     />
                 </div>
 
@@ -62,20 +65,20 @@ watch(q, (value) => {
                                 <th
                                     class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500"
                                 >
-                                    Имя
+                                    {{ t('clients.nameCol') }}
                                 </th>
                                 <th
                                     class="hidden px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 sm:table-cell"
                                 >
-                                    Телефон
+                                    {{ t('common.phone') }}
                                 </th>
                                 <th
                                     class="hidden px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 md:table-cell"
                                 >
-                                    Email
+                                    {{ t('common.email') }}
                                 </th>
                                 <th class="relative px-4 py-3">
-                                    <span class="sr-only">Действия</span>
+                                    <span class="sr-only">{{ t('common.actions') }}</span>
                                 </th>
                             </tr>
                         </thead>
@@ -99,7 +102,7 @@ watch(q, (value) => {
                                         :href="route('clients.edit', client.id)"
                                         class="text-indigo-600 hover:text-indigo-900"
                                     >
-                                        Изменить
+                                        {{ t('common.edit') }}
                                     </Link>
                                 </td>
                             </tr>
@@ -108,7 +111,7 @@ watch(q, (value) => {
                                     colspan="4"
                                     class="px-4 py-8 text-center text-sm text-gray-500"
                                 >
-                                    Клиентов пока нет.
+                                    {{ t('clients.empty') }}
                                 </td>
                             </tr>
                         </tbody>

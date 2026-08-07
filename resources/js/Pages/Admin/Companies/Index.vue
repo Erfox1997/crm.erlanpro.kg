@@ -3,16 +3,18 @@ import AdminLayout from '@/Layouts/AdminLayout.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
     companies: Object,
     filters: Object,
     pageTitle: {
         type: String,
-        default: 'Список клиентов',
+        default: '',
     },
 });
 
+const { t } = useI18n();
 const q = ref(props.filters.q ?? '');
 
 let timeout;
@@ -29,13 +31,13 @@ watch(q, (value) => {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="t('admin.companiesList')" />
 
     <AdminLayout>
         <template #header>
             <div>
                 <h1 class="text-2xl font-bold text-slate-900">
-                    {{ pageTitle }}
+                    {{ t('admin.companiesList') }}
                 </h1>
             </div>
         </template>
@@ -45,7 +47,7 @@ watch(q, (value) => {
                 v-model="q"
                 type="search"
                 class="block w-full"
-                placeholder="Поиск по компании, имени или email"
+                :placeholder="t('admin.companies.search')"
             />
         </div>
 
@@ -63,27 +65,27 @@ watch(q, (value) => {
                         <th
                             class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
-                            Клиент
+                            {{ t('admin.companies.client') }}
                         </th>
                         <th
                             class="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 md:table-cell"
                         >
-                            Email
+                            {{ t('common.email') }}
                         </th>
                         <th
                             class="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 lg:table-cell"
                         >
-                            Тариф
+                            {{ t('admin.companies.tariff') }}
                         </th>
                         <th
                             class="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 sm:table-cell"
                         >
-                            Действует до
+                            {{ t('admin.companies.validUntil') }}
                         </th>
                         <th
                             class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                         >
-                            Статус
+                            {{ t('common.status') }}
                         </th>
                         <th class="px-4 py-3" />
                     </tr>
@@ -136,7 +138,7 @@ watch(q, (value) => {
                                 :href="route('admin.companies.show', company.id)"
                                 class="text-sm font-semibold text-indigo-600 hover:text-indigo-500"
                             >
-                                Просмотр
+                                {{ t('admin.companies.view') }}
                             </Link>
                         </td>
                     </tr>
@@ -145,7 +147,7 @@ watch(q, (value) => {
                             colspan="7"
                             class="px-4 py-10 text-center text-sm text-slate-500"
                         >
-                            Компаний пока нет.
+                            {{ t('admin.companies.empty') }}
                         </td>
                     </tr>
                 </tbody>

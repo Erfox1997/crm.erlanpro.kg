@@ -5,6 +5,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     telegramConfigured: {
@@ -21,9 +22,11 @@ defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Новое обновление правил',
+        default: '',
     },
 });
+
+const { t } = useI18n();
 
 const form = useForm({
     title: '',
@@ -38,34 +41,36 @@ function submit() {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="t('admin.ruleUpdates.newTitle')" />
 
     <AdminLayout>
         <template #header>
             <div>
                 <h1 class="text-2xl font-bold text-slate-900">
-                    {{ pageTitle }}
+                    {{ t('admin.ruleUpdates.newTitle') }}
                 </h1>
                 <p class="mt-1 text-sm text-slate-500">
-                    Текст появится на
+                    {{ t('admin.ruleUpdates.createHintBefore') }}
                     <Link
                         href="/updates"
                         class="font-medium text-indigo-600 hover:text-indigo-500"
                         target="_blank"
                         >/updates</Link
                     >
-                    и сразу отправится ботом
+                    {{ t('admin.ruleUpdates.createHintMid') }}
                     <template v-if="newsBotUsername"
                         >@{{ newsBotUsername }}</template
                     >
-                    в группу
+                    {{ t('admin.ruleUpdates.createHintGroup') }}
                     <template v-if="telegramConfigured">
                         <code class="rounded bg-slate-100 px-1">{{
                             announcementChatId
                         }}</code>
                     </template>
-                    <template v-else>(если news-бот настроен)</template>
-                    .
+                    <template v-else>{{
+                        t('admin.ruleUpdates.createHintIfConfigured')
+                    }}</template
+                    >.
                 </p>
             </div>
         </template>
@@ -75,43 +80,42 @@ function submit() {
             @submit.prevent="submit"
         >
             <div>
-                <InputLabel for="title" value="Заголовок" />
+                <InputLabel for="title" :value="t('admin.ruleUpdates.heading')" />
                 <TextInput
                     id="title"
                     v-model="form.title"
                     class="mt-1 block w-full"
-                    placeholder="Например: Изменение условий возврата"
+                    :placeholder="t('admin.ruleUpdates.titlePh')"
                     required
                 />
                 <InputError class="mt-2" :message="form.errors.title" />
             </div>
 
             <div>
-                <InputLabel for="body" value="Текст изменения" />
+                <InputLabel for="body" :value="t('admin.ruleUpdates.body')" />
                 <textarea
                     id="body"
                     v-model="form.body"
                     rows="12"
                     required
                     class="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    placeholder="Кратко опишите, что изменилось в правилах…"
+                    :placeholder="t('admin.ruleUpdates.bodyPh')"
                 />
                 <InputError class="mt-2" :message="form.errors.body" />
                 <p class="mt-2 text-xs text-slate-500">
-                    После отправки сообщение нельзя «перенести» дату в Telegram —
-                    это и есть доказательство момента публикации.
+                    {{ t('admin.ruleUpdates.immutable') }}
                 </p>
             </div>
 
             <div class="flex items-center gap-3">
                 <PrimaryButton :disabled="form.processing">
-                    Опубликовать на сайте и в Telegram
+                    {{ t('admin.ruleUpdates.publish') }}
                 </PrimaryButton>
                 <Link
                     :href="route('admin.rule-updates.index')"
                     class="text-sm text-slate-600 hover:text-slate-900"
                 >
-                    Отмена
+                    {{ t('common.cancel') }}
                 </Link>
             </div>
         </form>

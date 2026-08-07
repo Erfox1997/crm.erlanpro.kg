@@ -2,8 +2,10 @@
 import DownloadLegalPdfButton from '@/Components/DownloadLegalPdfButton.vue';
 import PublicSiteFooter from '@/Components/PublicSiteFooter.vue';
 import PublicSiteHeader from '@/Components/PublicSiteHeader.vue';
+import TermsOfServiceEn from '@/Components/TermsOfServiceEn.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
     appName: {
@@ -20,6 +22,8 @@ const props = defineProps({
     },
 });
 
+const { t, locale } = useI18n();
+
 const supportBotHandle = computed(() =>
     `@${String(props.supportTelegramUsername || 'ErlanProtask_bot').replace(/^@/, '')}`,
 );
@@ -31,7 +35,7 @@ const supportBotUrl = computed(
 </script>
 
 <template>
-    <Head title="Пользовательское соглашение" />
+    <Head :title="t('terms.title')" />
 
     <div class="min-h-screen bg-slate-50 text-slate-800">
         <PublicSiteHeader />
@@ -39,31 +43,33 @@ const supportBotUrl = computed(
         <main class="mx-auto max-w-3xl px-4 py-10 sm:px-6">
             <div id="terms-document" class="bg-white">
             <h1 class="text-2xl font-bold text-slate-900">
-                Пользовательское соглашение
+                {{ t('terms.title') }}
             </h1>
             <p class="mt-2 text-sm text-slate-500">
-                Последнее обновление: 17 июля 2026 г.
+                {{ t('terms.updatedFixed') }}
             </p>
             <p class="mt-2 text-sm text-slate-500">
-                История изменений правил:
+                {{ t('terms.historyBefore') }}
                 <Link
                     href="/updates"
                     class="text-indigo-600 hover:underline"
-                    >страница «Обновления правил»</Link
+                    >{{ t('terms.historyUpdates') }}</Link
                 >
-                и группа Telegram
+                {{ t('terms.historyAnd') }}
                 <a
                     :href="newsGroupUrl"
                     class="text-indigo-600 hover:underline"
                     target="_blank"
                     rel="noopener noreferrer"
-                    >«Новости ErlanPro»</a
+                    >{{ t('terms.historyNews') }}</a
                 >
-                (можно вступить по ссылке; дата публикации фиксируется
-                сообщением в Telegram).
+                {{ t('terms.historyAfter') }}
+            </p>
+            <p v-if="locale === 'en'" class="mt-2 text-xs text-amber-700">
+                {{ t('terms.authoritativeNote') }}
             </p>
 
-            <div class="prose prose-slate mt-8 max-w-none text-sm leading-relaxed">
+            <div v-if="locale !== 'en'" class="prose prose-slate mt-8 max-w-none text-sm leading-relaxed">
                 <section class="mb-8">
                     <h2 class="text-lg font-semibold text-slate-900">
                         1. Предмет соглашения
@@ -615,6 +621,15 @@ const supportBotUrl = computed(
                     </p>
                 </section>
             </div>
+
+            <TermsOfServiceEn
+                v-if="locale === 'en'"
+                :app-name="appName"
+                :support-bot-handle="supportBotHandle"
+                :support-bot-url="supportBotUrl"
+                :news-group-url="newsGroupUrl"
+            />
+
             </div>
 
             <DownloadLegalPdfButton

@@ -4,18 +4,24 @@ import ChannelIcon from '@/Components/Messenger/ChannelIcon.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     tasks: { type: Array, default: () => [] },
     filter: { type: String, default: 'open' },
-    pageTitle: { type: String, default: 'Задачи' },
+    pageTitle: { type: String, default: null },
 });
 
-const filters = [
-    { value: 'open', label: 'Открытые' },
-    { value: 'done', label: 'Выполненные' },
-    { value: 'all', label: 'Все' },
-];
+const title = computed(() => props.pageTitle || t('tasks.title'));
+
+const filters = computed(() => [
+    { value: 'open', label: t('tasks.open') },
+    { value: 'done', label: t('tasks.done') },
+    { value: 'all', label: t('common.all') },
+]);
 
 function setFilter(value) {
     router.get(route('tasks.index'), { filter: value }, {
@@ -33,20 +39,30 @@ function reopenTask(task) {
 }
 
 function destroyTask(task) {
-    if (! confirm('Удалить задачу?')) {
+    if (! confirm(t('tasks.confirmDelete'))) {
         return;
     }
 
     router.delete(route('tasks.destroy', task.id), { preserveScroll: true });
 }
+
+function statusLabel(task) {
+    if (task.completed) {
+        return t('tasks.status.done');
+    }
+    if (task.overdue) {
+        return t('tasks.status.overdue');
+    }
+    return t('tasks.status.todo');
+}
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="title" />
 
     <AuthenticatedLayout>
         <template #header>
-            <h2 class="text-xl font-semibold text-gray-800">{{ pageTitle }}</h2>
+            <h2 class="text-xl font-semibold text-gray-800">{{ title }}</h2>
         </template>
 
         <div class="py-8">
@@ -91,7 +107,7 @@ function destroyTask(task) {
                                                     ? 'bg-rose-100 text-rose-800'
                                                     : 'bg-amber-100 text-amber-800'"
                                         >
-                                            {{ task.completed ? 'Выполнено' : task.overdue ? 'Просрочено' : 'К выполнению' }}
+                                            {{ statusLabel(task) }}
                                         </span>
                                         <span class="text-sm font-semibold text-slate-900">
                                             {{ task.due_on_label }}
@@ -131,7 +147,7 @@ function destroyTask(task) {
                                         class="!px-3 !py-1.5 !text-xs"
                                         @click="completeTask(task)"
                                     >
-                                        Выполнено
+                                        {{ t('tasks.status.done') }}
                                     </PrimaryButton>
                                     <SecondaryButton
                                         v-else
@@ -139,14 +155,14 @@ function destroyTask(task) {
                                         class="!px-3 !py-1.5 !text-xs"
                                         @click="reopenTask(task)"
                                     >
-                                        Открыть снова
+                                        {{ t('tasks.reopen') }}
                                     </SecondaryButton>
                                     <button
                                         type="button"
                                         class="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50"
                                         @click="destroyTask(task)"
                                     >
-                                        Удалить
+                                        {{ t('common.delete') }}
                                     </button>
                                 </div>
                             </div>
@@ -156,7 +172,7 @@ function destroyTask(task) {
                             v-if="tasks.length === 0"
                             class="px-4 py-12 text-center text-sm text-slate-500"
                         >
-                            Задач пока нет. Создайте задачу из чата в мессенджере.
+                            {{ t('tasks.empty') }}
                         </li>
                     </ul>
                 </div>

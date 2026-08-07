@@ -8,13 +8,16 @@ import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
 
 const props = defineProps({
     campaigns: { type: Array, default: () => [] },
     pipelines: { type: Array, default: () => [] },
     clientFields: { type: Array, default: () => [] },
     channels: { type: Array, default: () => [] },
-    pageTitle: { type: String, default: 'Рассылка' },
+    pageTitle: { type: String, default: '' },
 });
 
 const showCreateModal = ref(false);
@@ -25,6 +28,8 @@ const previewError = ref('');
 const connectedChannels = computed(() =>
     props.channels.filter((channel) => channel.connected),
 );
+
+const dateLocaleTag = computed(() => (locale.value === 'en' ? 'en-US' : 'ru-RU'));
 
 const form = useForm({
     name: '',
@@ -45,15 +50,20 @@ const selectedPipeline = computed(() =>
 
 const stages = computed(() => selectedPipeline.value?.stages ?? []);
 
-const statusMeta = {
-    scheduled: { label: 'Запланирована', class: 'bg-sky-100 text-sky-800' },
-    queued: { label: 'В очереди', class: 'bg-amber-100 text-amber-800' },
-    running: { label: 'Отправляется', class: 'bg-indigo-100 text-indigo-800' },
-    completed: { label: 'Завершена', class: 'bg-emerald-100 text-emerald-800' },
-    cancelled: { label: 'Отменена', class: 'bg-slate-100 text-slate-600' },
-    failed: { label: 'Ошибка', class: 'bg-rose-100 text-rose-800' },
-    draft: { label: 'Черновик', class: 'bg-slate-100 text-slate-600' },
+const statusClass = {
+    scheduled: 'bg-sky-100 text-sky-800',
+    queued: 'bg-amber-100 text-amber-800',
+    running: 'bg-indigo-100 text-indigo-800',
+    completed: 'bg-emerald-100 text-emerald-800',
+    cancelled: 'bg-slate-100 text-slate-600',
+    failed: 'bg-rose-100 text-rose-800',
+    draft: 'bg-slate-100 text-slate-600',
 };
+
+function statusLabel(status) {
+    const key = status === 'running' ? 'sending' : status;
+    return t(`broadcasts.status.${key}`);
+}
 
 function openCreateModal() {
     form.clearErrors();
@@ -132,14 +142,14 @@ async function refreshPreview() {
         const data = await response.json();
 
         if (!response.ok) {
-            previewError.value = data.message || 'Не удалось посчитать получателей';
+            previewError.value = data.message || t('broadcasts.previewErr');
             preview.value = { total: 0, sendable: 0, skipped: 0 };
             return;
         }
 
         preview.value = data;
     } catch (error) {
-        previewError.value = 'Не удалось посчитать получателей';
+        previewError.value = t('broadcasts.previewErr');
         preview.value = { total: 0, sendable: 0, skipped: 0 };
     } finally {
         previewLoading.value = false;
@@ -198,7 +208,7 @@ function submitCreate() {
 function formatDate(value) {
     if (!value) return '—';
     try {
-        return new Date(value).toLocaleString('ru-RU', {
+        return new Date(value).toLocaleString(dateLocaleTag.value, {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
@@ -218,7 +228,7 @@ function progressPercent(campaign) {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="pageTitle || t('broadcasts.title')" />
 
     <AuthenticatedLayout>
         <div class="bg-slate-100 py-8 sm:py-10">
@@ -232,9 +242,9 @@ function progressPercent(campaign) {
 
                 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h1 class="text-xl font-semibold text-slate-900">Рассылка</h1>
+                        <h1 class="text-xl font-semibold text-slate-900">{{ t('broadcasts.title') }}</h1>
                         <p class="mt-1 text-sm text-slate-500">
-                            Отправка сообщений по воронке или по данным клиента — в фоне, с паузами и по расписанию.
+                            {{ t('broadcasts.subtitleFull') }}
                         </p>
                     </div>
                     <button
@@ -242,7 +252,7 @@ function progressPercent(campaign) {
                         class="rounded-lg bg-slate-800 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700"
                         @click="openCreateModal"
                     >
-                        Новая рассылка
+                        {{ t('broadcasts.new') }}
                     </button>
                 </div>
 
@@ -251,7 +261,7 @@ function progressPercent(campaign) {
                         v-if="campaigns.length === 0"
                         class="px-6 py-16 text-center text-sm text-slate-400"
                     >
-                        Рассылок пока нет. Создайте первую — страница не будет зависать даже на тысячах получателей.
+                        {{ t('broadcasts.emptyFull') }}
                     </div>
 
                     <ul v-else class="divide-y divide-slate-100">
@@ -268,13 +278,13 @@ function progressPercent(campaign) {
                                     <div class="min-w-0">
                                         <div class="flex flex-wrap items-center gap-2">
                                             <p class="truncate text-sm font-semibold text-slate-900">
-                                                {{ campaign.name || `Рассылка #${campaign.id}` }}
+                                                {{ campaign.name || t('broadcasts.defaultName', { id: campaign.id }) }}
                                             </p>
                                             <span
                                                 class="inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium"
-                                                :class="statusMeta[campaign.status]?.class || 'bg-slate-100 text-slate-600'"
+                                                :class="statusClass[campaign.status] || 'bg-slate-100 text-slate-600'"
                                             >
-                                                {{ statusMeta[campaign.status]?.label || campaign.status }}
+                                                {{ statusLabel(campaign.status) || campaign.status }}
                                             </span>
                                         </div>
                                         <p class="mt-1 text-xs text-slate-500">
@@ -302,7 +312,7 @@ function progressPercent(campaign) {
                                             {{ campaign.sent_count }}/{{ campaign.total_recipients }}
                                         </p>
                                         <p class="text-xs text-slate-400">
-                                            пауза {{ campaign.delay_seconds }} с
+                                            {{ t('broadcasts.pause', { n: campaign.delay_seconds }) }}
                                         </p>
                                         <p class="mt-1 text-xs text-slate-400">
                                             {{ formatDate(campaign.scheduled_at || campaign.created_at) }}
@@ -324,26 +334,26 @@ function progressPercent(campaign) {
 
         <Modal :show="showCreateModal" max-width="2xl" @close="showCreateModal = false">
             <div class="p-6">
-                <h3 class="text-lg font-semibold text-slate-900">Новая рассылка</h3>
+                <h3 class="text-lg font-semibold text-slate-900">{{ t('broadcasts.new') }}</h3>
                 <p class="mt-1 text-sm text-slate-500">
-                    Сообщения уходят в фоне через очередь — браузер не ждёт отправку всем клиентам.
+                    {{ t('broadcasts.newHint') }}
                 </p>
 
                 <form class="mt-5 space-y-4" @submit.prevent="submitCreate">
                     <div>
-                        <InputLabel for="broadcast-name" value="Название (необязательно)" />
+                        <InputLabel for="broadcast-name" :value="t('broadcasts.nameOptional')" />
                         <TextInput
                             id="broadcast-name"
                             v-model="form.name"
                             type="text"
                             class="mt-1 block w-full"
-                            placeholder="Например: Акция март — женщины"
+                            :placeholder="t('broadcasts.namePh')"
                         />
                         <InputError class="mt-1" :message="form.errors.name" />
                     </div>
 
                     <div>
-                        <InputLabel value="Канал" />
+                        <InputLabel :value="t('broadcasts.channel')" />
                         <select
                             v-model="form.channel"
                             class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500"
@@ -354,14 +364,14 @@ function progressPercent(campaign) {
                                 :value="channel.value"
                                 :disabled="!channel.connected"
                             >
-                                {{ channel.label }}{{ channel.connected ? '' : ' (не подключён)' }}
+                                {{ channel.label }}{{ channel.connected ? '' : t('broadcasts.notConnected') }}
                             </option>
                         </select>
                         <InputError class="mt-1" :message="form.errors.channel" />
                     </div>
 
                     <div>
-                        <InputLabel value="Тип аудитории" />
+                        <InputLabel :value="t('broadcasts.audienceType')" />
                         <div class="mt-2 grid gap-2 sm:grid-cols-2">
                             <label
                                 class="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 text-sm"
@@ -369,8 +379,8 @@ function progressPercent(campaign) {
                             >
                                 <input v-model="form.audience_type" type="radio" value="funnel" class="mt-0.5" />
                                 <span>
-                                    <span class="font-medium text-slate-800">По воронке</span>
-                                    <span class="mt-0.5 block text-xs text-slate-500">Клиенты на выбранном этапе</span>
+                                    <span class="font-medium text-slate-800">{{ t('broadcasts.byFunnel') }}</span>
+                                    <span class="mt-0.5 block text-xs text-slate-500">{{ t('broadcasts.byFunnelHint') }}</span>
                                 </span>
                             </label>
                             <label
@@ -379,8 +389,8 @@ function progressPercent(campaign) {
                             >
                                 <input v-model="form.audience_type" type="radio" value="client_fields" class="mt-0.5" />
                                 <span>
-                                    <span class="font-medium text-slate-800">По данным клиента</span>
-                                    <span class="mt-0.5 block text-xs text-slate-500">Фильтр по полям (пол и т.д.)</span>
+                                    <span class="font-medium text-slate-800">{{ t('broadcasts.byFields') }}</span>
+                                    <span class="mt-0.5 block text-xs text-slate-500">{{ t('broadcasts.byFieldsHint') }}</span>
                                 </span>
                             </label>
                         </div>
@@ -389,7 +399,7 @@ function progressPercent(campaign) {
 
                     <div v-if="form.audience_type === 'funnel'" class="grid gap-3 sm:grid-cols-2">
                         <div>
-                            <InputLabel value="Воронка" />
+                            <InputLabel :value="t('broadcasts.pipeline')" />
                             <select
                                 v-model="form.pipeline_id"
                                 class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500"
@@ -401,7 +411,7 @@ function progressPercent(campaign) {
                             <InputError class="mt-1" :message="form.errors.pipeline_id" />
                         </div>
                         <div>
-                            <InputLabel value="Этап" />
+                            <InputLabel :value="t('broadcasts.stage')" />
                             <select
                                 v-model="form.stage_id"
                                 class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500"
@@ -419,7 +429,7 @@ function progressPercent(campaign) {
                             v-if="clientFields.length === 0"
                             class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
                         >
-                            Сначала создайте поля в разделе «Данные клиента».
+                            {{ t('broadcasts.needFields') }}
                         </div>
                         <div
                             v-for="(row, index) in form.field_filters"
@@ -427,7 +437,7 @@ function progressPercent(campaign) {
                             class="grid gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-[1fr_1fr_auto]"
                         >
                             <div>
-                                <InputLabel value="Поле" />
+                                <InputLabel :value="t('broadcasts.field')" />
                                 <select
                                     v-model="row.key"
                                     class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500"
@@ -442,13 +452,13 @@ function progressPercent(campaign) {
                                 </select>
                             </div>
                             <div>
-                                <InputLabel value="Значение" />
+                                <InputLabel :value="t('broadcasts.value')" />
                                 <select
                                     v-if="(clientFields.find((f) => f.key === row.key)?.options || []).length"
                                     v-model="row.value"
                                     class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500"
                                 >
-                                    <option value="">Выберите…</option>
+                                    <option value="">{{ t('common.select') }}</option>
                                     <option
                                         v-for="opt in clientFields.find((f) => f.key === row.key)?.options || []"
                                         :key="opt"
@@ -462,7 +472,7 @@ function progressPercent(campaign) {
                                     v-model="row.value"
                                     type="text"
                                     class="mt-1 block w-full"
-                                    placeholder="Например: женский"
+                                    :placeholder="t('broadcasts.valuePh')"
                                 />
                             </div>
                             <div class="flex items-end">
@@ -471,7 +481,7 @@ function progressPercent(campaign) {
                                     class="mb-0.5 rounded-md px-2 py-2 text-xs text-rose-600 hover:bg-rose-50"
                                     @click="removeFieldFilter(index)"
                                 >
-                                    Убрать
+                                    {{ t('common.remove') }}
                                 </button>
                             </div>
                         </div>
@@ -480,26 +490,26 @@ function progressPercent(campaign) {
                             class="text-sm font-medium text-teal-700 hover:text-teal-800"
                             @click="addFieldFilter"
                         >
-                            + Ещё фильтр
+                            {{ t('broadcasts.moreFilter') }}
                         </button>
                         <InputError :message="form.errors.field_filters" />
                     </div>
 
                     <div>
-                        <InputLabel for="broadcast-body" value="Текст сообщения" />
+                        <InputLabel for="broadcast-body" :value="t('broadcasts.message')" />
                         <textarea
                             id="broadcast-body"
                             v-model="form.body"
                             rows="4"
                             class="mt-1 block w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-teal-500 focus:ring-teal-500"
-                            placeholder="Текст рассылки…"
+                            :placeholder="t('broadcasts.bodyPh')"
                         />
                         <InputError class="mt-1" :message="form.errors.body" />
                     </div>
 
                     <div class="grid gap-3 sm:grid-cols-2">
                         <div>
-                            <InputLabel for="delay" value="Пауза между сообщениями (сек)" />
+                            <InputLabel for="delay" :value="t('broadcasts.delay')" />
                             <TextInput
                                 id="delay"
                                 v-model="form.delay_seconds"
@@ -509,20 +519,20 @@ function progressPercent(campaign) {
                                 class="mt-1 block w-full"
                             />
                             <p class="mt-1 text-xs text-slate-400">
-                                Рекомендуем 3–10 сек, чтобы снизить риск блокировки аккаунта.
+                                {{ t('broadcasts.delayHint') }}
                             </p>
                             <InputError class="mt-1" :message="form.errors.delay_seconds" />
                         </div>
                         <div>
-                            <InputLabel value="Когда отправить" />
+                            <InputLabel :value="t('broadcasts.when')" />
                             <div class="mt-2 space-y-2">
                                 <label class="flex items-center gap-2 text-sm text-slate-700">
                                     <input v-model="form.schedule_mode" type="radio" value="now" />
-                                    Сейчас
+                                    {{ t('broadcasts.now') }}
                                 </label>
                                 <label class="flex items-center gap-2 text-sm text-slate-700">
                                     <input v-model="form.schedule_mode" type="radio" value="later" />
-                                    Запланировать
+                                    {{ t('broadcasts.schedule') }}
                                 </label>
                                 <TextInput
                                     v-if="form.schedule_mode === 'later'"
@@ -537,24 +547,26 @@ function progressPercent(campaign) {
 
                     <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                         <template v-if="previewLoading">
-                            Считаем получателей…
+                            {{ t('broadcasts.counting') }}
                         </template>
                         <template v-else-if="previewError">
                             <span class="text-rose-600">{{ previewError }}</span>
                         </template>
                         <template v-else>
-                            Получателей: <strong>{{ preview.total }}</strong>
-                            · к отправке: <strong>{{ preview.sendable }}</strong>
-                            · без диалога: <strong>{{ preview.skipped }}</strong>
+                            {{ t('broadcasts.preview', {
+                                total: preview.total,
+                                sendable: preview.sendable,
+                                noDialog: preview.skipped,
+                            }) }}
                         </template>
                     </div>
 
                     <div class="flex justify-end gap-2 pt-2">
                         <SecondaryButton type="button" @click="showCreateModal = false">
-                            Отмена
+                            {{ t('common.cancel') }}
                         </SecondaryButton>
                         <PrimaryButton :disabled="form.processing || preview.sendable < 1">
-                            {{ form.schedule_mode === 'now' ? 'Запустить' : 'Запланировать' }}
+                            {{ form.schedule_mode === 'now' ? t('broadcasts.launch') : t('broadcasts.schedule') }}
                         </PrimaryButton>
                     </div>
                 </form>

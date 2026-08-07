@@ -4,6 +4,9 @@ import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const form = useForm({
     company_name: '',
@@ -23,21 +26,23 @@ const submit = () => {
 
 <template>
     <GuestLayout>
-        <Head title="Регистрация" />
+        <Head :title="t('auth.register.title')" />
 
         <div class="mb-8">
             <h1 class="text-2xl font-bold tracking-tight text-slate-900">
-                Регистрация компании
+                {{ t('auth.register.heading') }}
             </h1>
             <p class="mt-2 text-sm text-slate-600">
-                Укажите название организации и свои данные — появится отдельное
-                рабочее пространство CRM
+                {{ t('auth.register.sub') }}
             </p>
         </div>
 
         <form @submit.prevent="submit">
             <div>
-                <InputLabel for="company_name" value="Название компании" />
+                <InputLabel
+                    for="company_name"
+                    :value="t('auth.register.company')"
+                />
 
                 <TextInput
                     id="company_name"
@@ -53,7 +58,7 @@ const submit = () => {
             </div>
 
             <div class="mt-5">
-                <InputLabel for="name" value="Ваше имя" />
+                <InputLabel for="name" :value="t('auth.register.yourName')" />
 
                 <TextInput
                     id="name"
@@ -68,7 +73,7 @@ const submit = () => {
             </div>
 
             <div class="mt-5">
-                <InputLabel for="email" value="Email" />
+                <InputLabel for="email" :value="t('common.email')" />
 
                 <TextInput
                     id="email"
@@ -83,7 +88,7 @@ const submit = () => {
             </div>
 
             <div class="mt-5">
-                <InputLabel for="password" value="Пароль" />
+                <InputLabel for="password" :value="t('common.password')" />
 
                 <TextInput
                     id="password"
@@ -100,7 +105,7 @@ const submit = () => {
             <div class="mt-5">
                 <InputLabel
                     for="password_confirmation"
-                    value="Подтверждение пароля"
+                    :value="t('auth.register.passwordConfirm')"
                 />
 
                 <TextInput
@@ -128,23 +133,23 @@ const submit = () => {
                         required
                     />
                     <span class="text-sm leading-relaxed text-slate-600">
-                        Я принимаю
+                        {{ t('auth.register.accept') }}
                         <Link
                             :href="route('terms')"
                             target="_blank"
                             rel="noopener noreferrer"
                             class="font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-500"
                         >
-                            Пользовательское соглашение
+                            {{ t('auth.register.terms') }}
                         </Link>
-                        и
+                        {{ t('auth.register.and') }}
                         <Link
                             :href="route('privacy')"
                             target="_blank"
                             rel="noopener noreferrer"
                             class="font-medium text-indigo-600 underline decoration-indigo-200 underline-offset-2 hover:text-indigo-500"
                         >
-                            Политику конфиденциальности
+                            {{ t('auth.register.privacy') }}
                         </Link>
                     </span>
                 </label>
@@ -158,16 +163,16 @@ const submit = () => {
                     class="inline-flex w-full items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-25"
                     :disabled="form.processing || !form.terms_accepted"
                 >
-                    Зарегистрироваться
+                    {{ t('auth.register.submit') }}
                 </button>
 
                 <p class="text-center text-sm text-slate-600">
-                    Уже есть аккаунт?
+                    {{ t('auth.register.hasAccount') }}
                     <Link
                         :href="route('login')"
                         class="font-semibold text-indigo-600 hover:text-indigo-500"
                     >
-                        Войти
+                        {{ t('auth.register.login') }}
                     </Link>
                 </p>
             </div>
@@ -178,7 +183,7 @@ const submit = () => {
                 href="/"
                 class="font-medium text-indigo-600 hover:text-indigo-500"
             >
-                ← На главную
+                {{ t('common.backHome') }}
             </Link>
         </p>
     </GuestLayout>

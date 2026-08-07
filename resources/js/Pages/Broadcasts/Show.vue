@@ -3,31 +3,48 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import DangerButton from '@/Components/DangerButton.vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
 
 const props = defineProps({
     campaign: { type: Object, required: true },
     recipients: { type: Array, default: () => [] },
-    pageTitle: { type: String, default: 'Рассылка' },
+    pageTitle: { type: String, default: '' },
 });
 
 const page = usePage();
 
-const statusMeta = {
-    scheduled: { label: 'Запланирована', class: 'bg-sky-100 text-sky-800' },
-    queued: { label: 'В очереди', class: 'bg-amber-100 text-amber-800' },
-    running: { label: 'Отправляется', class: 'bg-indigo-100 text-indigo-800' },
-    completed: { label: 'Завершена', class: 'bg-emerald-100 text-emerald-800' },
-    cancelled: { label: 'Отменена', class: 'bg-slate-100 text-slate-600' },
-    failed: { label: 'Ошибка', class: 'bg-rose-100 text-rose-800' },
-    draft: { label: 'Черновик', class: 'bg-slate-100 text-slate-600' },
+const dateLocaleTag = computed(() => (locale.value === 'en' ? 'en-US' : 'ru-RU'));
+
+const statusClass = {
+    scheduled: 'bg-sky-100 text-sky-800',
+    queued: 'bg-amber-100 text-amber-800',
+    running: 'bg-indigo-100 text-indigo-800',
+    completed: 'bg-emerald-100 text-emerald-800',
+    cancelled: 'bg-slate-100 text-slate-600',
+    failed: 'bg-rose-100 text-rose-800',
+    draft: 'bg-slate-100 text-slate-600',
 };
 
-const recipientStatusMeta = {
-    pending: { label: 'Ожидает', class: 'text-amber-700' },
-    sent: { label: 'Отправлено', class: 'text-emerald-700' },
-    failed: { label: 'Ошибка', class: 'text-rose-700' },
-    skipped: { label: 'Пропущено', class: 'text-slate-500' },
+const recipientStatusClass = {
+    pending: 'text-amber-700',
+    sent: 'text-emerald-700',
+    failed: 'text-rose-700',
+    skipped: 'text-slate-500',
 };
+
+function statusLabel(status) {
+    const key = status === 'running' ? 'sending' : status;
+    return t(`broadcasts.status.${key}`);
+}
+
+function recipientStatusLabel(status) {
+    if (status === 'failed') {
+        return t('broadcasts.status.failed');
+    }
+    return t(`broadcasts.recipient.${status}`);
+}
 
 const isActive = computed(() =>
     ['queued', 'running', 'scheduled'].includes(props.campaign.status),
@@ -91,7 +108,7 @@ onUnmounted(() => {
 function formatDate(value) {
     if (!value) return '—';
     try {
-        return new Date(value).toLocaleString('ru-RU', {
+        return new Date(value).toLocaleString(dateLocaleTag.value, {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
@@ -104,7 +121,7 @@ function formatDate(value) {
 }
 
 function cancelCampaign() {
-    if (!confirm('Отменить рассылку? Очередные сообщения не будут отправлены.')) {
+    if (!confirm(t('broadcasts.cancelConfirm'))) {
         return;
     }
 
@@ -115,7 +132,7 @@ function cancelCampaign() {
 </script>
 
 <template>
-    <Head :title="`${pageTitle} #${campaign.id}`" />
+    <Head :title="`${pageTitle || t('broadcasts.title')} #${campaign.id}`" />
 
     <AuthenticatedLayout>
         <div class="bg-slate-100 py-8 sm:py-10">
@@ -132,7 +149,7 @@ function cancelCampaign() {
                         :href="route('broadcasts.index')"
                         class="text-sm font-medium text-teal-700 hover:text-teal-800"
                     >
-                        ← Все рассылки
+                        {{ t('broadcasts.back') }}
                     </Link>
                 </div>
 
@@ -141,13 +158,13 @@ function cancelCampaign() {
                         <div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <h1 class="text-xl font-semibold text-slate-900">
-                                    {{ campaign.name || `Рассылка #${campaign.id}` }}
+                                    {{ campaign.name || t('broadcasts.defaultName', { id: campaign.id }) }}
                                 </h1>
                                 <span
                                     class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium"
-                                    :class="statusMeta[campaign.status]?.class || 'bg-slate-100 text-slate-600'"
+                                    :class="statusClass[campaign.status] || 'bg-slate-100 text-slate-600'"
                                 >
-                                    {{ statusMeta[campaign.status]?.label || campaign.status }}
+                                    {{ statusLabel(campaign.status) || campaign.status }}
                                 </span>
                             </div>
                             <p class="mt-2 text-sm text-slate-500">
@@ -158,7 +175,7 @@ function cancelCampaign() {
                                 </template>
                             </p>
                             <p v-if="campaign.field_filters?.length" class="mt-1 text-sm text-slate-500">
-                                Фильтры:
+                                {{ t('broadcasts.filters') }}
                                 <span
                                     v-for="(filter, idx) in campaign.field_filters"
                                     :key="idx"
@@ -173,7 +190,7 @@ function cancelCampaign() {
                             type="button"
                             @click="cancelCampaign"
                         >
-                            Отменить
+                            {{ t('broadcasts.cancelAction') }}
                         </DangerButton>
                     </div>
 
@@ -183,26 +200,26 @@ function cancelCampaign() {
 
                     <div class="mt-5 grid gap-3 sm:grid-cols-4">
                         <div class="rounded-lg border border-slate-100 px-3 py-3">
-                            <p class="text-xs text-slate-400">Всего</p>
+                            <p class="text-xs text-slate-400">{{ t('common.total') }}</p>
                             <p class="mt-1 text-lg font-semibold text-slate-900">{{ campaign.total_recipients }}</p>
                         </div>
                         <div class="rounded-lg border border-slate-100 px-3 py-3">
-                            <p class="text-xs text-slate-400">Отправлено</p>
+                            <p class="text-xs text-slate-400">{{ t('broadcasts.sentCol') }}</p>
                             <p class="mt-1 text-lg font-semibold text-emerald-700">{{ campaign.sent_count }}</p>
                         </div>
                         <div class="rounded-lg border border-slate-100 px-3 py-3">
-                            <p class="text-xs text-slate-400">Ошибки</p>
+                            <p class="text-xs text-slate-400">{{ t('broadcasts.errors') }}</p>
                             <p class="mt-1 text-lg font-semibold text-rose-700">{{ campaign.failed_count }}</p>
                         </div>
                         <div class="rounded-lg border border-slate-100 px-3 py-3">
-                            <p class="text-xs text-slate-400">Пропущено</p>
+                            <p class="text-xs text-slate-400">{{ t('broadcasts.skippedCol') }}</p>
                             <p class="mt-1 text-lg font-semibold text-slate-600">{{ campaign.skipped_count }}</p>
                         </div>
                     </div>
 
                     <div class="mt-4">
                         <div class="mb-1 flex justify-between text-xs text-slate-500">
-                            <span>Прогресс</span>
+                            <span>{{ t('broadcasts.progress') }}</span>
                             <span>{{ progressPercent }}%</span>
                         </div>
                         <div class="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -215,19 +232,19 @@ function cancelCampaign() {
 
                     <dl class="mt-5 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
                         <div>
-                            <dt class="text-xs text-slate-400">Пауза между сообщениями</dt>
-                            <dd>{{ campaign.delay_seconds }} сек</dd>
+                            <dt class="text-xs text-slate-400">{{ t('broadcasts.delayBetween') }}</dt>
+                            <dd>{{ campaign.delay_seconds }} {{ t('common.secondsShort') }}</dd>
                         </div>
                         <div>
-                            <dt class="text-xs text-slate-400">Запланировано</dt>
+                            <dt class="text-xs text-slate-400">{{ t('broadcasts.scheduledAt') }}</dt>
                             <dd>{{ formatDate(campaign.scheduled_at) }}</dd>
                         </div>
                         <div>
-                            <dt class="text-xs text-slate-400">Старт</dt>
+                            <dt class="text-xs text-slate-400">{{ t('broadcasts.startedAt') }}</dt>
                             <dd>{{ formatDate(campaign.started_at) }}</dd>
                         </div>
                         <div>
-                            <dt class="text-xs text-slate-400">Завершено</dt>
+                            <dt class="text-xs text-slate-400">{{ t('broadcasts.finishedAt') }}</dt>
                             <dd>{{ formatDate(campaign.completed_at) }}</dd>
                         </div>
                     </dl>
@@ -240,24 +257,24 @@ function cancelCampaign() {
                     </p>
 
                     <p v-if="isActive" class="mt-4 text-xs text-slate-400">
-                        Статус обновляется автоматически…
+                        {{ t('broadcasts.autoRefreshDots') }}
                     </p>
                 </div>
 
                 <div class="mt-6 overflow-hidden rounded-xl bg-white shadow-lg">
                     <div class="border-b border-slate-100 px-5 py-3 sm:px-6">
-                        <h2 class="text-sm font-semibold text-slate-800">Получатели</h2>
-                        <p class="text-xs text-slate-400">Показаны первые 500</p>
+                        <h2 class="text-sm font-semibold text-slate-800">{{ t('broadcasts.recipients') }}</h2>
+                        <p class="text-xs text-slate-400">{{ t('broadcasts.first500') }}</p>
                     </div>
 
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-slate-100 text-sm">
                             <thead class="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
                                 <tr>
-                                    <th class="px-4 py-3 font-medium">Клиент</th>
-                                    <th class="px-4 py-3 font-medium">Статус</th>
-                                    <th class="px-4 py-3 font-medium">Комментарий</th>
-                                    <th class="px-4 py-3 font-medium">Время</th>
+                                    <th class="px-4 py-3 font-medium">{{ t('common.client') }}</th>
+                                    <th class="px-4 py-3 font-medium">{{ t('common.status') }}</th>
+                                    <th class="px-4 py-3 font-medium">{{ t('broadcasts.comment') }}</th>
+                                    <th class="px-4 py-3 font-medium">{{ t('broadcasts.time') }}</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100">
@@ -272,8 +289,8 @@ function cancelCampaign() {
                                         </span>
                                     </td>
                                     <td class="px-4 py-3">
-                                        <span :class="recipientStatusMeta[row.status]?.class">
-                                            {{ recipientStatusMeta[row.status]?.label || row.status }}
+                                        <span :class="recipientStatusClass[row.status]">
+                                            {{ recipientStatusLabel(row.status) || row.status }}
                                         </span>
                                     </td>
                                     <td class="max-w-xs px-4 py-3 text-xs text-slate-500">
@@ -285,7 +302,7 @@ function cancelCampaign() {
                                 </tr>
                                 <tr v-if="recipients.length === 0">
                                     <td colspan="4" class="px-4 py-10 text-center text-slate-400">
-                                        Получателей нет
+                                        {{ t('broadcasts.noRecipients') }}
                                     </td>
                                 </tr>
                             </tbody>

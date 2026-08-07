@@ -2,6 +2,7 @@
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import { Head, Link } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     updates: {
@@ -22,13 +23,15 @@ defineProps({
     },
     pageTitle: {
         type: String,
-        default: 'Обновления правил',
+        default: '',
     },
 });
+
+const { t } = useI18n();
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head :title="t('admin.ruleUpdates.title')" />
 
     <AdminLayout>
         <template #header>
@@ -37,10 +40,10 @@ defineProps({
             >
                 <div>
                     <h1 class="text-2xl font-bold text-slate-900">
-                        {{ pageTitle }}
+                        {{ t('admin.ruleUpdates.title') }}
                     </h1>
                     <p class="mt-1 text-sm text-slate-500">
-                        Публикация изменений правил на сайте
+                        {{ t('admin.ruleUpdates.subtitleBefore') }}
                         <Link
                             href="/updates"
                             class="font-medium text-indigo-600 hover:text-indigo-500"
@@ -48,12 +51,13 @@ defineProps({
                         >
                             /updates
                         </Link>
-                        и в Telegram-группе/канале. Дата в Telegram — доказательство
-                        публикации.
+                        {{ t('admin.ruleUpdates.subtitleAfter') }}
                     </p>
                 </div>
                 <Link :href="route('admin.rule-updates.create')">
-                    <PrimaryButton type="button">Новое обновление</PrimaryButton>
+                    <PrimaryButton type="button">
+                        {{ t('admin.ruleUpdates.new') }}
+                    </PrimaryButton>
                 </Link>
             </div>
         </template>
@@ -67,25 +71,24 @@ defineProps({
             "
         >
             <template v-if="telegramConfigured">
-                News-бот
+                {{ t('admin.ruleUpdates.botOk') }}
                 <span v-if="newsBotUsername">@{{ newsBotUsername }}</span>
-                настроен. Группа:
+                —
                 <code class="rounded bg-white/70 px-1">{{
                     announcementChatId
                 }}</code>
             </template>
             <template v-else>
-                News-бот не настроен. В
+                {{ t('admin.ruleUpdates.botMissing') }}
                 <code class="rounded bg-white/70 px-1">.env</code>:
                 <code class="rounded bg-white/70 px-1"
                     >TELEGRAM_NEWS_BOT_TOKEN</code
                 >
-                и
+                {{ t('admin.ruleUpdates.botMissingAnd') }}
                 <code class="rounded bg-white/70 px-1"
                     >TELEGRAM_ANNOUNCEMENT_CHAT_ID</code
                 >
-                (бот @crmerlanpronews_bot — админ группы). Обновления можно
-                сохранять только на сайте.
+                {{ t('admin.ruleUpdates.botMissingHint') }}
             </template>
         </div>
 
@@ -95,10 +98,10 @@ defineProps({
             <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
                     <tr>
-                        <th class="px-4 py-3">Дата</th>
-                        <th class="px-4 py-3">Заголовок</th>
+                        <th class="px-4 py-3">{{ t('admin.ruleUpdates.date') }}</th>
+                        <th class="px-4 py-3">{{ t('admin.ruleUpdates.heading') }}</th>
                         <th class="px-4 py-3">Telegram</th>
-                        <th class="px-4 py-3">Автор</th>
+                        <th class="px-4 py-3">{{ t('admin.ruleUpdates.author') }}</th>
                         <th class="px-4 py-3"></th>
                     </tr>
                 </thead>
@@ -108,7 +111,7 @@ defineProps({
                             colspan="5"
                             class="px-4 py-8 text-center text-slate-500"
                         >
-                            Пока нет публикаций.
+                            {{ t('admin.ruleUpdates.empty') }}
                         </td>
                     </tr>
                     <tr v-for="item in updates" :key="item.id">
@@ -123,13 +126,13 @@ defineProps({
                                 v-if="item.telegram_sent"
                                 class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
                             >
-                                Отправлено
+                                {{ t('admin.ruleUpdates.sent') }}
                             </span>
                             <span
                                 v-else
                                 class="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
                             >
-                                Только сайт
+                                {{ t('admin.ruleUpdates.siteOnly') }}
                             </span>
                         </td>
                         <td class="px-4 py-3 text-slate-600">
@@ -141,7 +144,7 @@ defineProps({
                                 target="_blank"
                                 class="text-indigo-600 hover:underline"
                             >
-                                Открыть
+                                {{ t('common.open') }}
                             </a>
                         </td>
                     </tr>

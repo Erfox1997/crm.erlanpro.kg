@@ -1,6 +1,7 @@
 <script setup>
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     variant: {
@@ -9,6 +10,7 @@ defineProps({
     },
 });
 
+const { t } = useI18n();
 const page = usePage();
 
 const newsGroupUrl = computed(
@@ -49,24 +51,24 @@ const linkClass = (variant) =>
                     : 'mt-2 text-center text-xs text-slate-500'
             "
         >
-            <Link href="/" :class="linkClass(variant)">На главную</Link>
+            <Link href="/" :class="linkClass(variant)">{{ t('public.footer.home') }}</Link>
             ·
-            <Link href="/legal" :class="linkClass(variant)">Реквизиты</Link>
+            <Link href="/legal" :class="linkClass(variant)">{{ t('public.footer.legal') }}</Link>
             ·
             <Link href="/privacy" :class="linkClass(variant)">
-                Конфиденциальность
+                {{ t('public.footer.privacy') }}
             </Link>
             ·
-            <Link href="/terms" :class="linkClass(variant)">Соглашение</Link>
+            <Link href="/terms" :class="linkClass(variant)">{{ t('public.footer.terms') }}</Link>
             ·
-            <Link href="/updates" :class="linkClass(variant)">Обновления</Link>
+            <Link href="/updates" :class="linkClass(variant)">{{ t('public.footer.updates') }}</Link>
             ·
             <a
                 :href="newsGroupUrl"
                 :class="linkClass(variant)"
                 target="_blank"
                 rel="noopener noreferrer"
-                >Новости Telegram</a
+                >{{ t('public.footer.telegramNews') }}</a
             >
         </p>
     </footer>

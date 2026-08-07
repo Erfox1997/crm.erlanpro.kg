@@ -5,6 +5,7 @@ import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
     canResetPassword: {
@@ -14,6 +15,8 @@ defineProps({
         type: String,
     },
 });
+
+const { t } = useI18n();
 
 const form = useForm({
     email: '',
@@ -30,14 +33,14 @@ const submit = () => {
 
 <template>
     <GuestLayout>
-        <Head title="Вход" />
+        <Head :title="t('auth.login.title')" />
 
         <div class="mb-8">
             <h1 class="text-2xl font-bold tracking-tight text-slate-900">
-                Вход в аккаунт
+                {{ t('auth.login.heading') }}
             </h1>
             <p class="mt-2 text-sm text-slate-600">
-                Введите email и пароль, чтобы открыть CRM
+                {{ t('auth.login.sub') }}
             </p>
         </div>
 
@@ -50,7 +53,7 @@ const submit = () => {
 
         <form @submit.prevent="submit">
             <div>
-                <InputLabel for="email" value="Email" />
+                <InputLabel for="email" :value="t('common.email')" />
 
                 <TextInput
                     id="email"
@@ -66,7 +69,7 @@ const submit = () => {
             </div>
 
             <div class="mt-5">
-                <InputLabel for="password" value="Пароль" />
+                <InputLabel for="password" :value="t('common.password')" />
 
                 <TextInput
                     id="password"
@@ -83,9 +86,9 @@ const submit = () => {
             <div class="mt-5 flex items-center">
                 <label class="flex items-center">
                     <Checkbox name="remember" v-model:checked="form.remember" />
-                    <span class="ms-2 text-sm text-slate-600"
-                        >Запомнить меня</span
-                    >
+                    <span class="ms-2 text-sm text-slate-600">
+                        {{ t('auth.login.remember') }}
+                    </span>
                 </label>
             </div>
 
@@ -95,7 +98,7 @@ const submit = () => {
                     class="inline-flex w-full items-center justify-center rounded-lg border border-transparent bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-25"
                     :disabled="form.processing"
                 >
-                    Войти
+                    {{ t('auth.login.submit') }}
                 </button>
 
                 <div
@@ -106,13 +109,13 @@ const submit = () => {
                         :href="route('password.request')"
                         class="text-slate-600 underline decoration-slate-300 underline-offset-2 transition hover:text-indigo-600"
                     >
-                        Забыли пароль?
+                        {{ t('auth.login.forgot') }}
                     </Link>
                     <Link
                         :href="route('register')"
                         class="text-slate-600 underline decoration-slate-300 underline-offset-2 transition hover:text-indigo-600 sm:ml-auto"
                     >
-                        Создать аккаунт
+                        {{ t('auth.login.create') }}
                     </Link>
                 </div>
             </div>
@@ -123,7 +126,7 @@ const submit = () => {
                 href="/"
                 class="font-medium text-indigo-600 hover:text-indigo-500"
             >
-                ← На главную
+                {{ t('common.backHome') }}
             </Link>
         </p>
     </GuestLayout>
