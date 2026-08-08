@@ -486,6 +486,7 @@ class InstagramMessengerService
             $authMode = $this->authMode($integration);
             $query = [
                 'fields' => 'id,updated_time,participants',
+                'platform' => 'instagram',
                 'since' => $since->timestamp,
             ];
 
@@ -495,7 +496,6 @@ class InstagramMessengerService
                     return ['synced' => 0, 'errors' => [__('Не задан page_id Facebook для Instagram.')]];
                 }
 
-                $query['platform'] = 'instagram';
                 $conversationsPath = "{$pageId}/conversations";
             } else {
                 $conversationsPath = "{$igUserId}/conversations";
