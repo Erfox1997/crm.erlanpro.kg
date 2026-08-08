@@ -6,9 +6,9 @@ use App\Enums\IntegrationProvider;
 use App\Models\CompanyIntegration;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
+use App\Services\Messenger\ChatDistributionService;
 use App\Services\Meta\MetaAttachmentService;
 use App\Services\Meta\MetaMessagingSupport;
-use App\Services\Messenger\ChatDistributionService;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
@@ -55,7 +55,14 @@ class InstagramMessengerService
 
     public function oauthAuthorizationUrl(string $state): string
     {
-        $appId = self::normalizeAppId((string) config('services.instagram.app_id'));
+        $instagramLogin = $this->oauthProvider() === 'instagram';
+
+        $appId = self::normalizeAppId((string) (
+            $instagramLogin
+                ? (config('services.instagram.login_app_id') ?: config('services.instagram.app_id'))
+                : config('services.instagram.app_id')
+        ));
+
         if ($appId === '') {
             throw new \RuntimeException(__('INSTAGRAM_APP_ID не задан в .env'));
         }
@@ -67,12 +74,14 @@ class InstagramMessengerService
         $query = http_build_query([
             'client_id' => $appId,
             'redirect_uri' => $this->oauthRedirectUri(),
-            'scope' => (string) config('services.meta.oauth_scopes'),
+            'scope' => (string) ($instagramLogin
+                ? config('services.meta.oauth_scopes_instagram_login')
+                : config('services.meta.oauth_scopes')),
             'response_type' => 'code',
             'state' => $state,
         ]);
 
-        if ($this->oauthProvider() === 'instagram') {
+        if ($instagramLogin) {
             return 'https://www.instagram.com/oauth/authorize?'.$query;
         }
 
@@ -113,8 +122,8 @@ class InstagramMessengerService
         $response = Http::asForm()
             ->timeout(30)
             ->post('https://api.instagram.com/oauth/access_token', [
-                'client_id' => config('services.instagram.app_id'),
-                'client_secret' => config('services.instagram.app_secret'),
+                'client_id' => config('services.instagram.login_app_id') ?: config('services.instagram.app_id'),
+                'client_secret' => config('services.instagram.login_app_secret') ?: config('services.instagram.app_secret'),
                 'grant_type' => 'authorization_code',
                 'redirect_uri' => $this->oauthRedirectUri(),
                 'code' => $code,
@@ -136,7 +145,7 @@ class InstagramMessengerService
             ->timeout(30)
             ->get('https://graph.instagram.com/access_token', [
                 'grant_type' => 'ig_exchange_token',
-                'client_secret' => config('services.instagram.app_secret'),
+                'client_secret' => config('services.instagram.login_app_secret') ?: config('services.instagram.app_secret'),
                 'access_token' => $shortLivedToken,
             ]);
 
@@ -1104,6 +1113,11 @@ class InstagramMessengerService
         }
 
         if ($mode === 'facebook_login') {
+            return 'facebook_login';
+        }
+
+        // Старые интеграции без auth_mode подключались через страницу Facebook.
+        if ((string) ($integration?->metadata['page_id'] ?? '') !== '') {
             return 'facebook_login';
         }
 

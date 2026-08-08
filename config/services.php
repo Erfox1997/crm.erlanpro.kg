@@ -38,12 +38,16 @@ return [
     'instagram' => [
         'app_id' => env('INSTAGRAM_APP_ID'),
         'app_secret' => env('INSTAGRAM_APP_SECRET'),
+        // Meta → Instagram → «Настройка API с использованием входа через Instagram»
+        // выдаёт отдельную пару ключей, она не совпадает с ID приложения Facebook.
+        'login_app_id' => env('INSTAGRAM_LOGIN_APP_ID'),
+        'login_app_secret' => env('INSTAGRAM_LOGIN_APP_SECRET'),
     ],
 
     'meta' => [
         'graph_version' => env('META_GRAPH_VERSION', 'v21.0'),
         'webhook_verify_token' => env('META_WEBHOOK_VERIFY_TOKEN', 'crm-ulan-meta-webhook'),
-        'oauth_provider' => env('META_OAUTH_PROVIDER', 'facebook'),
+        'oauth_provider' => env('META_OAUTH_PROVIDER', 'instagram'),
         'oauth_scopes' => env(
             'META_OAUTH_SCOPES',
             'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging,instagram_basic,instagram_manage_messages,instagram_manage_comments',
@@ -55,6 +59,10 @@ return [
         'oauth_scopes_facebook' => env(
             'META_OAUTH_SCOPES_FACEBOOK',
             'public_profile,pages_show_list,pages_read_engagement,pages_manage_metadata,pages_messaging',
+        ),
+        'oauth_scopes_instagram_login' => env(
+            'META_OAUTH_SCOPES_INSTAGRAM_LOGIN',
+            'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments',
         ),
         'oauth_redirect_uri' => env('META_OAUTH_REDIRECT_URI'),
     ],

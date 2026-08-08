@@ -95,5 +95,21 @@ php artisan telegram:support-webhook
 # Клиент: пишет @ErlanProtask_bot → сообщение приходит вам (954807019).
 # Ответ: reply на сообщение бота → клиенту уйдёт ответ.
 
+6. Instagram подключается через вход в Instagram (не через Facebook-страницу):
+
+# .env на проде:
+# META_OAUTH_PROVIDER=instagram
+# INSTAGRAM_LOGIN_APP_ID=      ← Meta → Instagram → Настройка API с использованием входа через Instagram
+# INSTAGRAM_LOGIN_APP_SECRET=  ← там же (это НЕ ключи приложения Facebook)
+#
+# Meta → Instagram → Настройка входа через Instagram → Business login settings:
+#   Redirect URI: https://crm.erlanpro.kg/integrations/instagram/oauth/callback
+# Meta → Instagram → Вебхуки:
+#   Callback URL: https://crm.erlanpro.kg/webhooks/meta
+#   Verify token: значение META_WEBHOOK_VERIFY_TOKEN
+#   Поля: messages, comments
+# Подписка аккаунта на вебхуки происходит автоматически при подключении через OAuth.
+# Facebook Messenger подключается по-прежнему через Facebook Login — его настройки не менялись.
+
 php artisan migrate --force
 php artisan config:clear

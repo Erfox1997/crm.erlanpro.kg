@@ -434,6 +434,11 @@ class InstagramCommentsService
             return $mode;
         }
 
+        // Старые интеграции без auth_mode подключались через страницу Facebook.
+        if ((string) ($integration->metadata['page_id'] ?? '') !== '') {
+            return 'facebook_login';
+        }
+
         return config('services.meta.oauth_provider') === 'instagram'
             ? 'instagram_login'
             : 'facebook_login';

@@ -90,6 +90,26 @@ class MetaOAuthController extends Controller
                 ->withErrors([$provider => __('Meta не вернула код авторизации.')]);
         }
 
+        if ($this->oauth->usesInstagramLogin($integrationProvider)) {
+            try {
+                $token = $this->oauth->exchangeInstagramCodeForLongLivedUserToken(
+                    $code,
+                    $this->callbackRoute($integrationProvider),
+                );
+                $account = $this->oauth->fetchInstagramLoginAccount($token['access_token'], $token['user_id']);
+                $connection = $this->oauth->buildIntegrationFromInstagramLogin($account, $token['access_token']);
+            } catch (\Throwable $e) {
+                return redirect()
+                    ->route('integrations.index')
+                    ->withErrors([$provider => $e->getMessage()]);
+            }
+
+            $request->session()->forget('meta_oauth_state');
+            $this->oauth->subscribeInstagramWebhooks($account['instagram_user_id'], $token['access_token']);
+
+            return $this->persistIntegration($request, $integrationProvider, $connection);
+        }
+
         try {
             $userToken = $this->oauth->exchangeFacebookCodeForLongLivedUserToken(
                 $code,
@@ -160,8 +180,6 @@ class MetaOAuthController extends Controller
     protected function saveIntegration(Request $request, IntegrationProvider $provider, string $pageId): RedirectResponse
     {
         $pages = $request->session()->pull('meta_oauth_pages', []);
-        $companyId = (int) $request->session()->pull('meta_oauth_company_id', (int) $request->user()->company_id);
-        $request->session()->forget('meta_oauth_provider');
 
         if (! is_array($pages)) {
             return redirect()
@@ -179,7 +197,27 @@ class MetaOAuthController extends Controller
 
         try {
             $connection = $this->oauth->buildIntegrationFromPage($selected, $provider);
+        } catch (\Throwable $e) {
+            return redirect()
+                ->route('integrations.index')
+                ->withErrors([$provider->value => $e->getMessage()]);
+        }
 
+        return $this->persistIntegration($request, $provider, $connection);
+    }
+
+    /**
+     * @param  array{api_token: string, metadata: array<string, mixed>}  $connection
+     */
+    protected function persistIntegration(
+        Request $request,
+        IntegrationProvider $provider,
+        array $connection,
+    ): RedirectResponse {
+        $companyId = (int) $request->session()->pull('meta_oauth_company_id', (int) $request->user()->company_id);
+        $request->session()->forget('meta_oauth_provider');
+
+        try {
             CompanyIntegration::query()->updateOrCreate(
                 [
                     'company_id' => $companyId,
