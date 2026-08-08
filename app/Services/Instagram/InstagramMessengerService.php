@@ -991,20 +991,35 @@ class InstagramMessengerService
         $processed = 0;
 
         foreach ($payload['entry'] ?? [] as $entry) {
-            $igAccountId = (string) ($entry['id'] ?? '');
-            $integration = $this->findIntegrationByInstagramAccountId($igAccountId);
-            if (! $integration) {
-                Log::warning('Instagram webhook integration not found', [
-                    'webhook_instagram_account_id' => $igAccountId,
-                    'messaging_events' => is_array($entry['messaging'] ?? null)
-                        ? count($entry['messaging'])
-                        : 0,
-                ]);
-
-                continue;
-            }
-
             foreach ($entry['messaging'] ?? [] as $event) {
+                $entryAccountId = (string) ($entry['id'] ?? '');
+                $recipientId = (string) ($event['recipient']['id'] ?? '');
+                $senderId = (string) ($event['sender']['id'] ?? '');
+                $integration = null;
+                $igAccountId = '';
+
+                foreach (array_unique([$entryAccountId, $recipientId, $senderId]) as $candidateId) {
+                    $integration = $this->findIntegrationByInstagramAccountId($candidateId);
+                    if ($integration) {
+                        $igAccountId = (string) ($integration->metadata['instagram_user_id'] ?? $candidateId);
+                        break;
+                    }
+                }
+
+                if (! $integration) {
+                    Log::warning('Instagram webhook integration not found', [
+                        'entry_id' => $entryAccountId,
+                        'recipient_id' => $recipientId,
+                        'sender_id' => $senderId,
+                        'event_keys' => array_keys($event),
+                        'message_keys' => is_array($event['message'] ?? null)
+                            ? array_keys($event['message'])
+                            : [],
+                    ]);
+
+                    continue;
+                }
+
                 if ($this->processInstagramMessagingEvent($integration, $igAccountId, $event)) {
                     $processed++;
                 }
