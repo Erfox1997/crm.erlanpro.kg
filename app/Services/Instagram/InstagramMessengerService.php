@@ -486,6 +486,7 @@ class InstagramMessengerService
             $authMode = $this->authMode($integration);
             $query = [
                 'fields' => 'id,updated_time,participants',
+                'limit' => 100,
                 'platform' => 'instagram',
                 'since' => $since->timestamp,
             ];
@@ -501,14 +502,12 @@ class InstagramMessengerService
                 $conversationsPath = "{$igUserId}/conversations";
             }
 
-            $response = $this->client($integration->api_token, $authMode)->get(
+            $conversations = $this->fetchConversationPages(
+                $this->client($integration->api_token, $authMode),
                 $this->url($conversationsPath, $authMode),
                 $query,
+                $maxConversations,
             );
-
-            $response->throw();
-
-            $conversations = $response->json('data', []);
 
             if ($priorityExternalIds !== []) {
                 $conversations = $this->orderConversationsForSync($conversations, $priorityExternalIds);
@@ -535,6 +534,47 @@ class InstagramMessengerService
         }
 
         return ['synced' => $synced, 'errors' => $errors];
+    }
+
+    /**
+     * Meta can return an empty page together with paging.next, so every available
+     * page must be followed until conversations are found or the safety limit is reached.
+     *
+     * @param  array<string, mixed>  $query
+     * @return list<array<string, mixed>>
+     */
+    protected function fetchConversationPages(
+        PendingRequest $client,
+        string $url,
+        array $query,
+        ?int $maxConversations = null,
+    ): array {
+        $conversations = [];
+        $nextUrl = $url;
+        $nextQuery = $query;
+
+        for ($page = 0; $page < 20 && $nextUrl !== ''; $page++) {
+            $response = $client->get($nextUrl, $nextQuery);
+            $response->throw();
+
+            $items = $response->json('data', []);
+            if (is_array($items)) {
+                foreach ($items as $item) {
+                    if (is_array($item)) {
+                        $conversations[] = $item;
+                    }
+                }
+            }
+
+            if ($maxConversations !== null && count($conversations) >= $maxConversations) {
+                break;
+            }
+
+            $nextUrl = (string) ($response->json('paging.next') ?? '');
+            $nextQuery = [];
+        }
+
+        return $conversations;
     }
 
     public function syncSinceFromDays(int $days): Carbon
