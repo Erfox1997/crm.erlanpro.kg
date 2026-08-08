@@ -40,8 +40,6 @@ use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-use function Illuminate\Support\defer;
-
 class MessengerController extends Controller
 {
     public function __construct(
@@ -264,7 +262,7 @@ class MessengerController extends Controller
         $telegramIntegration = $this->telegram->integrationForCompany($companyId);
 
         if ($instagramIntegration) {
-            $this->deferInstagramSync($companyId);
+            $this->syncInstagramFromPolling($companyId, $instagramIntegration);
         }
 
         $channels = array_values(array_filter([
@@ -343,54 +341,49 @@ class MessengerController extends Controller
      * Poll Instagram through Graph API when webhooks are unavailable.
      * A shared cooldown and lock keep multiple users or tabs from duplicating requests.
      */
-    protected function deferInstagramSync(int $companyId): void
-    {
+    protected function syncInstagramFromPolling(
+        int $companyId,
+        CompanyIntegration $integration,
+    ): void {
         $cooldownKey = "messenger:instagram-poll:cooldown:{$companyId}";
 
         if (! Cache::add($cooldownKey, true, now()->addSeconds(30))) {
             return;
         }
 
-        defer(function () use ($companyId) {
-            $lock = Cache::lock("messenger:instagram-poll:lock:{$companyId}", 300);
+        $lock = Cache::lock("messenger:instagram-poll:lock:{$companyId}", 300);
 
-            if (! $lock->get()) {
-                return;
+        if (! $lock->get()) {
+            return;
+        }
+
+        try {
+            if (! ($integration->metadata['instagram_user_id'] ?? null)) {
+                $integration = $this->instagram->refreshIntegrationMetadata($integration);
             }
 
-            try {
-                $integration = $this->instagram->integrationForCompany($companyId);
-                if (! $integration) {
-                    return;
-                }
+            $result = $this->instagram->syncConversations(
+                $integration,
+                days: 1,
+                maxConversations: 5,
+                hours: 1,
+                priorityExternalIds: $this->unread->unreadExternalConversationIds($companyId),
+            );
 
-                if (! ($integration->metadata['instagram_user_id'] ?? null)) {
-                    $integration = $this->instagram->refreshIntegrationMetadata($integration);
-                }
-
-                $result = $this->instagram->syncConversations(
-                    $integration,
-                    days: 1,
-                    maxConversations: 5,
-                    hours: 1,
-                    priorityExternalIds: $this->unread->unreadExternalConversationIds($companyId),
-                );
-
-                if ($result['errors'] !== []) {
-                    Log::warning('Instagram polling sync completed with errors', [
-                        'company_id' => $companyId,
-                        'errors' => $result['errors'],
-                    ]);
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Instagram polling sync failed', [
+            if ($result['errors'] !== []) {
+                Log::warning('Instagram polling sync completed with errors', [
                     'company_id' => $companyId,
-                    'message' => $e->getMessage(),
+                    'errors' => $result['errors'],
                 ]);
-            } finally {
-                $lock->release();
             }
-        });
+        } catch (\Throwable $e) {
+            Log::warning('Instagram polling sync failed', [
+                'company_id' => $companyId,
+                'message' => $e->getMessage(),
+            ]);
+        } finally {
+            $lock->release();
+        }
     }
 
     public function improveWithAi(Request $request): JsonResponse
