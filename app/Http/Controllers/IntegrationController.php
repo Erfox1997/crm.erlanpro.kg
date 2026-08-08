@@ -32,15 +32,15 @@ class IntegrationController extends Controller
             $record = $stored->get($provider->value);
             $hasToken = match ($provider) {
                 IntegrationProvider::Wappi => $record !== null
-                    && filled($record->api_token)
+                    && $record->hasUsableApiToken()
                     && filled($record->metadata['profile_id'] ?? null),
                 IntegrationProvider::Telegram => $record !== null
-                    && filled($record->api_token)
+                    && $record->hasUsableApiToken()
                     && filled($record->metadata['bot_id'] ?? null),
                 IntegrationProvider::Shop => $record !== null
-                    && filled($record->api_token)
+                    && $record->hasUsableApiToken()
                     && filled($record->metadata['shop_url'] ?? null),
-                default => $record !== null && filled($record->api_token),
+                default => $record !== null && $record->hasUsableApiToken(),
             };
 
             $item = [

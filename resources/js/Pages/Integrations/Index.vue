@@ -49,13 +49,13 @@ const showManualToken = reactive({
 
 const tokenInputs = reactive(
     Object.fromEntries(
-        props.integrations.map((item) => [item.provider, '']),
+        (props.integrations ?? []).map((item) => [item.provider, '']),
     ),
 );
 
 const profileIdInputs = reactive(
     Object.fromEntries(
-        props.integrations.map((item) => [
+        (props.integrations ?? []).map((item) => [
             item.provider,
             item.provider === 'wappi' ? (item.profile_id ?? '') : '',
         ]),
@@ -63,14 +63,14 @@ const profileIdInputs = reactive(
 );
 
 const chatGptModelInput = reactive({
-    chatgpt: props.integrations.find((item) => item.provider === 'chatgpt')?.model
-        || props.chatGptModels[0]
+    chatgpt: (props.integrations ?? []).find((item) => item.provider === 'chatgpt')?.model
+        || props.chatGptModels?.[0]
         || 'gpt-4.1-mini',
 });
 
 const shopUrlInputs = reactive(
     Object.fromEntries(
-        props.integrations.map((item) => [
+        (props.integrations ?? []).map((item) => [
             item.provider,
             item.provider === 'shop' ? (item.shop_url ?? '') : '',
         ]),
@@ -79,7 +79,7 @@ const shopUrlInputs = reactive(
 
 const forms = reactive(
     Object.fromEntries(
-        props.integrations.map((item) => [
+        (props.integrations ?? []).map((item) => [
             item.provider,
             useForm(
                 item.provider === 'wappi'
@@ -247,7 +247,7 @@ function wappiCanSave() {
 
                 <div class="grid gap-6">
                     <section
-                        v-for="item in integrations"
+                        v-for="item in (integrations ?? [])"
                         :key="item.provider"
                         class="rounded-xl border bg-white p-6 shadow-sm"
                         :class="providerAccent[item.provider]"

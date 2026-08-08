@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use App\Enums\IntegrationProvider;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Log;
 
 class CompanyIntegration extends Model
 {
@@ -31,5 +33,24 @@ class CompanyIntegration extends Model
     public function providerEnum(): ?IntegrationProvider
     {
         return IntegrationProvider::tryFrom($this->provider);
+    }
+
+    /**
+     * Safe for UI: a bad/rotated APP_KEY must not 500 the integrations page.
+     */
+    public function hasUsableApiToken(): bool
+    {
+        try {
+            return filled($this->api_token);
+        } catch (DecryptException $e) {
+            Log::warning('CompanyIntegration api_token decrypt failed', [
+                'integration_id' => $this->id,
+                'provider' => $this->provider,
+                'company_id' => $this->company_id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 }
