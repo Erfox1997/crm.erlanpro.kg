@@ -30,7 +30,7 @@ class IntegrationController extends Controller
                 'integrations' => [],
                 'pageTitle' => 'Интеграции',
                 'wappiWebhookUrl' => route('webhooks.wappi.handle'),
-                'chatGptModels' => app(ChatGptService::class)->preferredModels(),
+                'chatGptModels' => array_values(app(ChatGptService::class)->preferredModels()),
                 'loadError' => config('app.debug')
                     ? $e->getMessage()
                     : __('Не удалось загрузить интеграции. Обновите страницу или переподключите токены.'),
@@ -137,10 +137,10 @@ class IntegrationController extends Controller
         })->values();
 
         return Inertia::render('Integrations/Index', [
-            'integrations' => $integrations,
+            'integrations' => $integrations->values()->all(),
             'pageTitle' => 'Интеграции',
             'wappiWebhookUrl' => route('webhooks.wappi.handle'),
-            'chatGptModels' => app(ChatGptService::class)->preferredModels(),
+            'chatGptModels' => array_values(app(ChatGptService::class)->preferredModels()),
             'loadError' => null,
         ]);
     }

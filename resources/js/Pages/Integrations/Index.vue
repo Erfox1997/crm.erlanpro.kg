@@ -12,6 +12,18 @@ import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
 
+function asList(value) {
+    if (Array.isArray(value)) {
+        return value;
+    }
+
+    if (value && typeof value === 'object') {
+        return Object.values(value);
+    }
+
+    return [];
+}
+
 const props = defineProps({
     integrations: {
         type: Array,
@@ -44,6 +56,8 @@ const props = defineProps({
 });
 
 const title = computed(() => props.pageTitle || t('integrations.title'));
+const integrationItems = computed(() => asList(props.integrations));
+const modelOptions = computed(() => asList(props.chatGptModels));
 
 const page = usePage();
 const showManualToken = reactive({
@@ -53,13 +67,13 @@ const showManualToken = reactive({
 
 const tokenInputs = reactive(
     Object.fromEntries(
-        (props.integrations ?? []).map((item) => [item.provider, '']),
+        integrationItems.value.map((item) => [item.provider, '']),
     ),
 );
 
 const profileIdInputs = reactive(
     Object.fromEntries(
-        (props.integrations ?? []).map((item) => [
+        integrationItems.value.map((item) => [
             item.provider,
             item.provider === 'wappi' ? (item.profile_id ?? '') : '',
         ]),
@@ -67,14 +81,14 @@ const profileIdInputs = reactive(
 );
 
 const chatGptModelInput = reactive({
-    chatgpt: (props.integrations ?? []).find((item) => item.provider === 'chatgpt')?.model
-        || props.chatGptModels?.[0]
+    chatgpt: integrationItems.value.find((item) => item.provider === 'chatgpt')?.model
+        || modelOptions.value[0]
         || 'gpt-4.1-mini',
 });
 
 const shopUrlInputs = reactive(
     Object.fromEntries(
-        (props.integrations ?? []).map((item) => [
+        integrationItems.value.map((item) => [
             item.provider,
             item.provider === 'shop' ? (item.shop_url ?? '') : '',
         ]),
@@ -83,7 +97,7 @@ const shopUrlInputs = reactive(
 
 const forms = reactive(
     Object.fromEntries(
-        (props.integrations ?? []).map((item) => [
+        integrationItems.value.map((item) => [
             item.provider,
             useForm(
                 item.provider === 'wappi'
@@ -258,7 +272,7 @@ function wappiCanSave() {
 
                 <div class="grid gap-6">
                     <section
-                        v-for="item in (integrations ?? [])"
+                        v-for="item in integrationItems"
                         :key="item.provider"
                         class="rounded-xl border bg-white p-6 shadow-sm"
                         :class="providerAccent[item.provider]"
@@ -355,13 +369,13 @@ function wappiCanSave() {
                                     />
                                     <InputError
                                         class="mt-2"
-                                        :message="forms[item.provider].errors.api_token"
+                                        :message="forms[item.provider]?.errors?.api_token"
                                     />
                                 </div>
                                 <PrimaryButton
                                     type="submit"
                                     :disabled="
-                                        forms[item.provider].processing ||
+                                        forms[item.provider]?.processing ||
                                         !tokenInputs[item.provider]?.trim()
                                     "
                                 >
@@ -394,7 +408,7 @@ function wappiCanSave() {
                                 />
                                 <InputError
                                     class="mt-2"
-                                    :message="forms.wappi.errors.api_token"
+                                    :message="forms.wappi?.errors?.api_token"
                                 />
                             </div>
 
@@ -413,7 +427,7 @@ function wappiCanSave() {
                                 />
                                 <InputError
                                     class="mt-2"
-                                    :message="forms.wappi.errors.profile_id"
+                                    :message="forms.wappi?.errors?.profile_id"
                                 />
                             </div>
 
@@ -473,7 +487,7 @@ function wappiCanSave() {
                                 </p>
                                 <InputError
                                     class="mt-2"
-                                    :message="forms.telegram.errors.api_token"
+                                    :message="forms.telegram?.errors?.api_token"
                                 />
                             </div>
 
@@ -493,7 +507,7 @@ function wappiCanSave() {
                                 <PrimaryButton
                                     type="submit"
                                     :disabled="
-                                        forms.telegram.processing ||
+                                        forms.telegram?.processing ||
                                         !tokenInputs.telegram?.trim()
                                     "
                                 >
@@ -529,7 +543,7 @@ function wappiCanSave() {
                                 />
                                 <InputError
                                     class="mt-2"
-                                    :message="forms.shop.errors.shop_url"
+                                    :message="forms.shop?.errors?.shop_url"
                                 />
                             </div>
 
@@ -555,7 +569,7 @@ function wappiCanSave() {
                                 </p>
                                 <InputError
                                     class="mt-2"
-                                    :message="forms.shop.errors.api_token"
+                                    :message="forms.shop?.errors?.api_token"
                                 />
                             </div>
 
@@ -610,7 +624,7 @@ function wappiCanSave() {
                                 </p>
                                 <InputError
                                     class="mt-2"
-                                    :message="forms.chatgpt.errors.api_token"
+                                    :message="forms.chatgpt?.errors?.api_token"
                                 />
                             </div>
 
@@ -625,14 +639,14 @@ function wappiCanSave() {
                                     class="mt-1 block w-full rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                                 >
                                     <option
-                                        v-for="model in chatGptModels"
+                                        v-for="model in modelOptions"
                                         :key="model"
                                         :value="model"
                                     >
                                         {{ model }}
                                     </option>
                                     <option
-                                        v-if="item.model && !chatGptModels.includes(item.model)"
+                                        v-if="item.model && !modelOptions.includes(item.model)"
                                         :value="item.model"
                                     >
                                         {{ item.model }}
@@ -643,7 +657,7 @@ function wappiCanSave() {
                                 </p>
                                 <InputError
                                     class="mt-2"
-                                    :message="forms.chatgpt.errors.model"
+                                    :message="forms.chatgpt?.errors?.model"
                                 />
                             </div>
 
@@ -689,7 +703,7 @@ function wappiCanSave() {
                                 <InputError
                                     class="mt-2"
                                     :message="
-                                        forms[item.provider].errors.api_token
+                                        forms[item.provider]?.errors?.api_token
                                     "
                                 />
                             </div>
@@ -698,7 +712,7 @@ function wappiCanSave() {
                                 <PrimaryButton
                                     type="submit"
                                     :disabled="
-                                        forms[item.provider].processing ||
+                                        forms[item.provider]?.processing ||
                                         !tokenInputs[item.provider]?.trim()
                                     "
                                 >
