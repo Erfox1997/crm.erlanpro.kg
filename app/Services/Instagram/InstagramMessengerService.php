@@ -1110,6 +1110,9 @@ class InstagramMessengerService
             ->where('provider', IntegrationProvider::Instagram->value)
             ->whereNotNull('api_token')
             ->get()
+            ->sortByDesc(
+                fn (CompanyIntegration $integration) => ($integration->metadata['auth_mode'] ?? null) === 'instagram_login',
+            )
             ->first(function (CompanyIntegration $integration) use ($instagramAccountId) {
                 $metadata = $integration->metadata ?? [];
 

@@ -418,6 +418,9 @@ class InstagramCommentsService
             ->where('provider', 'instagram')
             ->whereNotNull('api_token')
             ->get()
+            ->sortByDesc(
+                fn (CompanyIntegration $integration) => ($integration->metadata['auth_mode'] ?? null) === 'instagram_login',
+            )
             ->first(function (CompanyIntegration $integration) use ($instagramAccountId) {
                 $metadata = $integration->metadata ?? [];
 
