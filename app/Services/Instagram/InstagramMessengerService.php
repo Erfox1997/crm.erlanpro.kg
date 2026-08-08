@@ -13,6 +13,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class InstagramMessengerService
 {
@@ -993,6 +994,13 @@ class InstagramMessengerService
             $igAccountId = (string) ($entry['id'] ?? '');
             $integration = $this->findIntegrationByInstagramAccountId($igAccountId);
             if (! $integration) {
+                Log::warning('Instagram webhook integration not found', [
+                    'webhook_instagram_account_id' => $igAccountId,
+                    'messaging_events' => is_array($entry['messaging'] ?? null)
+                        ? count($entry['messaging'])
+                        : 0,
+                ]);
+
                 continue;
             }
 
@@ -1016,6 +1024,12 @@ class InstagramMessengerService
     ): bool {
         $message = $event['message'] ?? null;
         if (! is_array($message) || ! isset($message['mid'])) {
+            Log::info('Instagram webhook messaging event ignored', [
+                'instagram_account_id' => $igAccountId,
+                'event_keys' => array_keys($event),
+                'message_keys' => is_array($message) ? array_keys($message) : [],
+            ]);
+
             return false;
         }
 

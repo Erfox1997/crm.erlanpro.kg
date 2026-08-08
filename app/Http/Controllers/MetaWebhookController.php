@@ -37,12 +37,37 @@ class MetaWebhookController extends Controller
         $payload = $request->all();
 
         try {
-            $this->instagram->handleWebhookPayload($payload);
-            $this->instagramComments->handleWebhookPayload($payload);
-            $this->facebook->handleWebhookPayload($payload);
+            $instagramMessages = $this->instagram->handleWebhookPayload($payload);
+            $instagramComments = $this->instagramComments->handleWebhookPayload($payload);
+            $facebookMessages = $this->facebook->handleWebhookPayload($payload);
+
+            Log::info('Meta webhook processed', [
+                'object' => $payload['object'] ?? null,
+                'entry_ids' => collect($payload['entry'] ?? [])
+                    ->pluck('id')
+                    ->filter()
+                    ->values()
+                    ->all(),
+                'messaging_events' => collect($payload['entry'] ?? [])
+                    ->sum(fn ($entry) => is_array($entry['messaging'] ?? null)
+                        ? count($entry['messaging'])
+                        : 0),
+                'change_fields' => collect($payload['entry'] ?? [])
+                    ->flatMap(fn ($entry) => collect($entry['changes'] ?? [])->pluck('field'))
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all(),
+                'processed' => [
+                    'instagram_messages' => $instagramMessages,
+                    'instagram_comments' => $instagramComments,
+                    'facebook_messages' => $facebookMessages,
+                ],
+            ]);
         } catch (\Throwable $e) {
             Log::warning('Meta webhook processing failed', [
                 'message' => $e->getMessage(),
+                'object' => $payload['object'] ?? null,
             ]);
         }
 
