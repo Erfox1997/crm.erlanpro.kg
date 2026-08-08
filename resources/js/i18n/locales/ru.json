@@ -83,7 +83,11 @@
     "collapseToIcons": "Свернуть в иконки",
     "renew": "Продлить",
     "subscriptionUntil": "· до {date}",
-    "subscriptionExpired": "· истекла {date}"
+    "subscriptionExpired": "· истекла {date}",
+    "clearChats": "Очистить все чаты",
+    "clearingChats": "Удаление чатов…",
+    "clearChatsConfirm": "Удалить все диалоги и сообщения всех каналов этой компании? Клиенты и продажи сохранятся.",
+    "clearChatsFinalConfirm": "Это действие необратимо. Точно удалить все чаты?"
   },
   "admin": {
     "panel": "Панель управления",

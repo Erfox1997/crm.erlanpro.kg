@@ -472,6 +472,25 @@ class MessengerController extends Controller
         }
     }
 
+    public function clearAll(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->company_role === 'owner' || $user->is_platform_admin,
+            403,
+        );
+
+        $deleted = MessengerConversation::query()
+            ->where('company_id', (int) $user->company_id)
+            ->delete();
+
+        return redirect()
+            ->route('messenger.index')
+            ->with('success', __('Удалено диалогов: :count. Клиенты и продажи сохранены.', [
+                'count' => $deleted,
+            ]));
+    }
+
     public function saveClient(Request $request, MessengerConversation $conversation): RedirectResponse
     {
         $companyId = (int) $request->user()->company_id;

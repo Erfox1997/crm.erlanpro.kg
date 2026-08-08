@@ -123,6 +123,7 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::get('/messenger', [MessengerController::class, 'index'])->name('messenger.index');
     Route::get('/messenger/updates', [MessengerController::class, 'updates'])->name('messenger.updates');
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
+    Route::delete('/messenger/conversations', [MessengerController::class, 'clearAll'])->name('messenger.clear');
     Route::post('/messenger/ai-improve', [MessengerController::class, 'improveWithAi'])->name('messenger.ai-improve');
     Route::get('/comments', [CommentsController::class, 'index'])->name('comments.index');
     Route::post('/comments/sync', [CommentsController::class, 'sync'])->name('comments.sync');

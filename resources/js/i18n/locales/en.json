@@ -83,7 +83,11 @@
     "collapseToIcons": "Collapse to icons",
     "renew": "Renew",
     "subscriptionUntil": "· until {date}",
-    "subscriptionExpired": "· expired {date}"
+    "subscriptionExpired": "· expired {date}",
+    "clearChats": "Clear all chats",
+    "clearingChats": "Deleting chats…",
+    "clearChatsConfirm": "Delete every conversation and message in every channel for this company? Clients and sales will remain.",
+    "clearChatsFinalConfirm": "This cannot be undone. Delete all chats?"
   },
   "admin": {
     "panel": "Control panel",
