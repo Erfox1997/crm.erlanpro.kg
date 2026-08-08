@@ -21,6 +21,25 @@ class IntegrationController extends Controller
 {
     public function index(Request $request): Response
     {
+        try {
+            return $this->renderIndex($request);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return Inertia::render('Integrations/Index', [
+                'integrations' => [],
+                'pageTitle' => 'Интеграции',
+                'wappiWebhookUrl' => route('webhooks.wappi.handle'),
+                'chatGptModels' => app(ChatGptService::class)->preferredModels(),
+                'loadError' => config('app.debug')
+                    ? $e->getMessage()
+                    : __('Не удалось загрузить интеграции. Обновите страницу или переподключите токены.'),
+            ]);
+        }
+    }
+
+    protected function renderIndex(Request $request): Response
+    {
         $companyId = (int) $request->user()->company_id;
 
         $stored = CompanyIntegration::query()
@@ -30,16 +49,17 @@ class IntegrationController extends Controller
 
         $integrations = collect(IntegrationProvider::cases())->map(function (IntegrationProvider $provider) use ($stored) {
             $record = $stored->get($provider->value);
+            $metadata = $record?->safeMetadata() ?? [];
             $hasToken = match ($provider) {
                 IntegrationProvider::Wappi => $record !== null
                     && $record->hasUsableApiToken()
-                    && filled($record->metadata['profile_id'] ?? null),
+                    && filled($metadata['profile_id'] ?? null),
                 IntegrationProvider::Telegram => $record !== null
                     && $record->hasUsableApiToken()
-                    && filled($record->metadata['bot_id'] ?? null),
+                    && filled($metadata['bot_id'] ?? null),
                 IntegrationProvider::Shop => $record !== null
                     && $record->hasUsableApiToken()
-                    && filled($record->metadata['shop_url'] ?? null),
+                    && filled($metadata['shop_url'] ?? null),
                 default => $record !== null && $record->hasUsableApiToken(),
             };
 
@@ -56,44 +76,44 @@ class IntegrationController extends Controller
 
             if ($provider === IntegrationProvider::Instagram && $hasToken) {
                 $item['account'] = [
-                    'username' => $record->metadata['username'] ?? null,
-                    'name' => $record->metadata['name'] ?? null,
-                    'page_name' => $record->metadata['page_name'] ?? null,
-                    'connected_via' => $record->metadata['connected_via'] ?? 'manual',
+                    'username' => $metadata['username'] ?? null,
+                    'name' => $metadata['name'] ?? null,
+                    'page_name' => $metadata['page_name'] ?? null,
+                    'connected_via' => $metadata['connected_via'] ?? 'manual',
                 ];
             }
 
             if ($provider === IntegrationProvider::Facebook && $hasToken) {
                 $item['account'] = [
-                    'page_name' => $record->metadata['page_name'] ?? null,
-                    'page_id' => $record->metadata['page_id'] ?? null,
-                    'connected_via' => $record->metadata['connected_via'] ?? 'manual',
+                    'page_name' => $metadata['page_name'] ?? null,
+                    'page_id' => $metadata['page_id'] ?? null,
+                    'connected_via' => $metadata['connected_via'] ?? 'manual',
                 ];
             }
 
             if ($provider === IntegrationProvider::Wappi) {
-                $item['profile_id'] = $record?->metadata['profile_id'] ?? null;
+                $item['profile_id'] = $metadata['profile_id'] ?? null;
 
                 if ($hasToken) {
                     $item['account'] = [
-                        'name' => $record->metadata['profile_name'] ?? null,
-                        'profile_id' => $record->metadata['profile_id'] ?? null,
+                        'name' => $metadata['profile_name'] ?? null,
+                        'profile_id' => $metadata['profile_id'] ?? null,
                     ];
                 }
             }
 
             if ($provider === IntegrationProvider::Telegram && $hasToken) {
                 $item['account'] = [
-                    'username' => $record->metadata['bot_username'] ?? null,
-                    'name' => $record->metadata['bot_name'] ?? null,
+                    'username' => $metadata['bot_username'] ?? null,
+                    'name' => $metadata['bot_name'] ?? null,
                 ];
-                $item['webhook_url'] = filled($record->metadata['webhook_secret'] ?? null)
-                    ? route('webhooks.telegram.handle', ['secret' => $record->metadata['webhook_secret']])
+                $item['webhook_url'] = filled($metadata['webhook_secret'] ?? null)
+                    ? route('webhooks.telegram.handle', ['secret' => $metadata['webhook_secret']])
                     : null;
             }
 
             if ($provider === IntegrationProvider::ChatGpt) {
-                $item['model'] = $record?->metadata['model']
+                $item['model'] = $metadata['model']
                     ?? config('services.openai.model', 'gpt-4.1-mini');
 
                 if ($hasToken) {
@@ -104,11 +124,11 @@ class IntegrationController extends Controller
             }
 
             if ($provider === IntegrationProvider::Shop) {
-                $item['shop_url'] = $record?->metadata['shop_url'] ?? '';
+                $item['shop_url'] = $metadata['shop_url'] ?? '';
 
                 if ($hasToken) {
                     $item['account'] = [
-                        'name' => $record->metadata['shop_name'] ?? $item['shop_url'],
+                        'name' => $metadata['shop_name'] ?? $item['shop_url'],
                     ];
                 }
             }
@@ -121,6 +141,7 @@ class IntegrationController extends Controller
             'pageTitle' => 'Интеграции',
             'wappiWebhookUrl' => route('webhooks.wappi.handle'),
             'chatGptModels' => app(ChatGptService::class)->preferredModels(),
+            'loadError' => null,
         ]);
     }
 

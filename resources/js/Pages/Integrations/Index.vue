@@ -37,6 +37,10 @@ const props = defineProps({
             'gpt-3.5-turbo',
         ],
     },
+    loadError: {
+        type: String,
+        default: null,
+    },
 });
 
 const title = computed(() => props.pageTitle || t('integrations.title'));
@@ -238,6 +242,13 @@ function wappiCanSave() {
 
         <div class="py-8">
             <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+                <div
+                    v-if="loadError"
+                    class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                >
+                    {{ loadError }}
+                </div>
+
                 <div
                     v-if="page.props.flash?.success"
                     class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"

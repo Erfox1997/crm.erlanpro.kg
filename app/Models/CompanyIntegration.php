@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Enums\IntegrationProvider;
-use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Log;
@@ -42,7 +41,7 @@ class CompanyIntegration extends Model
     {
         try {
             return filled($this->api_token);
-        } catch (DecryptException $e) {
+        } catch (\Throwable $e) {
             Log::warning('CompanyIntegration api_token decrypt failed', [
                 'integration_id' => $this->id,
                 'provider' => $this->provider,
@@ -51,6 +50,27 @@ class CompanyIntegration extends Model
             ]);
 
             return false;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function safeMetadata(): array
+    {
+        try {
+            $metadata = $this->metadata;
+
+            return is_array($metadata) ? $metadata : [];
+        } catch (\Throwable $e) {
+            Log::warning('CompanyIntegration metadata read failed', [
+                'integration_id' => $this->id,
+                'provider' => $this->provider,
+                'company_id' => $this->company_id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return [];
         }
     }
 }

@@ -853,7 +853,7 @@ onUnmounted(() => {
                                     {{ userInitials || 'U' }}
                                 </span>
                                 <span class="hidden max-w-[10rem] truncate sm:inline">
-                                    {{ $page.props.auth.user.name }}
+                                    {{ $page.props.auth.user?.name }}
                                 </span>
                                 <svg
                                     class="h-4 w-4 text-slate-400"
