@@ -375,6 +375,24 @@ class MetaOAuthService
     }
 
     /**
+     * Subscribe a Facebook Page to the message events handled by the shared Meta webhook.
+     */
+    public function subscribePageWebhooks(string $pageId, string $pageAccessToken): void
+    {
+        $response = MetaMessagingSupport::client($pageAccessToken)->asForm()->post(
+            MetaMessagingSupport::graphUrl($pageId.'/subscribed_apps'),
+            ['subscribed_fields' => 'messages'],
+        );
+
+        if ($response->failed() || $response->json('success') === false) {
+            throw new \RuntimeException(MetaMessagingSupport::formatGraphError(
+                $response->json(),
+                __('Не удалось подписать Facebook-страницу на Webhooks.'),
+            ));
+        }
+    }
+
+    /**
      * @return list<array{
      *     page_id: string,
      *     page_name: ?string,

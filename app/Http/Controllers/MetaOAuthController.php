@@ -196,7 +196,12 @@ class MetaOAuthController extends Controller
         }
 
         try {
+            $this->oauth->subscribePageWebhooks(
+                (string) $selected['page_id'],
+                (string) $selected['access_token'],
+            );
             $connection = $this->oauth->buildIntegrationFromPage($selected, $provider);
+            $connection['metadata']['webhook_subscribed_fields'] = ['messages'];
         } catch (\Throwable $e) {
             return redirect()
                 ->route('integrations.index')
