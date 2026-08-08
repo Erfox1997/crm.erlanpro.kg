@@ -84,10 +84,10 @@
     "renew": "Продлить",
     "subscriptionUntil": "· до {date}",
     "subscriptionExpired": "· истекла {date}",
-    "clearChats": "Очистить все чаты",
-    "clearingChats": "Удаление чатов…",
-    "clearChatsConfirm": "Удалить все диалоги и сообщения всех каналов этой компании? Клиенты и продажи сохранятся.",
-    "clearChatsFinalConfirm": "Это действие необратимо. Точно удалить все чаты?"
+    "clearChats": "Очистить чаты и интеграции",
+    "clearingChats": "Полная очистка…",
+    "clearChatsConfirm": "Удалить все диалоги, сообщения и интеграции этой компании? Instagram, Facebook, WhatsApp и Telegram потребуется подключить заново. Клиенты и продажи сохранятся.",
+    "clearChatsFinalConfirm": "Это действие необратимо. Точно выполнить полную очистку?"
   },
   "admin": {
     "panel": "Панель управления",

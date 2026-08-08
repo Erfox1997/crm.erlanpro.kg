@@ -31,6 +31,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -480,14 +481,24 @@ class MessengerController extends Controller
             403,
         );
 
-        $deleted = MessengerConversation::query()
-            ->where('company_id', (int) $user->company_id)
-            ->delete();
+        $companyId = (int) $user->company_id;
+        [$deletedChats, $deletedIntegrations] = DB::transaction(function () use ($companyId) {
+            $deletedChats = MessengerConversation::query()
+                ->where('company_id', $companyId)
+                ->delete();
+
+            $deletedIntegrations = CompanyIntegration::query()
+                ->where('company_id', $companyId)
+                ->delete();
+
+            return [$deletedChats, $deletedIntegrations];
+        });
 
         return redirect()
-            ->route('messenger.index')
-            ->with('success', __('Удалено диалогов: :count. Клиенты и продажи сохранены.', [
-                'count' => $deleted,
+            ->route('integrations.index')
+            ->with('success', __('Удалено диалогов: :chats, интеграций: :integrations. Клиенты и продажи сохранены.', [
+                'chats' => $deletedChats,
+                'integrations' => $deletedIntegrations,
             ]));
     }
 
