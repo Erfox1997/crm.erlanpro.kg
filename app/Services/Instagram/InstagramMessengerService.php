@@ -991,7 +991,7 @@ class InstagramMessengerService
         $processed = 0;
 
         foreach ($payload['entry'] ?? [] as $entry) {
-            foreach ($entry['messaging'] ?? [] as $event) {
+            foreach ($this->webhookMessagingEvents($entry) as $event) {
                 $entryAccountId = (string) ($entry['id'] ?? '');
                 $recipientId = (string) ($event['recipient']['id'] ?? '');
                 $senderId = (string) ($event['sender']['id'] ?? '');
@@ -1027,6 +1027,49 @@ class InstagramMessengerService
         }
 
         return $processed;
+    }
+
+    /**
+     * Instagram Login delivers message webhooks through entry.changes,
+     * while the legacy Facebook-connected flow uses entry.messaging.
+     *
+     * @param  array<string, mixed>  $entry
+     * @return list<array<string, mixed>>
+     */
+    protected function webhookMessagingEvents(array $entry): array
+    {
+        $events = [];
+
+        foreach ($entry['messaging'] ?? [] as $event) {
+            if (is_array($event)) {
+                $events[] = $event;
+            }
+        }
+
+        foreach ($entry['changes'] ?? [] as $change) {
+            if (! is_array($change) || ($change['field'] ?? '') !== 'messages') {
+                continue;
+            }
+
+            $value = $change['value'] ?? null;
+            if (! is_array($value)) {
+                continue;
+            }
+
+            if (is_array($value['messaging'] ?? null)) {
+                foreach ($value['messaging'] as $event) {
+                    if (is_array($event)) {
+                        $events[] = $event;
+                    }
+                }
+
+                continue;
+            }
+
+            $events[] = $value;
+        }
+
+        return $events;
     }
 
     /**
