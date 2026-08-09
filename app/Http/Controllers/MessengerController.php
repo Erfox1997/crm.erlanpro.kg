@@ -489,9 +489,14 @@ class MessengerController extends Controller
                 ->where('company_id', $companyId)
                 ->delete();
 
+            InstagramComment::query()
+                ->where('company_id', $companyId)
+                ->whereNotNull('parent_id')
+                ->update(['parent_id' => null]);
+
             $deletedComments = InstagramComment::query()
                 ->where('company_id', $companyId)
-                ->count();
+                ->delete();
 
             $deletedMedia = InstagramMedia::query()
                 ->where('company_id', $companyId)
