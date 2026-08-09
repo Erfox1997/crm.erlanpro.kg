@@ -2,7 +2,6 @@
 
 namespace App\Services\Comments;
 
-use App\Models\InstagramComment;
 use App\Models\InstagramMedia;
 use Illuminate\Support\Facades\DB;
 
@@ -12,6 +11,7 @@ class CommentsUnreadService
     {
         return (int) $media->comments()
             ->where('direction', 'inbound')
+            ->where('sent_at', '>=', now()->subHours(48))
             ->when(
                 $media->last_read_at,
                 fn ($query) => $query->where('sent_at', '>', $media->last_read_at),
@@ -26,6 +26,7 @@ class CommentsUnreadService
             ->join('instagram_media as m', 'm.id', '=', 'c.instagram_media_id')
             ->where('c.company_id', $companyId)
             ->where('c.direction', 'inbound')
+            ->where('c.sent_at', '>=', now()->subHours(48))
             ->where(function ($query) {
                 $query->whereNull('m.last_read_at')
                     ->orWhereColumn('c.sent_at', '>', 'm.last_read_at');

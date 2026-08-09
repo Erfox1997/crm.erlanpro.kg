@@ -6,6 +6,8 @@ use App\Actions\CreateDefaultPipelineForCompany;
 use App\Enums\IntegrationProvider;
 use App\Models\Company;
 use App\Models\CompanyIntegration;
+use App\Models\InstagramComment;
+use App\Models\InstagramMedia;
 use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Models\MessengerQuickReply;
@@ -482,8 +484,16 @@ class MessengerController extends Controller
         );
 
         $companyId = (int) $user->company_id;
-        [$deletedChats, $deletedIntegrations] = DB::transaction(function () use ($companyId) {
+        [$deletedChats, $deletedComments, $deletedMedia, $deletedIntegrations] = DB::transaction(function () use ($companyId) {
             $deletedChats = MessengerConversation::query()
+                ->where('company_id', $companyId)
+                ->delete();
+
+            $deletedComments = InstagramComment::query()
+                ->where('company_id', $companyId)
+                ->count();
+
+            $deletedMedia = InstagramMedia::query()
                 ->where('company_id', $companyId)
                 ->delete();
 
@@ -491,13 +501,15 @@ class MessengerController extends Controller
                 ->where('company_id', $companyId)
                 ->delete();
 
-            return [$deletedChats, $deletedIntegrations];
+            return [$deletedChats, $deletedComments, $deletedMedia, $deletedIntegrations];
         });
 
         return redirect()
             ->route('integrations.index')
-            ->with('success', __('Удалено диалогов: :chats, интеграций: :integrations. Клиенты и продажи сохранены.', [
+            ->with('success', __('Удалено диалогов: :chats, комментариев: :comments, публикаций: :media, интеграций: :integrations. Клиенты и продажи сохранены.', [
                 'chats' => $deletedChats,
+                'comments' => $deletedComments,
+                'media' => $deletedMedia,
                 'integrations' => $deletedIntegrations,
             ]));
     }

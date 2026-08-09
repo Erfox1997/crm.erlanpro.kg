@@ -84,9 +84,9 @@
     "renew": "Renew",
     "subscriptionUntil": "· until {date}",
     "subscriptionExpired": "· expired {date}",
-    "clearChats": "Clear chats and integrations",
+    "clearChats": "Clear everything",
     "clearingChats": "Full cleanup…",
-    "clearChatsConfirm": "Delete every conversation, message, and integration for this company? Instagram, Facebook, WhatsApp, and Telegram must be connected again. Clients and sales will remain.",
+    "clearChatsConfirm": "Delete every conversation, message, comment, post, and integration for this company? Social networks must be connected again. Clients and sales will remain.",
     "clearChatsFinalConfirm": "This cannot be undone. Run the full cleanup?"
   },
   "admin": {

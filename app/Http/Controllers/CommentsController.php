@@ -24,9 +24,14 @@ class CommentsController extends Controller
     {
         $companyId = (int) $request->user()->company_id;
         $integration = $this->comments->integrationForCompany($companyId);
+        $cutoff = now()->subHours(48);
 
         $mediaItems = InstagramMedia::query()
             ->where('company_id', $companyId)
+            ->whereHas('comments', fn ($query) => $query->where('sent_at', '>=', $cutoff))
+            ->withCount([
+                'comments as recent_comment_count' => fn ($query) => $query->where('sent_at', '>=', $cutoff),
+            ])
             ->orderByDesc('last_comment_at')
             ->orderByDesc('published_at')
             ->orderByDesc('id')
@@ -38,7 +43,7 @@ class CommentsController extends Controller
                 'media_type' => $media->media_type,
                 'thumbnail_url' => $media->thumbnail_url ?: $media->media_url,
                 'permalink' => $media->permalink,
-                'comment_count' => $media->comment_count,
+                'comment_count' => $media->recent_comment_count,
                 'published_at' => $media->published_at?->toIso8601String(),
                 'last_comment_at' => $media->last_comment_at?->toIso8601String(),
                 'unread_count' => $this->unread->unreadCountForMedia($media),
@@ -52,6 +57,7 @@ class CommentsController extends Controller
             $media = InstagramMedia::query()
                 ->where('company_id', $companyId)
                 ->whereKey((int) $selectedId)
+                ->whereHas('comments', fn ($query) => $query->where('sent_at', '>=', $cutoff))
                 ->first();
 
             if ($media) {
@@ -67,7 +73,13 @@ class CommentsController extends Controller
                 ];
 
                 $comments = $media->topLevelComments()
-                    ->with('replies')
+                    ->where(function ($query) use ($cutoff) {
+                        $query->where('sent_at', '>=', $cutoff)
+                            ->orWhereHas('replies', fn ($replies) => $replies->where('sent_at', '>=', $cutoff));
+                    })
+                    ->with([
+                        'replies' => fn ($query) => $query->where('sent_at', '>=', $cutoff),
+                    ])
                     ->get()
                     ->map(fn (InstagramComment $comment) => $this->commentPayload($comment))
                     ->values()
