@@ -47,7 +47,16 @@ class IntegrationController extends Controller
             ->get()
             ->keyBy('provider');
 
-        $integrations = collect(IntegrationProvider::cases())->map(function (IntegrationProvider $provider) use ($stored) {
+        $providers = [
+            IntegrationProvider::Facebook,
+            IntegrationProvider::Instagram,
+            IntegrationProvider::Wappi,
+            IntegrationProvider::Telegram,
+            IntegrationProvider::ChatGpt,
+            IntegrationProvider::Shop,
+        ];
+
+        $integrations = collect($providers)->map(function (IntegrationProvider $provider) use ($stored) {
             $record = $stored->get($provider->value);
             $metadata = $record?->safeMetadata() ?? [];
             $hasToken = match ($provider) {
