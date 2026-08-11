@@ -12,6 +12,7 @@ use App\Services\Meta\MetaMessagingSupport;
 use App\Services\Messenger\ChatDistributionService;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class FacebookMessengerService
 {
@@ -510,6 +511,12 @@ class FacebookMessengerService
             ],
         );
 
+        $this->fillParticipantProfileIfMissing(
+            $integration,
+            $conversation,
+            (string) ($message['mid'] ?? ''),
+        );
+
         $this->chatDistribution->assignIfNew($conversation);
 
         $externalId = (string) $message['mid'];
@@ -543,6 +550,129 @@ class FacebookMessengerService
         $conversation->update(['last_message_at' => $sentAt]);
 
         return true;
+    }
+
+    protected function fillParticipantProfileIfMissing(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+        string $messageId = '',
+    ): void {
+        if (filled($conversation->participant_name)) {
+            return;
+        }
+
+        $profile = $this->fetchParticipantProfile(
+            $integration,
+            (string) $conversation->participant_id,
+            $messageId,
+        );
+
+        if ($profile === null || blank($profile['name'] ?? null)) {
+            return;
+        }
+
+        $conversation->update([
+            'participant_name' => $profile['name'],
+        ]);
+    }
+
+    /**
+     * @return array{name: ?string}|null
+     */
+    protected function fetchParticipantProfile(
+        CompanyIntegration $integration,
+        string $participantId,
+        string $messageId = '',
+    ): ?array {
+        if ($participantId === '' || blank($integration->api_token)) {
+            return null;
+        }
+
+        $token = (string) $integration->api_token;
+
+        try {
+            $response = MetaMessagingSupport::client($token)->get(
+                MetaMessagingSupport::graphUrl($participantId),
+                ['fields' => 'name,first_name,last_name'],
+            );
+
+            if ($response->successful()) {
+                $name = $this->buildFacebookDisplayName($response->json() ?? []);
+                if ($name !== null) {
+                    return ['name' => $name];
+                }
+            } else {
+                Log::info('Facebook participant profile fetch failed', [
+                    'participant_id' => $participantId,
+                    'status' => $response->status(),
+                    'body' => $response->json(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::info('Facebook participant profile fetch error', [
+                'participant_id' => $participantId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if ($messageId === '') {
+            return null;
+        }
+
+        try {
+            $response = MetaMessagingSupport::client($token)->get(
+                MetaMessagingSupport::graphUrl($messageId),
+                ['fields' => 'from'],
+            );
+
+            if ($response->failed()) {
+                Log::info('Facebook message sender profile fetch failed', [
+                    'message_id' => $messageId,
+                    'status' => $response->status(),
+                    'body' => $response->json(),
+                ]);
+
+                return null;
+            }
+
+            $from = $response->json('from');
+            if (! is_array($from)) {
+                return null;
+            }
+
+            $name = $this->buildFacebookDisplayName($from);
+
+            return $name !== null ? ['name' => $name] : null;
+        } catch (\Throwable $e) {
+            Log::info('Facebook message sender profile fetch error', [
+                'message_id' => $messageId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function buildFacebookDisplayName(array $data): ?string
+    {
+        $name = trim((string) ($data['name'] ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        $parts = array_filter([
+            trim((string) ($data['first_name'] ?? '')),
+            trim((string) ($data['last_name'] ?? '')),
+        ]);
+
+        if ($parts === []) {
+            return null;
+        }
+
+        return implode(' ', $parts);
     }
 
     protected function findIntegrationByPageId(string $pageId): ?CompanyIntegration
