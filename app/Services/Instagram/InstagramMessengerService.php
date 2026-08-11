@@ -725,6 +725,87 @@ class InstagramMessengerService
         return null;
     }
 
+    protected function fillParticipantProfileIfMissing(
+        CompanyIntegration $integration,
+        MessengerConversation $conversation,
+    ): void {
+        $needsName = blank($conversation->participant_name);
+        $needsUsername = blank($conversation->participant_username);
+
+        if (! $needsName && ! $needsUsername) {
+            return;
+        }
+
+        $profile = $this->fetchParticipantProfile(
+            $integration,
+            (string) $conversation->participant_id,
+        );
+
+        if ($profile === null) {
+            return;
+        }
+
+        $updates = [];
+
+        if ($needsName && filled($profile['name'] ?? null)) {
+            $updates['participant_name'] = $profile['name'];
+        } elseif ($needsName && filled($profile['username'] ?? null)) {
+            $updates['participant_name'] = $profile['username'];
+        }
+
+        if ($needsUsername && filled($profile['username'] ?? null)) {
+            $updates['participant_username'] = $profile['username'];
+        }
+
+        if ($updates === []) {
+            return;
+        }
+
+        $conversation->update($updates);
+    }
+
+    /**
+     * @return array{name: ?string, username: ?string}|null
+     */
+    protected function fetchParticipantProfile(
+        CompanyIntegration $integration,
+        string $participantId,
+    ): ?array {
+        if ($participantId === '' || blank($integration->api_token)) {
+            return null;
+        }
+
+        try {
+            $authMode = $this->authMode($integration);
+            $response = $this->client((string) $integration->api_token, $authMode)->get(
+                $this->url($participantId, $authMode),
+                ['fields' => 'name,username'],
+            );
+
+            if ($response->failed()) {
+                Log::info('Instagram participant profile fetch failed', [
+                    'participant_id' => $participantId,
+                    'status' => $response->status(),
+                    'body' => $response->json(),
+                ]);
+
+                return null;
+            }
+
+            return [
+                'name' => isset($response['name']) ? (string) $response['name'] : null,
+                'username' => isset($response['username']) ? (string) $response['username'] : null,
+            ];
+        } catch (\Throwable $e) {
+            Log::info('Instagram participant profile fetch error', [
+                'participant_id' => $participantId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $messageData
      */
@@ -1150,6 +1231,8 @@ class InstagramMessengerService
                 'participant_username' => null,
             ],
         );
+
+        $this->fillParticipantProfileIfMissing($integration, $conversation);
 
         $this->chatDistribution->assignIfNew($conversation);
 
