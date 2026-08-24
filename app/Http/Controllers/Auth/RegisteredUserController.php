@@ -12,10 +12,12 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 class RegisteredUserController extends Controller
 {
@@ -65,7 +67,16 @@ class RegisteredUserController extends Controller
             ]);
         });
 
-        event(new Registered($user));
+        try {
+            event(new Registered($user));
+        } catch (Throwable $e) {
+            // Account is already created — do not fail registration on mail misconfiguration.
+            Log::error('Failed to send registration verification email.', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'message' => $e->getMessage(),
+            ]);
+        }
 
         Auth::login($user);
 

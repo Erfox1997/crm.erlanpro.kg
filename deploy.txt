@@ -92,6 +92,31 @@ php artisan telegram:manager-webhook
 php artisan migrate --force
 php artisan config:clear
 php artisan telegram:support-webhook
+
+7. Почта (регистрация / сброс пароля) — без SMTP будет 500 или «не удалось отправить»:
+
+# В .env на проде (пример для ящика на хостинге):
+MAIL_MAILER=smtp
+MAIL_SCHEME=smtp
+MAIL_HOST=mail.erlanpro.kg
+MAIL_PORT=587
+MAIL_USERNAME=noreply@erlanpro.kg
+MAIL_PASSWORD=пароль_от_ящика
+MAIL_FROM_ADDRESS="noreply@erlanpro.kg"
+MAIL_FROM_NAME="ErlanPro CRM"
+
+# Порт 465 (SSL):
+# MAIL_SCHEME=smtps
+# MAIL_PORT=465
+
+# После правки .env:
+php artisan config:clear
+php artisan config:cache
+
+# Диагностика:
+tail -n 80 storage/logs/laravel.log
+# Ищите: Connection could not be established / TransportException / scheme is not supported
+
 # Клиент: пишет @ErlanProtask_bot → сообщение приходит вам (954807019).
 # Ответ: reply на сообщение бота → клиенту уйдёт ответ.
 

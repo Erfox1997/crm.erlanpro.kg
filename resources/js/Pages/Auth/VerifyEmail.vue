@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
+import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 
@@ -38,6 +39,8 @@ const verificationLinkSent = computed(
             A new verification link has been sent to the email address you
             provided during registration.
         </div>
+
+        <InputError class="mb-4" :message="form.errors.email" />
 
         <form @submit.prevent="submit">
             <div class="mt-4 flex items-center justify-between">
