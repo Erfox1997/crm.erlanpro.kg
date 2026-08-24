@@ -37,12 +37,17 @@ class MessengerSyncService
         ?int $maxConversations = null,
     ): array {
         $company = Company::query()->find($companyId);
-        $instagramIntegration = $this->instagram->integrationForCompany($companyId);
-        $facebookIntegration = $this->facebook->integrationForCompany($companyId);
+        $instagramIntegrations = $this->instagram->integrationsForCompany($companyId);
+        $facebookIntegrations = $this->facebook->integrationsForCompany($companyId);
         $wappiIntegration = $this->wappi->integrationForCompany($companyId);
         $telegramIntegration = $this->telegram->integrationForCompany($companyId);
 
-        if (! $instagramIntegration && ! $facebookIntegration && ! $wappiIntegration && ! $telegramIntegration) {
+        if (
+            $instagramIntegrations->isEmpty()
+            && $facebookIntegrations->isEmpty()
+            && ! $wappiIntegration
+            && ! $telegramIntegration
+        ) {
             return [
                 'synced' => 0,
                 'errors' => [__('Подключите Instagram, Facebook, WhatsApp или Telegram в разделе «Интеграции».')],
@@ -55,7 +60,7 @@ class MessengerSyncService
         $errors = [];
         $synced = 0;
 
-        if ($instagramIntegration) {
+        foreach ($instagramIntegrations as $instagramIntegration) {
             if (! ($instagramIntegration->metadata['instagram_user_id'] ?? null)) {
                 $instagramIntegration = $this->instagram->refreshIntegrationMetadata($instagramIntegration);
             }
@@ -71,7 +76,7 @@ class MessengerSyncService
             $errors = array_merge($errors, $result['errors']);
         }
 
-        if ($facebookIntegration) {
+        foreach ($facebookIntegrations as $facebookIntegration) {
             if (! ($facebookIntegration->metadata['page_id'] ?? null)) {
                 $facebookIntegration = $this->facebook->refreshIntegrationMetadata($facebookIntegration);
             }

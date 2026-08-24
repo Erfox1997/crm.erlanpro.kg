@@ -84,25 +84,35 @@ php artisan telegram:manager-webhook
 # Админка: /admin/rule-updates → опубликовать → сайт /updates + группа Telegram.
 # Клиенты вступают в группу по TELEGRAM_NEWS_GROUP_URL (ссылка на /privacy, /terms, /updates).
 
-# --- C) @ErlanProtask_bot — поддержка: клиент пишет боту → вам в личку ---
+# --- C) @ErlanProtask_bot — поддержка: заявка в Mini App → принять → потом чат ---
 # TELEGRAM_SUPPORT_BOT_TOKEN=...
 # TELEGRAM_SUPPORT_BOT_USERNAME=ErlanProtask_bot
 # TELEGRAM_SUPPORT_WEBHOOK_SECRET=случайная_длинная_строка
 # TELEGRAM_SUPPORT_OWNER_CHAT_ID=954807019
+# TELEGRAM_SUPPORT_WEBAPP_URL=https://crm.erlanpro.kg/tma/support
+# В BotFather → Domain для Mini App: crm.erlanpro.kg
 php artisan migrate --force
 php artisan config:clear
 php artisan telegram:support-webhook
+# Клиент: /start → «Заявка» → форма. Вам: Принять/Отклонить в Telegram ИЛИ в админке.
+# Админка CRM: /admin/support/applications | /projects | /inbox
+# Принять в админке: выбрать проект(ы). Несколько проектов → бот спросит, по какому пишет клиент.
+# Входящие: по проектам (+N) → Выполнено / Ответить / Удалить.
 
 7. Почта (регистрация / сброс пароля) — без SMTP будет 500 или «не удалось отправить»:
 
-# В .env на проде (пример для ящика на хостинге):
+# В .env на проде:
+APP_LOCALE=ru
+APP_FALLBACK_LOCALE=ru
+
+# SMTP (пример Gmail):
 MAIL_MAILER=smtp
 MAIL_SCHEME=smtp
-MAIL_HOST=mail.erlanpro.kg
+MAIL_HOST=smtp.gmail.com
 MAIL_PORT=587
-MAIL_USERNAME=noreply@erlanpro.kg
-MAIL_PASSWORD=пароль_от_ящика
-MAIL_FROM_ADDRESS="noreply@erlanpro.kg"
+MAIL_USERNAME=your@gmail.com
+MAIL_PASSWORD=app_password_without_spaces
+MAIL_FROM_ADDRESS="your@gmail.com"
 MAIL_FROM_NAME="ErlanPro CRM"
 
 # Порт 465 (SSL):

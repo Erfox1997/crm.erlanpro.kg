@@ -44,8 +44,9 @@ class IntegrationController extends Controller
 
         $stored = CompanyIntegration::query()
             ->where('company_id', $companyId)
+            ->orderBy('id')
             ->get()
-            ->keyBy('provider');
+            ->groupBy('provider');
 
         $providers = [
             IntegrationProvider::Facebook,
@@ -57,8 +58,11 @@ class IntegrationController extends Controller
         ];
 
         $integrations = collect($providers)->map(function (IntegrationProvider $provider) use ($stored) {
-            $record = $stored->get($provider->value);
+            $records = $stored->get($provider->value, collect());
+            $record = $records->first();
             $metadata = $record?->safeMetadata() ?? [];
+            $isMeta = in_array($provider, [IntegrationProvider::Instagram, IntegrationProvider::Facebook], true);
+
             $hasToken = match ($provider) {
                 IntegrationProvider::Wappi => $record !== null
                     && $record->hasUsableApiToken()
@@ -69,6 +73,9 @@ class IntegrationController extends Controller
                 IntegrationProvider::Shop => $record !== null
                     && $record->hasUsableApiToken()
                     && filled($metadata['shop_url'] ?? null),
+                IntegrationProvider::Instagram, IntegrationProvider::Facebook => $records->contains(
+                    fn (CompanyIntegration $item) => $item->hasUsableApiToken(),
+                ),
                 default => $record !== null && $record->hasUsableApiToken(),
             };
 
@@ -79,25 +86,36 @@ class IntegrationController extends Controller
                 'has_token' => $hasToken,
             ];
 
-            if (in_array($provider, [IntegrationProvider::Instagram, IntegrationProvider::Facebook], true)) {
+            if ($isMeta) {
                 $item['oauth_url'] = route("integrations.{$provider->value}.oauth");
-            }
+                $item['connections'] = $records
+                    ->filter(fn (CompanyIntegration $row) => $row->hasUsableApiToken())
+                    ->map(function (CompanyIntegration $row) use ($provider) {
+                        $meta = $row->safeMetadata();
 
-            if ($provider === IntegrationProvider::Instagram && $hasToken) {
-                $item['account'] = [
-                    'username' => $metadata['username'] ?? null,
-                    'name' => $metadata['name'] ?? null,
-                    'page_name' => $metadata['page_name'] ?? null,
-                    'connected_via' => $metadata['connected_via'] ?? 'manual',
-                ];
-            }
+                        return [
+                            'id' => $row->id,
+                            'label' => $provider === IntegrationProvider::Instagram
+                                ? ($meta['username'] ? '@'.$meta['username'] : ($meta['page_name'] ?? $meta['name'] ?? '#'.$row->id))
+                                : ($meta['page_name'] ?? $meta['page_id'] ?? '#'.$row->id),
+                            'page_name' => $meta['page_name'] ?? null,
+                            'username' => $meta['username'] ?? null,
+                            'connected_via' => $meta['connected_via'] ?? 'manual',
+                        ];
+                    })
+                    ->values()
+                    ->all();
 
-            if ($provider === IntegrationProvider::Facebook && $hasToken) {
-                $item['account'] = [
-                    'page_name' => $metadata['page_name'] ?? null,
-                    'page_id' => $metadata['page_id'] ?? null,
-                    'connected_via' => $metadata['connected_via'] ?? 'manual',
-                ];
+                // Backward-compatible single account label for first connection.
+                if ($item['connections'] !== []) {
+                    $first = $item['connections'][0];
+                    $item['account'] = [
+                        'username' => $first['username'] ?? null,
+                        'name' => $first['label'] ?? null,
+                        'page_name' => $first['page_name'] ?? null,
+                        'connected_via' => $first['connected_via'] ?? 'manual',
+                    ];
+                }
             }
 
             if ($provider === IntegrationProvider::Wappi) {
@@ -316,11 +334,9 @@ class IntegrationController extends Controller
             ];
         }
 
-        $integration = CompanyIntegration::query()->updateOrCreate(
-            [
-                'company_id' => $companyId,
-                'provider' => $integrationProvider->value,
-            ],
+        $integration = CompanyIntegration::upsertForCompany(
+            $companyId,
+            $integrationProvider->value,
             $attributes,
         );
 
@@ -359,20 +375,28 @@ class IntegrationController extends Controller
         abort_unless($integrationProvider !== null, 404);
 
         $companyId = (int) $request->user()->company_id;
+        $integrationId = $request->integer('integration_id') ?: null;
 
-        $integration = CompanyIntegration::query()
+        $query = CompanyIntegration::query()
             ->where('company_id', $companyId)
-            ->where('provider', $integrationProvider->value)
-            ->first();
+            ->where('provider', $integrationProvider->value);
 
-        if ($integration && $integrationProvider === IntegrationProvider::Telegram) {
-            app(TelegramMessengerService::class)->disconnectIntegration($integration);
+        if (
+            $integrationId
+            && in_array($integrationProvider, [IntegrationProvider::Instagram, IntegrationProvider::Facebook], true)
+        ) {
+            $query->whereKey($integrationId);
         }
 
-        CompanyIntegration::query()
-            ->where('company_id', $companyId)
-            ->where('provider', $integrationProvider->value)
-            ->delete();
+        $integrations = $query->get();
+
+        foreach ($integrations as $integration) {
+            if ($integrationProvider === IntegrationProvider::Telegram) {
+                app(TelegramMessengerService::class)->disconnectIntegration($integration);
+            }
+
+            $integration->delete();
+        }
 
         return back()->with('success', __('Интеграция :name отключена.', [
             'name' => $integrationProvider->label(),

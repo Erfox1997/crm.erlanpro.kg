@@ -24,8 +24,17 @@ const props = defineProps({
 });
 
 const form = useForm({
-    page_id: props.pages[0]?.page_id ?? '',
+    page_ids: props.pages.map((page) => page.page_id),
 });
+
+function togglePage(pageId) {
+    const index = form.page_ids.indexOf(pageId);
+    if (index === -1) {
+        form.page_ids.push(pageId);
+    } else {
+        form.page_ids.splice(index, 1);
+    }
+}
 
 function submit() {
     form.post(route('integrations.meta.oauth.select-page.store', props.provider));
@@ -54,7 +63,7 @@ function submit() {
                     @submit.prevent="submit"
                 >
                     <p class="text-sm text-gray-600">
-                        {{ t('integrations.oauthHint') }}
+                        {{ t('integrations.oauthMultiHint') }}
                     </p>
 
                     <div class="mt-4 space-y-3">
@@ -62,15 +71,15 @@ function submit() {
                             v-for="page in pages"
                             :key="page.page_id"
                             class="flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition"
-                            :class="form.page_id === page.page_id
+                            :class="form.page_ids.includes(page.page_id)
                                 ? 'border-indigo-500 bg-indigo-50'
                                 : 'border-gray-200 hover:border-gray-300'"
                         >
                             <input
-                                v-model="form.page_id"
-                                type="radio"
-                                class="mt-1"
-                                :value="page.page_id"
+                                type="checkbox"
+                                class="mt-1 rounded border-gray-300 text-indigo-600"
+                                :checked="form.page_ids.includes(page.page_id)"
+                                @change="togglePage(page.page_id)"
                             >
                             <span>
                                 <span class="block font-medium text-gray-900">
@@ -88,15 +97,15 @@ function submit() {
 
                     <InputError
                         class="mt-4"
-                        :message="form.errors.page_id"
+                        :message="form.errors.page_ids"
                     />
 
                     <div class="mt-6 flex flex-wrap gap-2">
                         <PrimaryButton
                             type="submit"
-                            :disabled="form.processing || !form.page_id"
+                            :disabled="form.processing || form.page_ids.length === 0"
                         >
-                            {{ t('integrations.oauthSubmit') }}
+                            {{ t('integrations.oauthSubmitMulti', { count: form.page_ids.length }) }}
                         </PrimaryButton>
                         <Link :href="route('integrations.index')">
                             <SecondaryButton type="button">

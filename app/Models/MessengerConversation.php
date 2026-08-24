@@ -10,6 +10,7 @@ class MessengerConversation extends Model
 {
     protected $fillable = [
         'company_id',
+        'company_integration_id',
         'channel',
         'external_id',
         'participant_id',
@@ -32,6 +33,11 @@ class MessengerConversation extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function integration(): BelongsTo
+    {
+        return $this->belongsTo(CompanyIntegration::class, 'company_integration_id');
     }
 
     public function client(): BelongsTo

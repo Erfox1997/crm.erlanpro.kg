@@ -5,7 +5,7 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createApp, h } from 'vue';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
-import i18n, { getStoredLocale } from './i18n';
+import i18n, { getStoredLocale, syncLocaleCookie } from './i18n';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -36,7 +36,9 @@ createInertiaApp({
             import.meta.glob('./Pages/**/*.vue'),
         ),
     setup({ el, App, props, plugin }) {
-        document.documentElement.lang = getStoredLocale();
+        const locale = getStoredLocale();
+        document.documentElement.lang = locale;
+        syncLocaleCookie(locale);
 
         const vueApp = createApp({ render: () => h(App, props) })
             .use(plugin)

@@ -24,11 +24,38 @@ class FacebookMessengerService
 
     public function integrationForCompany(int $companyId): ?CompanyIntegration
     {
+        return $this->integrationsForCompany($companyId)->first();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, CompanyIntegration>
+     */
+    public function integrationsForCompany(int $companyId)
+    {
         return CompanyIntegration::query()
             ->where('company_id', $companyId)
             ->where('provider', IntegrationProvider::Facebook->value)
             ->whereNotNull('api_token')
-            ->first();
+            ->orderBy('id')
+            ->get();
+    }
+
+    public function integrationForConversation(?MessengerConversation $conversation, int $companyId): ?CompanyIntegration
+    {
+        if ($conversation?->company_integration_id) {
+            $integration = CompanyIntegration::query()
+                ->whereKey($conversation->company_integration_id)
+                ->where('company_id', $companyId)
+                ->where('provider', IntegrationProvider::Facebook->value)
+                ->whereNotNull('api_token')
+                ->first();
+
+            if ($integration) {
+                return $integration;
+            }
+        }
+
+        return $this->integrationForCompany($companyId);
     }
 
     /**
@@ -72,7 +99,13 @@ class FacebookMessengerService
             'page_name' => $response->json('name'),
         ]);
 
-        $integration->update(['metadata' => $metadata]);
+        $integration->update([
+            'metadata' => $metadata,
+            'external_account_id' => CompanyIntegration::resolveExternalAccountId(
+                IntegrationProvider::Facebook->value,
+                $metadata,
+            ),
+        ]);
 
         return $integration->refresh();
     }
@@ -161,6 +194,7 @@ class FacebookMessengerService
             [
                 'company_id' => $integration->company_id,
                 'channel' => IntegrationProvider::Facebook->value,
+                'company_integration_id' => $integration->id,
                 'participant_id' => $participant['id'],
             ],
             [
@@ -473,10 +507,18 @@ class FacebookMessengerService
                 ->where('company_id', $integration->company_id)
                 ->where('provider', IntegrationProvider::Instagram->value)
                 ->whereNotNull('api_token')
-                ->first();
+                ->get()
+                ->first(function (CompanyIntegration $row) use ($pageId) {
+                    return (string) ($row->metadata['page_id'] ?? '') === $pageId
+                        || (string) $row->external_account_id === $pageId;
+                });
 
             if ($instagramIntegration) {
-                $igAccountId = (string) ($instagramIntegration->metadata['instagram_user_id'] ?? '');
+                $igAccountId = (string) (
+                    $instagramIntegration->metadata['instagram_user_id']
+                        ?? $instagramIntegration->external_account_id
+                        ?? ''
+                );
 
                 return $this->attachments->processInstagramMessagingEvent(
                     $instagramIntegration,
@@ -503,6 +545,7 @@ class FacebookMessengerService
             [
                 'company_id' => $integration->company_id,
                 'channel' => IntegrationProvider::Facebook->value,
+                'company_integration_id' => $integration->id,
                 'participant_id' => $customerId,
             ],
             [
@@ -679,6 +722,16 @@ class FacebookMessengerService
     {
         if ($pageId === '') {
             return null;
+        }
+
+        $byExternal = CompanyIntegration::query()
+            ->where('provider', IntegrationProvider::Facebook->value)
+            ->where('external_account_id', $pageId)
+            ->whereNotNull('api_token')
+            ->first();
+
+        if ($byExternal) {
+            return $byExternal;
         }
 
         return CompanyIntegration::query()

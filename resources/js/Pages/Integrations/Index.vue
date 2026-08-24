@@ -159,16 +159,25 @@ function saveWappi() {
     });
 }
 
-function disconnect(provider) {
+function disconnect(provider, integrationId = null) {
     if (!confirm(t('integrations.confirmDisconnect'))) {
         return;
     }
-    router.delete(route('integrations.destroy', provider), {
+
+    const url = integrationId
+        ? `${route('integrations.destroy', provider)}?integration_id=${integrationId}`
+        : route('integrations.destroy', provider);
+
+    router.delete(url, {
         preserveScroll: true,
     });
 }
 
 function accountLabel(item) {
+    if (Array.isArray(item.connections) && item.connections.length > 1) {
+        return t('integrations.pagesConnected', { count: item.connections.length });
+    }
+
     if (!item.account) {
         return null;
     }
@@ -330,16 +339,38 @@ function wappiCanSave() {
                                     :href="item.oauth_url"
                                     class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-indigo-500"
                                 >
-                                    {{ item.has_token ? t('integrations.reconnect') : t('integrations.connect') }}
+                                    {{ item.has_token ? t('integrations.addPage') : t('integrations.connect') }}
                                 </a>
                                 <SecondaryButton
-                                    v-if="item.has_token"
+                                    v-if="item.has_token && !(item.connections?.length > 1)"
                                     type="button"
                                     @click="disconnect(item.provider)"
                                 >
                                     {{ t('integrations.disconnect') }}
                                 </SecondaryButton>
                             </div>
+
+                            <ul
+                                v-if="item.connections?.length"
+                                class="space-y-2 rounded-lg border border-slate-200 bg-white/70 p-3"
+                            >
+                                <li
+                                    v-for="connection in item.connections"
+                                    :key="connection.id"
+                                    class="flex items-center justify-between gap-3 text-sm"
+                                >
+                                    <span class="font-medium text-slate-800">
+                                        {{ connection.label }}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="text-xs font-semibold text-red-600 hover:text-red-500"
+                                        @click="disconnect(item.provider, connection.id)"
+                                    >
+                                        {{ t('integrations.disconnect') }}
+                                    </button>
+                                </li>
+                            </ul>
 
                             <button
                                 type="button"

@@ -631,7 +631,7 @@ class MessengerController extends Controller
                     $this->wappi->sendMessage($integration, $conversation, (string) $validated['body']);
                 }
             } elseif ($conversation->channel === IntegrationProvider::Facebook->value) {
-                $integration = $this->facebook->integrationForCompany($companyId);
+                $integration = $this->facebook->integrationForConversation($conversation, $companyId);
                 if (! $integration) {
                     return $this->messengerSendError($request, __('Facebook не подключён.'));
                 }
@@ -644,7 +644,7 @@ class MessengerController extends Controller
                     $this->facebook->sendMessage($integration, $conversation, (string) $validated['body']);
                 }
             } elseif ($conversation->channel === IntegrationProvider::Instagram->value) {
-                $integration = $this->instagram->integrationForCompany($companyId);
+                $integration = $this->instagram->integrationForConversation($conversation, $companyId);
                 if (! $integration) {
                     return $this->messengerSendError($request, __('Instagram не подключён.'));
                 }
@@ -716,14 +716,14 @@ class MessengerController extends Controller
                     return $this->messengerSendError($request, __('Медиа-шаблоны для WhatsApp пока не поддерживаются.'));
                 }
             } elseif ($conversation->channel === IntegrationProvider::Facebook->value) {
-                $integration = $this->facebook->integrationForCompany($companyId);
+                $integration = $this->facebook->integrationForConversation($conversation, $companyId);
                 if (! $integration) {
                     return $this->messengerSendError($request, __('Facebook не подключён.'));
                 }
 
                 $this->dispatchQuickReply($this->facebook, $integration, $conversation, $quickReply);
             } elseif ($conversation->channel === IntegrationProvider::Instagram->value) {
-                $integration = $this->instagram->integrationForCompany($companyId);
+                $integration = $this->instagram->integrationForConversation($conversation, $companyId);
                 if (! $integration) {
                     return $this->messengerSendError($request, __('Instagram не подключён.'));
                 }
@@ -907,7 +907,7 @@ class MessengerController extends Controller
         }
 
         if ($conversation->channel === IntegrationProvider::Facebook->value) {
-            $integration = $this->facebook->integrationForCompany($companyId);
+            $integration = $this->facebook->integrationForConversation($conversation, $companyId);
             if (! $integration) {
                 throw new \RuntimeException(__('Facebook не подключён.'));
             }
@@ -916,7 +916,7 @@ class MessengerController extends Controller
         }
 
         if ($conversation->channel === IntegrationProvider::Instagram->value) {
-            $integration = $this->instagram->integrationForCompany($companyId);
+            $integration = $this->instagram->integrationForConversation($conversation, $companyId);
             if (! $integration) {
                 throw new \RuntimeException(__('Instagram не подключён.'));
             }

@@ -89,6 +89,7 @@ return [
         'support_bot_username' => env('TELEGRAM_SUPPORT_BOT_USERNAME'),
         'support_webhook_secret' => env('TELEGRAM_SUPPORT_WEBHOOK_SECRET'),
         'support_owner_chat_id' => env('TELEGRAM_SUPPORT_OWNER_CHAT_ID'),
+        'support_webapp_url' => env('TELEGRAM_SUPPORT_WEBAPP_URL'),
     ],
 
     'openai' => [

@@ -5,6 +5,9 @@ use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\LegalController as AdminLegalController;
 use App\Http\Controllers\Admin\PaymentRequisiteController as AdminPaymentRequisiteController;
 use App\Http\Controllers\Admin\RuleUpdateController as AdminRuleUpdateController;
+use App\Http\Controllers\Admin\SupportApplicationController as AdminSupportApplicationController;
+use App\Http\Controllers\Admin\SupportInboxController as AdminSupportInboxController;
+use App\Http\Controllers\Admin\SupportProjectController as AdminSupportProjectController;
 use App\Http\Controllers\Admin\TariffController as AdminTariffController;
 use App\Http\Controllers\RuleUpdateController;
 use App\Support\PlatformLegalDetails;
@@ -33,6 +36,7 @@ use App\Http\Controllers\StageTunnelController;
 use App\Http\Controllers\TariffController;
 use App\Http\Controllers\TelegramManagerWebhookController;
 use App\Http\Controllers\TelegramMiniAppController;
+use App\Http\Controllers\TelegramSupportMiniAppController;
 use App\Http\Controllers\TelegramSupportWebhookController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\WappiOutboundMediaController;
@@ -56,6 +60,9 @@ Route::post('/webhooks/telegram-support/{secret}', [TelegramSupportWebhookContro
 
 Route::get('/tma', [TelegramMiniAppController::class, 'entry'])->name('tma.entry');
 Route::post('/tma/auth', [TelegramMiniAppController::class, 'auth'])->name('tma.auth');
+Route::get('/tma/support', [TelegramSupportMiniAppController::class, 'entry'])->name('tma.support.entry');
+Route::post('/tma/support/bootstrap', [TelegramSupportMiniAppController::class, 'bootstrap'])->name('tma.support.bootstrap');
+Route::post('/tma/support/apply', [TelegramSupportMiniAppController::class, 'apply'])->name('tma.support.apply');
 Route::get('/media/wappi-outbound/{filename}', [WappiOutboundMediaController::class, 'show'])
     ->where('filename', '[a-zA-Z0-9._-]+')
     ->name('wappi.outbound-media');
@@ -116,6 +123,24 @@ Route::middleware(['auth', 'verified', 'platform.admin'])
         Route::get('rule-updates', [AdminRuleUpdateController::class, 'index'])->name('rule-updates.index');
         Route::get('rule-updates/create', [AdminRuleUpdateController::class, 'create'])->name('rule-updates.create');
         Route::post('rule-updates', [AdminRuleUpdateController::class, 'store'])->name('rule-updates.store');
+
+        Route::get('support/applications', [AdminSupportApplicationController::class, 'index'])->name('support.applications.index');
+        Route::post('support/applications/{client}/accept', [AdminSupportApplicationController::class, 'accept'])->name('support.applications.accept');
+        Route::post('support/applications/{client}/reject', [AdminSupportApplicationController::class, 'reject'])->name('support.applications.reject');
+        Route::post('support/applications/{client}/projects', [AdminSupportApplicationController::class, 'updateProjects'])->name('support.applications.projects');
+        Route::post('support/applications/{client}/block', [AdminSupportApplicationController::class, 'block'])->name('support.applications.block');
+        Route::post('support/applications/{client}/unblock', [AdminSupportApplicationController::class, 'unblock'])->name('support.applications.unblock');
+
+        Route::get('support/projects', [AdminSupportProjectController::class, 'index'])->name('support.projects.index');
+        Route::post('support/projects', [AdminSupportProjectController::class, 'store'])->name('support.projects.store');
+        Route::put('support/projects/{project}', [AdminSupportProjectController::class, 'update'])->name('support.projects.update');
+        Route::delete('support/projects/{project}', [AdminSupportProjectController::class, 'destroy'])->name('support.projects.destroy');
+
+        Route::get('support/inbox', [AdminSupportInboxController::class, 'index'])->name('support.inbox.index');
+        Route::get('support/inbox/{project}', [AdminSupportInboxController::class, 'show'])->name('support.inbox.show');
+        Route::post('support/messages/{message}/reply', [AdminSupportInboxController::class, 'reply'])->name('support.messages.reply');
+        Route::post('support/messages/{message}/complete', [AdminSupportInboxController::class, 'complete'])->name('support.messages.complete');
+        Route::delete('support/messages/{message}', [AdminSupportInboxController::class, 'destroy'])->name('support.messages.destroy');
     });
 
 Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->group(function () {

@@ -21,6 +21,16 @@ export function setStoredLocale(locale) {
     }
 
     localStorage.setItem(LOCALE_KEY, locale);
+    syncLocaleCookie(locale);
+}
+
+export function syncLocaleCookie(locale = getStoredLocale()) {
+    if (typeof document === 'undefined' || !SUPPORTED_LOCALES.includes(locale)) {
+        return;
+    }
+
+    const maxAge = 60 * 60 * 24 * 365;
+    document.cookie = `${LOCALE_KEY}=${encodeURIComponent(locale)};path=/;max-age=${maxAge};SameSite=Lax`;
 }
 
 export function localeTag(locale = getStoredLocale()) {

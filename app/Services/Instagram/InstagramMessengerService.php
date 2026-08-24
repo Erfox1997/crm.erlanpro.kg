@@ -29,11 +29,38 @@ class InstagramMessengerService
 
     public function integrationForCompany(int $companyId): ?CompanyIntegration
     {
+        return $this->integrationsForCompany($companyId)->first();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, CompanyIntegration>
+     */
+    public function integrationsForCompany(int $companyId)
+    {
         return CompanyIntegration::query()
             ->where('company_id', $companyId)
             ->where('provider', IntegrationProvider::Instagram->value)
             ->whereNotNull('api_token')
-            ->first();
+            ->orderBy('id')
+            ->get();
+    }
+
+    public function integrationForConversation(?MessengerConversation $conversation, int $companyId): ?CompanyIntegration
+    {
+        if ($conversation?->company_integration_id) {
+            $integration = CompanyIntegration::query()
+                ->whereKey($conversation->company_integration_id)
+                ->where('company_id', $companyId)
+                ->where('provider', IntegrationProvider::Instagram->value)
+                ->whereNotNull('api_token')
+                ->first();
+
+            if ($integration) {
+                return $integration;
+            }
+        }
+
+        return $this->integrationForCompany($companyId);
     }
 
     public function oauthRedirectUri(): string
@@ -452,7 +479,13 @@ class InstagramMessengerService
             $metadata['name'] = $profile['name'];
         }
 
-        $integration->update(['metadata' => $metadata]);
+        $integration->update([
+            'metadata' => $metadata,
+            'external_account_id' => CompanyIntegration::resolveExternalAccountId(
+                IntegrationProvider::Instagram->value,
+                $metadata,
+            ),
+        ]);
 
         return $integration->fresh();
     }
@@ -659,6 +692,7 @@ class InstagramMessengerService
             [
                 'company_id' => $integration->company_id,
                 'channel' => IntegrationProvider::Instagram->value,
+                'company_integration_id' => $integration->id,
                 'participant_id' => $participant['id'],
             ],
             [
@@ -1224,6 +1258,7 @@ class InstagramMessengerService
             [
                 'company_id' => $integration->company_id,
                 'channel' => IntegrationProvider::Instagram->value,
+                'company_integration_id' => $integration->id,
                 'participant_id' => $customerId,
             ],
             [
@@ -1285,6 +1320,16 @@ class InstagramMessengerService
     {
         if ($instagramAccountId === '') {
             return null;
+        }
+
+        $byExternal = CompanyIntegration::query()
+            ->where('provider', IntegrationProvider::Instagram->value)
+            ->where('external_account_id', $instagramAccountId)
+            ->whereNotNull('api_token')
+            ->first();
+
+        if ($byExternal) {
+            return $byExternal;
         }
 
         return CompanyIntegration::query()

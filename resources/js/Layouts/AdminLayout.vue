@@ -180,6 +180,49 @@ const user = computed(() => page.props.auth.user);
                         </CrmSidebarLink>
                     </div>
                 </div>
+
+                <div>
+                    <p
+                        class="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500"
+                    >
+                        {{ t('admin.sectionSupport') }}
+                    </p>
+                    <div class="space-y-1">
+                        <CrmSidebarLink
+                            :href="route('admin.support.applications.index')"
+                            :active="route().current('admin.support.applications.*')"
+                        >
+                            <template #icon>
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                            </template>
+                            {{ t('admin.supportApplications') }}
+                        </CrmSidebarLink>
+                        <CrmSidebarLink
+                            :href="route('admin.support.projects.index')"
+                            :active="route().current('admin.support.projects.*')"
+                        >
+                            <template #icon>
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 9.75h16.5m-16.5 4.5h16.5M5.25 4.5h13.5A1.5 1.5 0 0120.25 6v12a1.5 1.5 0 01-1.5 1.5H5.25A1.5 1.5 0 013.75 18V6A1.5 1.5 0 015.25 4.5z" />
+                                </svg>
+                            </template>
+                            {{ t('admin.supportProjects') }}
+                        </CrmSidebarLink>
+                        <CrmSidebarLink
+                            :href="route('admin.support.inbox.index')"
+                            :active="route().current('admin.support.inbox.*') || route().current('admin.support.messages.*')"
+                        >
+                            <template #icon>
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                                </svg>
+                            </template>
+                            {{ t('admin.supportInbox') }}
+                        </CrmSidebarLink>
+                    </div>
+                </div>
             </nav>
 
             <div class="border-t border-white/10 p-4">

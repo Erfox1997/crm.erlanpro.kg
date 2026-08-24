@@ -171,13 +171,17 @@ class MetaOAuthController extends Controller
         $integrationProvider = $this->resolveProvider($provider);
 
         $validated = $request->validate([
-            'page_id' => 'required|string',
+            'page_ids' => 'required|array|min:1',
+            'page_ids.*' => 'required|string',
         ]);
 
-        return $this->saveIntegration($request, $integrationProvider, $validated['page_id']);
+        return $this->saveIntegrations($request, $integrationProvider, $validated['page_ids']);
     }
 
-    protected function saveIntegration(Request $request, IntegrationProvider $provider, string $pageId): RedirectResponse
+    /**
+     * @param  list<string>  $pageIds
+     */
+    protected function saveIntegrations(Request $request, IntegrationProvider $provider, array $pageIds): RedirectResponse
     {
         $pages = $request->session()->pull('meta_oauth_pages', []);
 
@@ -187,28 +191,55 @@ class MetaOAuthController extends Controller
                 ->withErrors([$provider->value => __('Сессия OAuth истекла.')]);
         }
 
-        $selected = collect($pages)->firstWhere('page_id', $pageId);
+        $saved = 0;
+        $errors = [];
 
-        if (! is_array($selected)) {
-            return redirect()
-                ->route('integrations.index')
-                ->withErrors([$provider->value => __('Выбранная страница не найдена.')]);
+        foreach ($pageIds as $pageId) {
+            $selected = collect($pages)->firstWhere('page_id', $pageId);
+
+            if (! is_array($selected)) {
+                $errors[] = __('Страница :id не найдена.', ['id' => $pageId]);
+
+                continue;
+            }
+
+            try {
+                $this->oauth->subscribePageWebhooks(
+                    (string) $selected['page_id'],
+                    (string) $selected['access_token'],
+                );
+                $connection = $this->oauth->buildIntegrationFromPage($selected, $provider);
+                $connection['metadata']['webhook_subscribed_fields'] = ['messages'];
+                $this->persistIntegrationRecord($request, $provider, $connection);
+                $saved++;
+            } catch (\Throwable $e) {
+                $errors[] = $e->getMessage();
+            }
         }
 
-        try {
-            $this->oauth->subscribePageWebhooks(
-                (string) $selected['page_id'],
-                (string) $selected['access_token'],
-            );
-            $connection = $this->oauth->buildIntegrationFromPage($selected, $provider);
-            $connection['metadata']['webhook_subscribed_fields'] = ['messages'];
-        } catch (\Throwable $e) {
+        $request->session()->forget(['meta_oauth_company_id', 'meta_oauth_provider']);
+
+        if ($saved === 0) {
             return redirect()
                 ->route('integrations.index')
-                ->withErrors([$provider->value => $e->getMessage()]);
+                ->withErrors([
+                    $provider->value => $errors[0] ?? __('Не удалось подключить страницы.'),
+                ]);
         }
 
-        return $this->persistIntegration($request, $provider, $connection);
+        $label = $provider === IntegrationProvider::Instagram
+            ? __('Instagram: подключено страниц — :count.', ['count' => $saved])
+            : __('Facebook: подключено страниц — :count.', ['count' => $saved]);
+
+        return redirect()
+            ->route('integrations.index')
+            ->with('success', $label)
+            ->withErrors($errors === [] ? [] : [$provider->value => implode(' ', $errors)]);
+    }
+
+    protected function saveIntegration(Request $request, IntegrationProvider $provider, string $pageId): RedirectResponse
+    {
+        return $this->saveIntegrations($request, $provider, [$pageId]);
     }
 
     /**
@@ -219,25 +250,15 @@ class MetaOAuthController extends Controller
         IntegrationProvider $provider,
         array $connection,
     ): RedirectResponse {
-        $companyId = (int) $request->session()->pull('meta_oauth_company_id', (int) $request->user()->company_id);
-        $request->session()->forget('meta_oauth_provider');
-
         try {
-            CompanyIntegration::query()->updateOrCreate(
-                [
-                    'company_id' => $companyId,
-                    'provider' => $provider->value,
-                ],
-                [
-                    'api_token' => $connection['api_token'],
-                    'metadata' => $connection['metadata'],
-                ],
-            );
+            $this->persistIntegrationRecord($request, $provider, $connection);
         } catch (\Throwable $e) {
             return redirect()
                 ->route('integrations.index')
                 ->withErrors([$provider->value => $e->getMessage()]);
         }
+
+        $request->session()->forget(['meta_oauth_company_id', 'meta_oauth_provider']);
 
         $label = $provider === IntegrationProvider::Instagram
             ? __('Instagram подключён через Meta OAuth.')
@@ -246,6 +267,26 @@ class MetaOAuthController extends Controller
         return redirect()
             ->route('integrations.index')
             ->with('success', $label);
+    }
+
+    /**
+     * @param  array{api_token: string, metadata: array<string, mixed>}  $connection
+     */
+    protected function persistIntegrationRecord(
+        Request $request,
+        IntegrationProvider $provider,
+        array $connection,
+    ): CompanyIntegration {
+        $companyId = (int) $request->session()->get(
+            'meta_oauth_company_id',
+            (int) $request->user()->company_id,
+        );
+
+        return CompanyIntegration::upsertForCompany(
+            $companyId,
+            $provider->value,
+            $connection,
+        );
     }
 
     protected function resolveProvider(string $provider): IntegrationProvider

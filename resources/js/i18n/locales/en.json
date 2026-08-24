@@ -98,6 +98,10 @@
     "companiesList": "Client list",
     "paymentRequisites": "Payment details for clients",
     "legalRequisites": "Sole proprietor details",
+    "sectionSupport": "Support bot",
+    "supportApplications": "Applications",
+    "supportProjects": "Projects",
+    "supportInbox": "Incoming messages",
     "ruleUpdates": {
       "title": "Policy updates",
       "subtitle": "Publish policy changes on the site and Telegram. The Telegram date proves publication.",
@@ -247,32 +251,55 @@
     },
     "footerService": "ErlanPro CRM · {domain}"
   },
-  "auth": {
-    "login": {
-      "title": "Log in",
-      "heading": "Sign in to your account",
-      "sub": "Enter your email and password to open the CRM",
-      "remember": "Remember me",
-      "submit": "Log in",
-      "forgot": "Forgot password?",
-      "create": "Create account"
+    "auth": {
+      "login": {
+        "title": "Log in",
+        "heading": "Sign in to your account",
+        "sub": "Enter your email and password to open the CRM",
+        "remember": "Remember me",
+        "submit": "Log in",
+        "forgot": "Forgot password?",
+        "create": "Create account"
+      },
+      "register": {
+        "title": "Register",
+        "heading": "Company registration",
+        "sub": "Enter your organization name and details — a separate CRM workspace will be created",
+        "company": "Company name",
+        "yourName": "Your name",
+        "passwordConfirm": "Confirm password",
+        "accept": "I accept the",
+        "terms": "Terms of Service",
+        "and": "and",
+        "privacy": "Privacy Policy",
+        "submit": "Sign up",
+        "hasAccount": "Already have an account?",
+        "login": "Log in"
+      },
+      "verify": {
+        "title": "Email verification",
+        "body": "Thanks for signing up! Before getting started, verify your email address using the link we just sent. If you didn't receive the email, we will gladly send you another.",
+        "sent": "A new verification link has been sent to your email address.",
+        "resend": "Resend verification email",
+        "logout": "Log out"
+      },
+      "forgot": {
+        "title": "Forgot password",
+        "body": "Forgot your password? Enter your email and we will send a link to choose a new one.",
+        "submit": "Email password reset link"
+      },
+      "reset": {
+        "title": "Reset password",
+        "password": "New password",
+        "passwordConfirm": "Confirm password",
+        "submit": "Reset password"
+      },
+      "confirm": {
+        "title": "Confirm password",
+        "body": "This is a secure area of the application. Please confirm your password before continuing.",
+        "submit": "Confirm"
+      }
     },
-    "register": {
-      "title": "Register",
-      "heading": "Company registration",
-      "sub": "Enter your organization name and details — a separate CRM workspace will be created",
-      "company": "Company name",
-      "yourName": "Your name",
-      "passwordConfirm": "Confirm password",
-      "accept": "I accept the",
-      "terms": "Terms of Service",
-      "and": "and",
-      "privacy": "Privacy Policy",
-      "submit": "Sign up",
-      "hasAccount": "Already have an account?",
-      "login": "Log in"
-    }
-  },
   "dashboard": {
     "title": "Dashboard",
     "welcome": "Welcome",
@@ -642,12 +669,17 @@
     "disconnected": "Not connected",
     "connect": "Connect",
     "reconnect": "Reconnect",
+    "addPage": "Add page",
+    "pagesConnected": "Pages connected: {count}",
     "disconnect": "Disconnect",
     "confirmDisconnect": "Disconnect integration?",
     "manualToken": "Manual token",
     "oauthTitle": "Choose Facebook page",
+    "oauthConnect": "Connecting {provider} via Meta OAuth",
     "oauthHint": "Your Facebook account has several pages. Choose which one to connect to the CRM.",
+    "oauthMultiHint": "Select one or more pages — all selected pages will be connected to the CRM.",
     "oauthSubmit": "Connect selected page",
+    "oauthSubmitMulti": "Connect ({count})",
     "save": "Save settings",
     "token": "Token",
     "profileId": "Profile ID",
@@ -676,8 +708,7 @@
     "model": "Model",
     "modelHint": "If the model is unavailable in OpenAI project Limits — pick another or enable it in project settings.",
     "newToken": "New token",
-    "apiTokenGeneric": "API token",
-    "oauthConnect": "Connecting {provider} via Meta OAuth"
+    "apiTokenGeneric": "API token"
   },
   "shopSales": {
     "title": "Sales history",
@@ -939,6 +970,31 @@
     "loginFailed": "Could not sign in.",
     "accessDenied": "Access denied. Ask an admin to add your {'@'}username under Employees.",
     "botNotConfigured": "The managers bot is not configured on the server."
+  },
+  "supportMiniApp": {
+    "title": "Support request",
+    "subtitle": "Describe your question. After approval you can chat in the bot.",
+    "loading": "Loading…",
+    "openViaBot": "Open this page via the Request button in the support bot.",
+    "noInitData": "No Telegram data. Open the mini app from the bot.",
+    "loadFailed": "Could not load data.",
+    "name": "Your name",
+    "phone": "Phone",
+    "phonePh": "+996…",
+    "company": "Company (optional)",
+    "message": "Message",
+    "messagePh": "Briefly describe your question or issue",
+    "submit": "Submit request",
+    "sending": "Sending…",
+    "sent": "Request submitted.",
+    "sendFailed": "Could not submit the request.",
+    "acceptedTitle": "Request accepted",
+    "acceptedBody": "Close this window and message the bot chat — messages will go to support.",
+    "pendingTitle": "Request under review",
+    "pendingBody": "We received your request. We will notify you in the bot once it is accepted.",
+    "rejectedHint": "Your previous request was rejected. You can submit a new one.",
+    "close": "Close",
+    "botNotConfigured": "Support bot is not configured on the server."
   },
   "pdf": {
     "download": "Download PDF",
