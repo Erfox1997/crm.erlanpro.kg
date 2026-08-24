@@ -1,10 +1,11 @@
 <script setup>
-import { reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 const props = defineProps({
     initData: { type: String, required: true },
 });
 
+const menuOpen = ref(false);
 const tab = ref('applications');
 const loading = ref(false);
 const error = ref('');
@@ -37,6 +38,8 @@ const appTabs = [
     { id: 'blocked', label: 'Блок' },
     { id: 'all', label: 'Все' },
 ];
+
+const currentTitle = computed(() => tabs.find((item) => item.id === tab.value)?.label || 'Панель');
 
 function jsonHeaders() {
     return {
@@ -130,13 +133,17 @@ async function refreshCurrentTab() {
         await loadApplications();
     } else if (tab.value === 'projects') {
         await loadProjects();
+    } else if (activeProject.value) {
+        await openInboxProject(activeProject.value);
     } else {
-        if (activeProject.value) {
-            await openInboxProject(activeProject.value);
-        } else {
-            await loadInbox();
-        }
+        await loadInbox();
     }
+}
+
+function selectTab(id) {
+    tab.value = id;
+    menuOpen.value = false;
+    activeProject.value = null;
 }
 
 watch(tab, () => {
@@ -294,21 +301,78 @@ async function removeMessage(message) {
 </script>
 
 <template>
-    <div class="space-y-4">
-        <nav class="grid grid-cols-3 gap-2 rounded-2xl border border-slate-800 bg-slate-900/80 p-1.5">
+    <div class="relative space-y-4">
+        <header class="flex items-center justify-between gap-3">
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Меню
+                </p>
+                <h2 class="text-lg font-semibold text-white">{{ currentTitle }}</h2>
+            </div>
             <button
-                v-for="item in tabs"
-                :key="item.id"
                 type="button"
-                class="rounded-xl px-2 py-2.5 text-sm font-semibold"
-                :class="tab === item.id
-                    ? 'bg-sky-500 text-slate-950'
-                    : 'text-slate-300'"
-                @click="tab = item.id"
+                class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-white"
+                aria-label="Открыть меню"
+                @click="menuOpen = !menuOpen"
             >
-                {{ item.label }}
+                <svg
+                    v-if="!menuOpen"
+                    class="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M4 12h16M4 17h16" />
+                </svg>
+                <svg
+                    v-else
+                    class="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
             </button>
-        </nav>
+        </header>
+
+        <div
+            v-if="menuOpen"
+            class="fixed inset-0 z-40 bg-black/55"
+            @click="menuOpen = false"
+        />
+
+        <aside
+            class="fixed inset-y-0 right-0 z-50 flex w-[min(100%,20rem)] flex-col border-l border-slate-800 bg-slate-950 p-4 shadow-2xl transition-transform duration-200"
+            :class="menuOpen ? 'translate-x-0' : 'translate-x-full'"
+        >
+            <div class="mb-4 flex items-center justify-between">
+                <p class="text-sm font-semibold text-white">Разделы</p>
+                <button
+                    type="button"
+                    class="rounded-lg px-2 py-1 text-sm text-slate-400"
+                    @click="menuOpen = false"
+                >
+                    Закрыть
+                </button>
+            </div>
+            <nav class="space-y-2">
+                <button
+                    v-for="item in tabs"
+                    :key="item.id"
+                    type="button"
+                    class="flex w-full items-center rounded-xl px-4 py-3 text-left text-sm font-semibold"
+                    :class="tab === item.id
+                        ? 'bg-sky-500 text-slate-950'
+                        : 'bg-slate-900 text-slate-200'"
+                    @click="selectTab(item.id)"
+                >
+                    {{ item.label }}
+                </button>
+            </nav>
+        </aside>
 
         <p v-if="error" class="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
             {{ error }}
@@ -418,7 +482,7 @@ async function removeMessage(message) {
                 v-if="clients.length === 0"
                 class="rounded-2xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400"
             >
-                Заявок пока нет.
+                Клиентских заявок пока нет.
             </p>
         </template>
 
@@ -504,7 +568,7 @@ async function removeMessage(message) {
                 >
                     ← Назад к проектам
                 </button>
-                <h2 class="text-lg font-semibold text-white">{{ activeProject.name }}</h2>
+                <h3 class="text-lg font-semibold text-white">{{ activeProject.name }}</h3>
 
                 <article
                     v-for="message in messages"

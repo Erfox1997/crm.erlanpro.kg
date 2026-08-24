@@ -39,7 +39,7 @@ class TelegramSupportMiniAppController extends Controller
         $isProgrammer = $this->supportBot->isProgrammerUsername($username);
 
         if ($isProgrammer) {
-            $this->supportBot->ensureProgrammerClient((int) $telegramUser['id'], $telegramUser);
+            $this->supportBot->purgeProgrammerClientRecords();
 
             return response()->json([
                 'ok' => true,
@@ -96,7 +96,7 @@ class TelegramSupportMiniAppController extends Controller
 
         $username = isset($telegramUser['username']) ? (string) $telegramUser['username'] : null;
         if ($this->supportBot->isProgrammerUsername($username)) {
-            $this->supportBot->ensureProgrammerClient((int) $telegramUser['id'], $telegramUser);
+            $this->supportBot->purgeProgrammerClientRecords();
 
             return response()->json([
                 'message' => __('Вы программист сайта — заявка не нужна. Откройте панель поддержки.'),

@@ -91,7 +91,9 @@ php artisan telegram:manager-webhook
 # TELEGRAM_SUPPORT_OWNER_CHAT_ID=954807019
 # TELEGRAM_SUPPORT_WEBAPP_URL=https://crm.erlanpro.kg/tma/support
 # TELEGRAM_SUPPORT_PROGRAMMER_USERNAMES=erlan_asanaliev,dev_nick
-# В BotFather → Domain для Mini App: crm.erlanpro.kg
+# Клиентам Mini App не нужен — пишут текстом в бот (заявка = первое сообщение).
+# Программист управляет ботом только в Telegram Mini App (бургер-меню), не в браузерной админке.
+# В BotFather → Domain для Mini App: crm.erlanpro.kg (только панель программиста)
 php artisan migrate --force
 php artisan config:clear
 php artisan telegram:support-webhook

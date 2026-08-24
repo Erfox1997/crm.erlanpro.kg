@@ -25,6 +25,8 @@ class TelegramSupportProgrammerMiniAppController extends Controller
             $filter = 'pending';
         }
 
+        $programmerUsernames = $this->supportBot->programmerUsernames();
+
         $clients = TelegramSupportClient::query()
             ->with('projects:id,name')
             ->when($filter === 'pending', fn ($q) => $q->where('status', 'pending')->whereNull('blocked_at'))
@@ -32,8 +34,11 @@ class TelegramSupportProgrammerMiniAppController extends Controller
             ->when($filter === 'rejected', fn ($q) => $q->where('status', 'rejected')->whereNull('blocked_at'))
             ->when($filter === 'blocked', fn ($q) => $q->whereNotNull('blocked_at'))
             ->orderByDesc('id')
-            ->limit(50)
+            ->limit(80)
             ->get()
+            ->filter(fn (TelegramSupportClient $client) => ! $this->supportBot->isProgrammerUsername($client->username))
+            ->take(50)
+            ->values()
             ->map(fn (TelegramSupportClient $client) => $this->clientPayload($client));
 
         return response()->json([
@@ -77,8 +82,7 @@ class TelegramSupportProgrammerMiniAppController extends Controller
 
         $this->supportBot->sendMessage(
             (int) $client->client_chat_id,
-            "❌ Заявка отклонена.\n\nПри необходимости откройте мини-приложение снова и отправьте новую заявку.",
-            withWebAppButton: true,
+            "❌ Заявка отклонена.\n\nМожете написать сюда новое сообщение — отправим заявку снова.",
         );
 
         return response()->json([
