@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\Tariff;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -65,7 +67,8 @@ class CompanyController extends Controller
         $endsAt = $validated['subscription_ends_at'] ?: null;
 
         if ($endsAt === null && ! $tariff->is_free) {
-            $endsAt = now()->addDays($tariff->duration_days);
+            $base = $company->subscription_ends_at?->copy() ?? now();
+            $endsAt = $base->addDays($tariff->duration_days);
         }
 
         $company->update([
@@ -79,6 +82,47 @@ class CompanyController extends Controller
             ->with('success', __('Компания обновлена.'));
     }
 
+    public function block(Company $company): RedirectResponse
+    {
+        $company->update(['blocked_at' => now()]);
+
+        $this->invalidateCompanySessions($company);
+
+        return redirect()
+            ->route('admin.companies.show', $company)
+            ->with('success', __('Клиент заблокирован.'));
+    }
+
+    public function unblock(Company $company): RedirectResponse
+    {
+        $company->update(['blocked_at' => null]);
+
+        return redirect()
+            ->route('admin.companies.show', $company)
+            ->with('success', __('Клиент разблокирован.'));
+    }
+
+    public function destroy(Company $company): RedirectResponse
+    {
+        DB::transaction(function () use ($company) {
+            $userIds = $company->users()->pluck('id');
+
+            if ($userIds->isNotEmpty()) {
+                DB::table('sessions')->whereIn('user_id', $userIds)->delete();
+            }
+
+            $company->delete();
+
+            if ($userIds->isNotEmpty()) {
+                User::query()->whereIn('id', $userIds)->delete();
+            }
+        });
+
+        return redirect()
+            ->route('admin.companies.index')
+            ->with('success', __('Клиент и все его данные удалены.'));
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -86,7 +130,7 @@ class CompanyController extends Controller
     {
         $owner = $company->owner;
 
-        $payload = [
+        return [
             'id' => $company->id,
             'name' => $company->name,
             'owner_name' => $owner?->name,
@@ -97,14 +141,25 @@ class CompanyController extends Controller
             'subscription_ends_at' => $company->subscription_ends_at?->toIso8601String(),
             'subscription_ends_at_formatted' => $company->subscription_ends_at?->format('d.m.Y'),
             'is_active' => $company->is_active,
+            'is_blocked' => $company->isBlocked(),
+            'blocked_at' => $company->blocked_at?->format('d.m.Y H:i'),
             'status' => $company->subscriptionStatusLabel(),
-            'status_is_active' => $company->subscriptionIsActive(),
+            'status_is_active' => ! $company->isBlocked() && $company->subscriptionIsActive(),
             'created_at' => $company->created_at?->format('d.m.Y'),
             'users_count' => $detailed ? $company->users()->count() : null,
             'clients_count' => $detailed ? $company->clients()->count() : null,
             'deals_count' => $detailed ? $company->deals()->count() : null,
         ];
+    }
 
-        return $payload;
+    private function invalidateCompanySessions(Company $company): void
+    {
+        $userIds = $company->users()->pluck('id');
+
+        if ($userIds->isEmpty()) {
+            return;
+        }
+
+        DB::table('sessions')->whereIn('user_id', $userIds)->delete();
     }
 }

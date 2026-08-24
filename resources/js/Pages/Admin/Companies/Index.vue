@@ -125,9 +125,11 @@ watch(q, (value) => {
                             <span
                                 class="rounded-full px-2.5 py-1 text-xs font-medium"
                                 :class="
-                                    company.status_is_active
-                                        ? 'bg-emerald-100 text-emerald-700'
-                                        : 'bg-red-100 text-red-700'
+                                    company.is_blocked
+                                        ? 'bg-slate-200 text-slate-700'
+                                        : company.status_is_active
+                                          ? 'bg-emerald-100 text-emerald-700'
+                                          : 'bg-red-100 text-red-700'
                                 "
                             >
                                 {{ company.status }}

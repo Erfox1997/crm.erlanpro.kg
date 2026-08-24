@@ -143,6 +143,7 @@
       "client": "Client",
       "tariff": "Plan",
       "validUntil": "Valid until",
+      "validUntilHint": "When you select a plan, the date is calculated from the current end date + plan duration.",
       "view": "View",
       "empty": "No companies yet.",
       "back": "← Back to client list",
@@ -153,7 +154,16 @@
       "crmClients": "CRM clients",
       "deals": "Deals",
       "subscription": "Subscription",
-      "active": "Active"
+      "active": "Active",
+      "days": "days",
+      "dangerZone": "Access control",
+      "dangerZoneHint": "Blocking prevents login. Deletion permanently removes the company and all related data.",
+      "block": "Block",
+      "unblock": "Unblock",
+      "blocked": "Blocked",
+      "blockConfirm": "Block this client? They and their employees will not be able to sign in.",
+      "delete": "Delete client",
+      "deleteConfirm": "Delete this client and ALL their data? This cannot be undone."
     },
     "tariffs": {
       "create": "Create plan",

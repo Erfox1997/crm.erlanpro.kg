@@ -20,6 +20,8 @@ class EnsureUserHasCompany
             return $next($request);
         }
 
+        $user->loadMissing('company');
+
         if ($user->dismissed_at !== null) {
             auth()->logout();
             $request->session()->invalidate();
@@ -29,6 +31,18 @@ class EnsureUserHasCompany
                 ->route('login')
                 ->withErrors([
                     'email' => __('Этот аккаунт отключён. Обратитесь к владельцу компании.'),
+                ]);
+        }
+
+        if ($user->company?->isBlocked()) {
+            auth()->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect()
+                ->route('login')
+                ->withErrors([
+                    'email' => __('Этот аккаунт заблокирован. Обратитесь в поддержку.'),
                 ]);
         }
 

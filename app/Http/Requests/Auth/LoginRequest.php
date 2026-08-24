@@ -51,12 +51,23 @@ class LoginRequest extends FormRequest
         }
 
         $user = Auth::user();
-        if ($user && $user->dismissed_at !== null) {
+        $user?->loadMissing('company');
+
+        if ($user && $user->isDismissed()) {
             Auth::logout();
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
                 'email' => __('Этот аккаунт отключён. Обратитесь к владельцу компании.'),
+            ]);
+        }
+
+        if ($user && $user->company?->isBlocked()) {
+            Auth::logout();
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => __('Этот аккаунт заблокирован. Обратитесь в поддержку.'),
             ]);
         }
 

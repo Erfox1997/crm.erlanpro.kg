@@ -15,6 +15,7 @@ class Company extends Model
         'tariff_id',
         'subscription_ends_at',
         'is_active',
+        'blocked_at',
         'settings',
     ];
 
@@ -23,8 +24,14 @@ class Company extends Model
         return [
             'subscription_ends_at' => 'datetime',
             'is_active' => 'boolean',
+            'blocked_at' => 'datetime',
             'settings' => 'array',
         ];
+    }
+
+    public function isBlocked(): bool
+    {
+        return $this->blocked_at !== null;
     }
 
     public function tariff(): BelongsTo
@@ -97,6 +104,10 @@ class Company extends Model
 
     public function subscriptionStatusLabel(): string
     {
+        if ($this->isBlocked()) {
+            return 'Заблокирован';
+        }
+
         return $this->subscriptionIsActive() ? 'Активен' : 'Истёк';
     }
 

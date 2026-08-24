@@ -106,6 +106,9 @@ Route::middleware(['auth', 'verified', 'platform.admin'])
         Route::get('companies', [AdminCompanyController::class, 'index'])->name('companies.index');
         Route::get('companies/{company}', [AdminCompanyController::class, 'show'])->name('companies.show');
         Route::put('companies/{company}', [AdminCompanyController::class, 'update'])->name('companies.update');
+        Route::post('companies/{company}/block', [AdminCompanyController::class, 'block'])->name('companies.block');
+        Route::post('companies/{company}/unblock', [AdminCompanyController::class, 'unblock'])->name('companies.unblock');
+        Route::delete('companies/{company}', [AdminCompanyController::class, 'destroy'])->name('companies.destroy');
         Route::get('payment-requisites', [AdminPaymentRequisiteController::class, 'edit'])->name('payment-requisites.edit');
         Route::post('payment-requisites', [AdminPaymentRequisiteController::class, 'update'])->name('payment-requisites.update');
         Route::get('legal', [AdminLegalController::class, 'edit'])->name('legal.edit');

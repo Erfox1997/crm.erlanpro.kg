@@ -50,6 +50,15 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->dismissed_at !== null;
     }
 
+    public function isLoginBlocked(): bool
+    {
+        if ($this->isDismissed()) {
+            return true;
+        }
+
+        return $this->company?->isBlocked() === true;
+    }
+
     /**
      * Get the attributes that should be cast.
      *
