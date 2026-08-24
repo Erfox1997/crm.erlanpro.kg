@@ -93,6 +93,7 @@ php artisan telegram:manager-webhook
 # TELEGRAM_SUPPORT_PROGRAMMER_USERNAMES=erlan_asanaliev,dev_nick
 # Клиентам Mini App не нужен — /start сразу создаёт заявку; после принятия пишут в чат.
 # Программист управляет ботом только в Telegram Mini App (бургер-меню), не в браузерной админке.
+# Голос/фото сохраняются для прослушивания в панели и удаляются после «Готово»/«Удалить».
 # В BotFather → Domain для Mini App: crm.erlanpro.kg (только панель программиста)
 php artisan migrate --force
 php artisan config:clear

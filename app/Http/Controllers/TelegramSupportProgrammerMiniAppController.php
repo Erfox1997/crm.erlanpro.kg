@@ -9,6 +9,9 @@ use App\Services\Telegram\SupportTelegramBotService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TelegramSupportProgrammerMiniAppController extends Controller
 {
@@ -49,7 +52,7 @@ class TelegramSupportProgrammerMiniAppController extends Controller
         ]);
     }
 
-    public function accept(Request $request, TelegramSupportClient $client): JsonResponse
+    public function accept(Request $request, TelegramSupportClient $supportClient): JsonResponse
     {
         $this->requireProgrammer($request);
 
@@ -60,44 +63,44 @@ class TelegramSupportProgrammerMiniAppController extends Controller
         ]);
 
         if (isset($validated['name']) && trim((string) $validated['name']) !== '') {
-            $client->forceFill(['name' => trim((string) $validated['name'])])->save();
+            $supportClient->forceFill(['name' => trim((string) $validated['name'])])->save();
         }
 
-        $client->markAccepted();
-        $client->projects()->sync($validated['project_ids']);
+        $supportClient->markAccepted();
+        $supportClient->projects()->sync($validated['project_ids']);
 
         $this->supportBot->sendMessage(
-            (int) $client->client_chat_id,
+            (int) $supportClient->client_chat_id,
             '✅ Заявка принята. Пишите сюда.',
         );
 
         return response()->json([
             'ok' => true,
             'message' => 'Принято.',
-            'client' => $this->clientPayload($client->fresh(['projects'])),
+            'client' => $this->clientPayload($supportClient->fresh(['projects'])),
         ]);
     }
 
-    public function reject(Request $request, TelegramSupportClient $client): JsonResponse
+    public function reject(Request $request, TelegramSupportClient $supportClient): JsonResponse
     {
         $this->requireProgrammer($request);
 
-        $client->markRejected();
-        $client->projects()->detach();
+        $supportClient->markRejected();
+        $supportClient->projects()->detach();
 
         $this->supportBot->sendMessage(
-            (int) $client->client_chat_id,
+            (int) $supportClient->client_chat_id,
             '❌ Заявка отклонена. Напишите /start, чтобы отправить снова.',
         );
 
         return response()->json([
             'ok' => true,
             'message' => 'Отклонено.',
-            'client' => $this->clientPayload($client->fresh(['projects'])),
+            'client' => $this->clientPayload($supportClient->fresh(['projects'])),
         ]);
     }
 
-    public function updateProjects(Request $request, TelegramSupportClient $client): JsonResponse
+    public function updateProjects(Request $request, TelegramSupportClient $supportClient): JsonResponse
     {
         $this->requireProgrammer($request);
 
@@ -108,47 +111,47 @@ class TelegramSupportProgrammerMiniAppController extends Controller
         ]);
 
         if (isset($validated['name']) && trim((string) $validated['name']) !== '') {
-            $client->forceFill(['name' => trim((string) $validated['name'])])->save();
+            $supportClient->forceFill(['name' => trim((string) $validated['name'])])->save();
         }
 
         if (array_key_exists('project_ids', $validated)) {
-            $client->projects()->sync($validated['project_ids'] ?? []);
+            $supportClient->projects()->sync($validated['project_ids'] ?? []);
         }
 
         return response()->json([
             'ok' => true,
             'message' => 'Сохранено.',
-            'client' => $this->clientPayload($client->fresh(['projects'])),
+            'client' => $this->clientPayload($supportClient->fresh(['projects'])),
         ]);
     }
 
-    public function block(Request $request, TelegramSupportClient $client): JsonResponse
+    public function block(Request $request, TelegramSupportClient $supportClient): JsonResponse
     {
         $this->requireProgrammer($request);
 
-        $client->markBlocked();
+        $supportClient->markBlocked();
         $this->supportBot->sendMessage(
-            (int) $client->client_chat_id,
+            (int) $supportClient->client_chat_id,
             '🚫 Доступ к поддержке ограничен. Сообщения больше не принимаются.',
         );
 
         return response()->json([
             'ok' => true,
             'message' => 'Клиент заблокирован.',
-            'client' => $this->clientPayload($client->fresh(['projects'])),
+            'client' => $this->clientPayload($supportClient->fresh(['projects'])),
         ]);
     }
 
-    public function unblock(Request $request, TelegramSupportClient $client): JsonResponse
+    public function unblock(Request $request, TelegramSupportClient $supportClient): JsonResponse
     {
         $this->requireProgrammer($request);
 
-        $client->markUnblocked();
+        $supportClient->markUnblocked();
 
         return response()->json([
             'ok' => true,
             'message' => 'Клиент разблокирован.',
-            'client' => $this->clientPayload($client->fresh(['projects'])),
+            'client' => $this->clientPayload($supportClient->fresh(['projects'])),
         ]);
     }
 
@@ -273,6 +276,14 @@ class TelegramSupportProgrammerMiniAppController extends Controller
             ->map(fn (TelegramSupportMessage $message) => [
                 'id' => $message->id,
                 'body' => $message->body,
+                'media_type' => $message->media_type,
+                'media_url' => $message->hasPlayableMedia()
+                    ? URL::temporarySignedRoute(
+                        'tma.support.programmer.messages.media',
+                        now()->addHours(12),
+                        ['message' => $message->id],
+                    )
+                    : null,
                 'created_at' => $message->created_at?->format('d.m.Y H:i'),
                 'client' => [
                     'id' => $message->client?->id,
@@ -346,10 +357,8 @@ class TelegramSupportProgrammerMiniAppController extends Controller
             replyToMessageId: $replyTo,
         );
 
-        $message->update([
-            'status' => TelegramSupportMessage::STATUS_DONE,
-            'done_at' => now(),
-        ]);
+        $message->purgeMedia();
+        $message->delete();
 
         return response()->json([
             'ok' => true,
@@ -362,14 +371,28 @@ class TelegramSupportProgrammerMiniAppController extends Controller
         $this->requireProgrammer($request);
         abort_unless($message->isOpen(), 404);
 
-        $message->update([
-            'status' => TelegramSupportMessage::STATUS_DELETED,
-        ]);
+        $message->purgeMedia();
+        $message->delete();
 
         return response()->json([
             'ok' => true,
-            'message' => 'Сообщение удалено.',
+            'message' => 'Удалено.',
         ]);
+    }
+
+    public function media(TelegramSupportMessage $message): StreamedResponse
+    {
+        abort_unless($message->hasPlayableMedia(), 404);
+        abort_unless(Storage::disk('local')->exists($message->media_path), 404);
+
+        return Storage::disk('local')->response(
+            $message->media_path,
+            basename($message->media_path),
+            [
+                'Content-Type' => $message->media_mime ?: 'application/octet-stream',
+                'Cache-Control' => 'private, max-age=3600',
+            ],
+        );
     }
 
     /**

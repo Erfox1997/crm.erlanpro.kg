@@ -11,7 +11,8 @@ const loading = ref(false);
 const error = ref('');
 const notice = ref('');
 
-const appFilter = ref('pending');
+const appFilter = ref(null);
+const appsListOpen = ref(false);
 const clients = ref([]);
 const projects = ref([]);
 const activeClient = ref(null);
@@ -41,7 +42,16 @@ const appTabs = [
     { id: 'all', label: 'Все' },
 ];
 
-const currentTitle = computed(() => tabs.find((item) => item.id === tab.value)?.label || 'Панель');
+const currentTitle = computed(() => {
+    if (tab.value === 'applications' && appsListOpen.value) {
+        return appTabs.find((item) => item.id === appFilter.value)?.label || 'Заявки';
+    }
+    if (tab.value === 'inbox' && activeProject.value) {
+        return activeProject.value.name || 'Входящие';
+    }
+
+    return tabs.find((item) => item.id === tab.value)?.label || 'Панель';
+});
 
 function jsonHeaders() {
     return {
@@ -68,6 +78,11 @@ async function api(routeName, params = {}, data = {}, method = 'post') {
 }
 
 async function loadApplications() {
+    if (!appFilter.value) {
+        clients.value = [];
+        return;
+    }
+
     loading.value = true;
     try {
         const res = await api('tma.support.programmer.applications', {}, { status: appFilter.value });
@@ -132,7 +147,12 @@ async function openInboxProject(project) {
 
 async function refreshCurrentTab() {
     if (tab.value === 'applications') {
-        await loadApplications();
+        if (appsListOpen.value && appFilter.value) {
+            await loadApplications();
+        } else {
+            clients.value = [];
+            loading.value = false;
+        }
     } else if (tab.value === 'projects') {
         await loadProjects();
     } else if (activeProject.value) {
@@ -146,18 +166,28 @@ function selectTab(id) {
     tab.value = id;
     menuOpen.value = false;
     activeProject.value = null;
+    appsListOpen.value = false;
+    appFilter.value = null;
+    closeClient();
+}
+
+async function openAppsFilter(id) {
+    appFilter.value = id;
+    appsListOpen.value = true;
+    closeClient();
+    await loadApplications();
+}
+
+function backToAppFilters() {
+    appsListOpen.value = false;
+    appFilter.value = null;
+    clients.value = [];
     closeClient();
 }
 
 watch(tab, () => {
     refreshCurrentTab();
 }, { immediate: true });
-
-watch(appFilter, () => {
-    if (tab.value === 'applications') {
-        loadApplications();
-    }
-});
 
 function openClient(client) {
     activeClient.value = client;
@@ -190,7 +220,7 @@ async function accept() {
         return;
     }
     try {
-        await api('tma.support.programmer.applications.accept', client.id, {
+        await api('tma.support.programmer.applications.accept', { supportClient: client.id }, {
             name: modalName.value,
             project_ids: modalProjectIds.value,
         });
@@ -205,7 +235,7 @@ async function saveClient() {
     const client = activeClient.value;
     if (!client) return;
     try {
-        await api('tma.support.programmer.applications.projects', client.id, {
+        await api('tma.support.programmer.applications.projects', { supportClient: client.id }, {
             name: modalName.value,
             project_ids: modalProjectIds.value,
         });
@@ -221,7 +251,7 @@ async function reject() {
     if (!client) return;
     if (!confirm('Отклонить?')) return;
     try {
-        await api('tma.support.programmer.applications.reject', client.id);
+        await api('tma.support.programmer.applications.reject', { supportClient: client.id });
         closeClient();
         await loadApplications();
     } catch (e) {
@@ -234,7 +264,7 @@ async function block() {
     if (!client) return;
     if (!confirm('Заблокировать?')) return;
     try {
-        await api('tma.support.programmer.applications.block', client.id);
+        await api('tma.support.programmer.applications.block', { supportClient: client.id });
         closeClient();
         await loadApplications();
     } catch (e) {
@@ -246,7 +276,7 @@ async function unblock() {
     const client = activeClient.value;
     if (!client) return;
     try {
-        await api('tma.support.programmer.applications.unblock', client.id);
+        await api('tma.support.programmer.applications.unblock', { supportClient: client.id });
         closeClient();
         await loadApplications();
     } catch (e) {
@@ -396,39 +426,48 @@ async function removeMessage(message) {
         <p v-if="loading" class="text-center text-sm text-slate-400">Загрузка…</p>
 
         <template v-if="tab === 'applications' && !loading">
-            <div class="space-y-2">
-                <button
-                    v-for="item in appTabs"
-                    :key="item.id"
-                    type="button"
-                    class="flex w-full items-center rounded-xl px-4 py-3 text-left text-sm font-semibold"
-                    :class="appFilter === item.id
-                        ? 'bg-sky-500 text-slate-950'
-                        : 'border border-slate-700 bg-slate-900 text-slate-200'"
-                    @click="appFilter = item.id"
-                >
-                    {{ item.label }}
-                </button>
-            </div>
+            <template v-if="!appsListOpen">
+                <div class="space-y-2">
+                    <button
+                        v-for="item in appTabs"
+                        :key="item.id"
+                        type="button"
+                        class="flex w-full items-center rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-left text-sm font-semibold text-slate-200"
+                        @click="openAppsFilter(item.id)"
+                    >
+                        {{ item.label }}
+                    </button>
+                </div>
+            </template>
 
-            <div class="space-y-2">
+            <template v-else>
                 <button
-                    v-for="client in clients"
-                    :key="client.id"
                     type="button"
-                    class="flex w-full items-center rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3.5 text-left text-base font-semibold text-white"
-                    @click="openClient(client)"
+                    class="text-sm text-sky-400"
+                    @click="backToAppFilters"
                 >
-                    {{ client.name || 'Без имени' }}
+                    ← Назад
                 </button>
-            </div>
 
-            <p
-                v-if="clients.length === 0"
-                class="rounded-2xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400"
-            >
-                Пусто.
-            </p>
+                <div class="space-y-2">
+                    <button
+                        v-for="client in clients"
+                        :key="client.id"
+                        type="button"
+                        class="flex w-full items-center rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3.5 text-left text-base font-semibold text-white"
+                        @click="openClient(client)"
+                    >
+                        {{ client.name || 'Без имени' }}
+                    </button>
+                </div>
+
+                <p
+                    v-if="clients.length === 0"
+                    class="rounded-2xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400"
+                >
+                    Пусто.
+                </p>
+            </template>
 
             <div
                 v-if="activeClient"
@@ -454,13 +493,6 @@ async function removeMessage(message) {
                         maxlength="120"
                         class="mb-4 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-500"
                     >
-
-                    <p
-                        v-if="activeClient.message"
-                        class="mb-4 whitespace-pre-wrap rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-300"
-                    >
-                        {{ activeClient.message }}
-                    </p>
 
                     <p class="mb-2 text-xs text-slate-400">Проекты</p>
                     <div class="mb-4 space-y-2">
@@ -638,7 +670,38 @@ async function removeMessage(message) {
                             </span>
                         </p>
                         <p class="text-xs text-slate-400">{{ message.created_at }}</p>
-                        <p class="mt-2 whitespace-pre-wrap text-sm text-slate-200">{{ message.body }}</p>
+                        <p
+                            v-if="message.body && message.media_type !== 'voice' && message.media_type !== 'photo'"
+                            class="mt-2 whitespace-pre-wrap text-sm text-slate-200"
+                        >
+                            {{ message.body }}
+                        </p>
+                        <p
+                            v-else-if="message.body && message.body !== '[Фото]' && message.body !== '[Голосовое]'"
+                            class="mt-2 whitespace-pre-wrap text-sm text-slate-200"
+                        >
+                            {{ message.body }}
+                        </p>
+
+                        <audio
+                            v-if="message.media_type === 'voice' && message.media_url"
+                            class="mt-3 w-full"
+                            controls
+                            preload="metadata"
+                            :src="message.media_url"
+                        />
+                        <img
+                            v-else-if="message.media_type === 'photo' && message.media_url"
+                            class="mt-3 max-h-72 w-full rounded-xl object-contain"
+                            :src="message.media_url"
+                            alt=""
+                        >
+                        <p
+                            v-else-if="message.media_type === 'voice' || message.media_type === 'photo'"
+                            class="mt-2 text-sm text-slate-400"
+                        >
+                            Медиа недоступно
+                        </p>
                     </div>
 
                     <div class="flex flex-wrap gap-2">

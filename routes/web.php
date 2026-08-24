@@ -63,11 +63,11 @@ Route::post('/tma/support/bootstrap', [TelegramSupportMiniAppController::class, 
 Route::post('/tma/support/apply', [TelegramSupportMiniAppController::class, 'apply'])->name('tma.support.apply');
 
 Route::post('/tma/support/programmer/applications', [TelegramSupportProgrammerMiniAppController::class, 'applications'])->name('tma.support.programmer.applications');
-Route::post('/tma/support/programmer/applications/{client}/accept', [TelegramSupportProgrammerMiniAppController::class, 'accept'])->name('tma.support.programmer.applications.accept');
-Route::post('/tma/support/programmer/applications/{client}/reject', [TelegramSupportProgrammerMiniAppController::class, 'reject'])->name('tma.support.programmer.applications.reject');
-Route::post('/tma/support/programmer/applications/{client}/projects', [TelegramSupportProgrammerMiniAppController::class, 'updateProjects'])->name('tma.support.programmer.applications.projects');
-Route::post('/tma/support/programmer/applications/{client}/block', [TelegramSupportProgrammerMiniAppController::class, 'block'])->name('tma.support.programmer.applications.block');
-Route::post('/tma/support/programmer/applications/{client}/unblock', [TelegramSupportProgrammerMiniAppController::class, 'unblock'])->name('tma.support.programmer.applications.unblock');
+Route::post('/tma/support/programmer/applications/{supportClient}/accept', [TelegramSupportProgrammerMiniAppController::class, 'accept'])->name('tma.support.programmer.applications.accept');
+Route::post('/tma/support/programmer/applications/{supportClient}/reject', [TelegramSupportProgrammerMiniAppController::class, 'reject'])->name('tma.support.programmer.applications.reject');
+Route::post('/tma/support/programmer/applications/{supportClient}/projects', [TelegramSupportProgrammerMiniAppController::class, 'updateProjects'])->name('tma.support.programmer.applications.projects');
+Route::post('/tma/support/programmer/applications/{supportClient}/block', [TelegramSupportProgrammerMiniAppController::class, 'block'])->name('tma.support.programmer.applications.block');
+Route::post('/tma/support/programmer/applications/{supportClient}/unblock', [TelegramSupportProgrammerMiniAppController::class, 'unblock'])->name('tma.support.programmer.applications.unblock');
 Route::post('/tma/support/programmer/projects', [TelegramSupportProgrammerMiniAppController::class, 'projects'])->name('tma.support.programmer.projects');
 Route::post('/tma/support/programmer/projects/store', [TelegramSupportProgrammerMiniAppController::class, 'storeProject'])->name('tma.support.programmer.projects.store');
 Route::post('/tma/support/programmer/projects/{project}', [TelegramSupportProgrammerMiniAppController::class, 'updateProject'])->name('tma.support.programmer.projects.update');
@@ -77,6 +77,9 @@ Route::post('/tma/support/programmer/inbox/{project}', [TelegramSupportProgramme
 Route::post('/tma/support/programmer/messages/{message}/reply', [TelegramSupportProgrammerMiniAppController::class, 'reply'])->name('tma.support.programmer.messages.reply');
 Route::post('/tma/support/programmer/messages/{message}/complete', [TelegramSupportProgrammerMiniAppController::class, 'complete'])->name('tma.support.programmer.messages.complete');
 Route::delete('/tma/support/programmer/messages/{message}', [TelegramSupportProgrammerMiniAppController::class, 'destroyMessage'])->name('tma.support.programmer.messages.destroy');
+Route::get('/tma/support/programmer/messages/{message}/media', [TelegramSupportProgrammerMiniAppController::class, 'media'])
+    ->middleware('signed')
+    ->name('tma.support.programmer.messages.media');
 
 Route::get('/media/wappi-outbound/{filename}', [WappiOutboundMediaController::class, 'show'])
     ->where('filename', '[a-zA-Z0-9._-]+')

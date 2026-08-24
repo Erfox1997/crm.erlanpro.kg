@@ -9,6 +9,7 @@ use App\Models\TelegramSupportRelay;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class SupportTelegramBotService
 {
@@ -315,6 +316,7 @@ class SupportTelegramBotService
             'body' => $body,
             'message_id' => $messageId,
             'has_media' => $this->messageHasMedia($message),
+            'media_meta' => $this->extractPlayableMediaMeta($message),
             'username' => isset($from['username']) ? ltrim((string) $from['username'], '@') : $client->username,
             'name' => trim(implode(' ', array_filter([
                 (string) ($from['first_name'] ?? ''),
@@ -332,6 +334,100 @@ class SupportTelegramBotService
             "📁 У вас несколько проектов.\nВыберите, по какому проекту это сообщение:",
             $rows,
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     * @return array{type: string, file_id: string}|null
+     */
+    private function extractPlayableMediaMeta(array $message): ?array
+    {
+        if (isset($message['voice']['file_id'])) {
+            return [
+                'type' => 'voice',
+                'file_id' => (string) $message['voice']['file_id'],
+            ];
+        }
+
+        if (isset($message['photo']) && is_array($message['photo']) && $message['photo'] !== []) {
+            $largest = collect($message['photo'])->sortByDesc('file_size')->first();
+            if (is_array($largest) && isset($largest['file_id'])) {
+                return [
+                    'type' => 'photo',
+                    'file_id' => (string) $largest['file_id'],
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Download voice/photo for Mini App playback. Video is skipped on purpose.
+     *
+     * @param  array{type?: string, file_id?: string}|null  $meta
+     * @return array{type: string, path: string, mime: string}|null
+     */
+    public function downloadPlayableMedia(?array $meta): ?array
+    {
+        if (! is_array($meta) || empty($meta['file_id']) || empty($meta['type'])) {
+            return null;
+        }
+
+        $type = (string) $meta['type'];
+        if (! in_array($type, ['voice', 'photo'], true)) {
+            return null;
+        }
+
+        if ($this->token() === '') {
+            return null;
+        }
+
+        try {
+            $fileJson = Http::baseUrl('https://api.telegram.org')
+                ->timeout(20)
+                ->get('/bot'.$this->token().'/getFile', [
+                    'file_id' => (string) $meta['file_id'],
+                ])
+                ->throw()
+                ->json();
+
+            $filePath = (string) ($fileJson['result']['file_path'] ?? '');
+            if ($filePath === '') {
+                return null;
+            }
+
+            $bytes = Http::baseUrl('https://api.telegram.org')
+                ->timeout(60)
+                ->get('/file/bot'.$this->token().'/'.$filePath)
+                ->throw()
+                ->body();
+
+            if ($bytes === '' || $bytes === false) {
+                return null;
+            }
+
+            $ext = pathinfo($filePath, PATHINFO_EXTENSION) ?: ($type === 'voice' ? 'ogg' : 'jpg');
+            $relative = 'support-media/'.uniqid($type.'_', true).'.'.$ext;
+            Storage::disk('local')->put($relative, $bytes);
+
+            $mime = $type === 'voice'
+                ? 'audio/ogg'
+                : (str_ends_with(strtolower($ext), 'png') ? 'image/png' : 'image/jpeg');
+
+            return [
+                'type' => $type,
+                'path' => $relative,
+                'mime' => $mime,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Support Telegram media download failed', [
+                'type' => $type,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**
@@ -446,10 +542,18 @@ class SupportTelegramBotService
         array $from = [],
         array $telegramMessage = [],
     ): void {
+        $mediaMeta = isset($telegramMessage['media_meta']) && is_array($telegramMessage['media_meta'])
+            ? $telegramMessage['media_meta']
+            : $this->extractPlayableMediaMeta($telegramMessage);
+        $storedMedia = $this->downloadPlayableMedia($mediaMeta);
+
         TelegramSupportMessage::query()->create([
             'telegram_support_client_id' => $client->id,
             'telegram_support_project_id' => $project->id,
             'body' => $body,
+            'media_type' => $storedMedia['type'] ?? null,
+            'media_path' => $storedMedia['path'] ?? null,
+            'media_mime' => $storedMedia['mime'] ?? null,
             'status' => TelegramSupportMessage::STATUS_OPEN,
             'client_telegram_message_id' => $clientTelegramMessageId,
         ]);
@@ -551,6 +655,7 @@ class SupportTelegramBotService
             ],
             [
                 'has_media' => (bool) ($draft['has_media'] ?? false),
+                'media_meta' => is_array($draft['media_meta'] ?? null) ? $draft['media_meta'] : null,
             ],
         );
 
