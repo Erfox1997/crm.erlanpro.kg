@@ -575,11 +575,14 @@ class SupportTelegramBotService
 
         if ($this->isProgrammerUsername($username)) {
             $this->ensureProgrammerClient($telegramUserId, $from);
+            $this->setChatMenuButton($chatId, 'Панель');
             $this->sendMessage(
                 $chatId,
                 "👋 Здравствуйте! Вы распознаны как программист сайта ErlanPro.\n\n"
-                ."Заявка не нужна — можете сразу писать сюда 💻\n"
-                .'Сообщения попадут во входящие поддержки.',
+                ."Откройте панель — там меню: Заявки, Проекты и Входящие.\n"
+                .'Заявка как у клиента не нужна.',
+                withWebAppButton: true,
+                webAppButtonText: 'Открыть панель',
             );
 
             return;
@@ -722,7 +725,12 @@ class SupportTelegramBotService
         }
     }
 
-    public function sendMessage(int $chatId, string $text, bool $withWebAppButton = false): ?int
+    public function sendMessage(
+        int $chatId,
+        string $text,
+        bool $withWebAppButton = false,
+        string $webAppButtonText = '📝 Открыть заявку',
+    ): ?int
     {
         if ($this->token() === '') {
             return null;
@@ -738,7 +746,7 @@ class SupportTelegramBotService
             $payload['reply_markup'] = [
                 'inline_keyboard' => [[
                     [
-                        'text' => '📝 Открыть заявку',
+                        'text' => $webAppButtonText,
                         'web_app' => ['url' => $this->webAppUrl()],
                     ],
                 ]],
@@ -763,6 +771,38 @@ class SupportTelegramBotService
             ]);
 
             return null;
+        }
+    }
+
+    public function setChatMenuButton(?int $chatId = null, string $text = 'Заявка'): void
+    {
+        if ($this->token() === '') {
+            return;
+        }
+
+        $payload = [
+            'menu_button' => [
+                'type' => 'web_app',
+                'text' => $text,
+                'web_app' => ['url' => $this->webAppUrl()],
+            ],
+        ];
+
+        if ($chatId !== null && $chatId > 0) {
+            $payload['chat_id'] = $chatId;
+        }
+
+        try {
+            Http::baseUrl('https://api.telegram.org')
+                ->timeout(20)
+                ->asJson()
+                ->post('/bot'.$this->token().'/setChatMenuButton', $payload)
+                ->throw();
+        } catch (\Throwable $e) {
+            Log::warning('Support Telegram bot setChatMenuButton failed', [
+                'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -867,16 +907,7 @@ class SupportTelegramBotService
             ->throw()
             ->json();
 
-        Http::baseUrl('https://api.telegram.org')
-            ->timeout(20)
-            ->asJson()
-            ->post('/bot'.$this->token().'/setChatMenuButton', [
-                'menu_button' => [
-                    'type' => 'web_app',
-                    'text' => 'Заявка',
-                    'web_app' => ['url' => $this->webAppUrl()],
-                ],
-            ]);
+        $this->setChatMenuButton(null, 'Заявка');
 
         return is_array($response) ? $response : [];
     }

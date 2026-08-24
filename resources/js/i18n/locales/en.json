@@ -974,8 +974,10 @@
   "supportMiniApp": {
     "title": "Support request",
     "subtitle": "Describe your question. After approval you can chat in the bot.",
+    "programmerTitle": "Programmer panel",
+    "programmerSubtitle": "Applications, projects and support inbox.",
     "loading": "Loading…",
-    "openViaBot": "Open this page via the Request button in the support bot.",
+    "openViaBot": "Open this page via the button in the support bot.",
     "noInitData": "No Telegram data. Open the mini app from the bot.",
     "loadFailed": "Could not load data.",
     "name": "Your name",

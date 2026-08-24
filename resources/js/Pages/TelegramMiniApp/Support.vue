@@ -1,4 +1,5 @@
 <script setup>
+import SupportProgrammerPanel from '@/Pages/TelegramMiniApp/SupportProgrammerPanel.vue';
 import { Head } from '@inertiajs/vue3';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -16,6 +17,7 @@ const error = ref('');
 const success = ref('');
 const initData = ref('');
 const application = ref(null);
+const isProgrammer = ref(false);
 
 const form = reactive({
     name: '',
@@ -55,7 +57,9 @@ onMounted(async () => {
             },
         });
 
+        isProgrammer.value = Boolean(data.is_programmer);
         application.value = data.application ?? null;
+
         if (data.user) {
             const fullName = [data.user.first_name, data.user.last_name]
                 .filter(Boolean)
@@ -104,6 +108,11 @@ async function submit() {
         const tg = window.Telegram?.WebApp;
         tg?.HapticFeedback?.notificationOccurred?.('success');
     } catch (e) {
+        if (e?.response?.data?.is_programmer) {
+            isProgrammer.value = true;
+            error.value = '';
+            return;
+        }
         error.value = e?.response?.data?.message || t('supportMiniApp.sendFailed');
         if (e?.response?.data?.application) {
             application.value = e.response.data.application;
@@ -119,7 +128,7 @@ function closeApp() {
 </script>
 
 <template>
-    <Head :title="t('supportMiniApp.title')" />
+    <Head :title="isProgrammer ? t('supportMiniApp.programmerTitle') : t('supportMiniApp.title')" />
 
     <div class="min-h-screen bg-slate-950 px-4 py-6 text-white">
         <div class="mx-auto max-w-md space-y-5">
@@ -128,10 +137,10 @@ function closeApp() {
                     ErlanPro
                 </p>
                 <h1 class="mt-2 text-2xl font-bold tracking-tight">
-                    {{ t('supportMiniApp.title') }}
+                    {{ isProgrammer ? t('supportMiniApp.programmerTitle') : t('supportMiniApp.title') }}
                 </h1>
                 <p class="mt-2 text-sm text-slate-300">
-                    {{ t('supportMiniApp.subtitle') }}
+                    {{ isProgrammer ? t('supportMiniApp.programmerSubtitle') : t('supportMiniApp.subtitle') }}
                 </p>
             </div>
 
@@ -141,6 +150,11 @@ function closeApp() {
             >
                 {{ t('supportMiniApp.loading') }}
             </div>
+
+            <SupportProgrammerPanel
+                v-else-if="isProgrammer"
+                :init-data="initData"
+            />
 
             <template v-else>
                 <div
@@ -260,6 +274,13 @@ function closeApp() {
 
             <p v-if="!botConfigured" class="text-center text-xs text-amber-300">
                 {{ t('supportMiniApp.botNotConfigured') }}
+            </p>
+
+            <p
+                v-if="botUsername"
+                class="text-center text-xs text-slate-500"
+            >
+                @{{ botUsername }}
             </p>
         </div>
     </div>

@@ -35,10 +35,30 @@ class TelegramSupportMiniAppController extends Controller
             ], 422);
         }
 
+        $username = isset($telegramUser['username']) ? (string) $telegramUser['username'] : null;
+        $isProgrammer = $this->supportBot->isProgrammerUsername($username);
+
+        if ($isProgrammer) {
+            $this->supportBot->ensureProgrammerClient((int) $telegramUser['id'], $telegramUser);
+
+            return response()->json([
+                'ok' => true,
+                'is_programmer' => true,
+                'user' => [
+                    'id' => $telegramUser['id'],
+                    'username' => $telegramUser['username'] ?? null,
+                    'first_name' => $telegramUser['first_name'] ?? null,
+                    'last_name' => $telegramUser['last_name'] ?? null,
+                ],
+                'application' => null,
+            ]);
+        }
+
         $client = $this->supportBot->findClientByTelegramId((int) $telegramUser['id']);
 
         return response()->json([
             'ok' => true,
+            'is_programmer' => false,
             'user' => [
                 'id' => $telegramUser['id'],
                 'username' => $telegramUser['username'] ?? null,
@@ -71,6 +91,16 @@ class TelegramSupportMiniAppController extends Controller
         if (! $telegramUser) {
             return response()->json([
                 'message' => __('Не удалось проверить Telegram. Откройте мини-приложение из бота.'),
+            ], 422);
+        }
+
+        $username = isset($telegramUser['username']) ? (string) $telegramUser['username'] : null;
+        if ($this->supportBot->isProgrammerUsername($username)) {
+            $this->supportBot->ensureProgrammerClient((int) $telegramUser['id'], $telegramUser);
+
+            return response()->json([
+                'message' => __('Вы программист сайта — заявка не нужна. Откройте панель поддержки.'),
+                'is_programmer' => true,
             ], 422);
         }
 
