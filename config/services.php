@@ -90,6 +90,8 @@ return [
         'support_webhook_secret' => env('TELEGRAM_SUPPORT_WEBHOOK_SECRET'),
         'support_owner_chat_id' => env('TELEGRAM_SUPPORT_OWNER_CHAT_ID'),
         'support_webapp_url' => env('TELEGRAM_SUPPORT_WEBAPP_URL'),
+        // Comma-separated Telegram usernames of site developers (without @)
+        'support_programmer_usernames' => env('TELEGRAM_SUPPORT_PROGRAMMER_USERNAMES', ''),
     ],
 
     'openai' => [

@@ -27,6 +27,69 @@ class SupportTelegramBotService
         return (int) config('services.telegram.support_owner_chat_id', 0);
     }
 
+    /**
+     * @return list<string>
+     */
+    public function programmerUsernames(): array
+    {
+        $raw = (string) config('services.telegram.support_programmer_usernames', '');
+
+        return collect(preg_split('/[\s,;]+/', $raw) ?: [])
+            ->map(fn ($value) => mb_strtolower(ltrim(trim((string) $value), '@')))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    public function isProgrammerUsername(?string $username): bool
+    {
+        $normalized = mb_strtolower(ltrim(trim((string) $username), '@'));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return in_array($normalized, $this->programmerUsernames(), true);
+    }
+
+    /**
+     * Ensure a trusted site programmer has an accepted client record + default project.
+     *
+     * @param  array<string, mixed>  $from
+     */
+    public function ensureProgrammerClient(int $telegramUserId, array $from = []): TelegramSupportClient
+    {
+        $username = isset($from['username']) ? ltrim((string) $from['username'], '@') : null;
+        $name = trim(implode(' ', array_filter([
+            (string) ($from['first_name'] ?? ''),
+            (string) ($from['last_name'] ?? ''),
+        ])));
+        if ($name === '') {
+            $name = 'Программист сайта';
+        }
+
+        $client = TelegramSupportClient::query()->updateOrCreate(
+            ['telegram_user_id' => $telegramUserId],
+            [
+                'client_chat_id' => $telegramUserId,
+                'username' => $username,
+                'name' => $name,
+                'company_name' => 'ErlanPro (разработка)',
+                'message' => 'Доверенный программист сайта — доступ без заявки.',
+                'status' => TelegramSupportClient::STATUS_ACCEPTED,
+                'reviewed_at' => now(),
+                'blocked_at' => null,
+            ],
+        );
+
+        $project = TelegramSupportProject::query()->firstOrCreate(
+            ['name' => 'Разработка сайта'],
+        );
+        $client->projects()->syncWithoutDetaching([$project->id]);
+
+        return $client->fresh(['projects']);
+    }
+
     public function webAppUrl(): string
     {
         $configured = trim((string) config('services.telegram.support_webapp_url', ''));
@@ -204,15 +267,22 @@ class SupportTelegramBotService
         }
 
         $text = trim((string) ($message['text'] ?? $message['caption'] ?? ''));
+        $from = is_array($message['from'] ?? null) ? $message['from'] : [];
+
         if ($text === '/start' || str_starts_with($text, '/start ')) {
-            $this->sendWelcome($chatId);
+            $this->sendWelcome($chatId, $from);
 
             return;
         }
 
-        $from = is_array($message['from'] ?? null) ? $message['from'] : [];
         $telegramUserId = (int) ($from['id'] ?? $chatId);
-        $client = $this->findClientByTelegramId($telegramUserId);
+        $username = isset($from['username']) ? (string) $from['username'] : null;
+
+        if ($this->isProgrammerUsername($username)) {
+            $client = $this->ensureProgrammerClient($telegramUserId, $from);
+        } else {
+            $client = $this->findClientByTelegramId($telegramUserId);
+        }
 
         if ($client?->isBlocked()) {
             $this->sendMessage($chatId, '🚫 Доступ к поддержке ограничен. Сообщения не принимаются.');
@@ -495,9 +565,27 @@ class SupportTelegramBotService
         }
     }
 
-    private function sendWelcome(int $chatId): void
+    /**
+     * @param  array<string, mixed>  $from
+     */
+    private function sendWelcome(int $chatId, array $from = []): void
     {
-        $client = $this->findClientByTelegramId($chatId);
+        $telegramUserId = (int) ($from['id'] ?? $chatId);
+        $username = isset($from['username']) ? (string) $from['username'] : null;
+
+        if ($this->isProgrammerUsername($username)) {
+            $this->ensureProgrammerClient($telegramUserId, $from);
+            $this->sendMessage(
+                $chatId,
+                "👋 Здравствуйте! Вы распознаны как программист сайта ErlanPro.\n\n"
+                ."Заявка не нужна — можете сразу писать сюда 💻\n"
+                .'Сообщения попадут во входящие поддержки.',
+            );
+
+            return;
+        }
+
+        $client = $this->findClientByTelegramId($telegramUserId);
 
         if ($client?->isBlocked()) {
             $this->sendMessage($chatId, '🚫 Доступ к поддержке ограничен.');
