@@ -974,8 +974,8 @@
   "supportMiniApp": {
     "title": "Support request",
     "subtitle": "Describe your question. After approval you can chat in the bot.",
-    "programmerTitle": "Programmer panel",
-    "programmerSubtitle": "Manage support only here via the ☰ menu.",
+    "programmerTitle": "Panel",
+    "programmerSubtitle": "",
     "clientClosedTitle": "Support in chat",
     "clientClosedSubtitle": "Clients do not need the mini app.",
     "clientClosedBody": "Just send a message in the bot chat — that is your request. After approval, keep writing there; if you have several projects, the bot will ask which one.",

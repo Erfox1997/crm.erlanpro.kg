@@ -62,17 +62,16 @@ function closeApp() {
 
     <div class="min-h-screen bg-slate-950 px-4 py-6 text-white">
         <div class="mx-auto max-w-md space-y-5">
-            <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-400">
-                    ErlanPro
-                </p>
-                <h1 class="mt-2 text-2xl font-bold tracking-tight">
-                    {{ isProgrammer ? t('supportMiniApp.programmerTitle') : t('supportMiniApp.clientClosedTitle') }}
-                </h1>
-                <p class="mt-2 text-sm text-slate-300">
-                    {{ isProgrammer ? t('supportMiniApp.programmerSubtitle') : t('supportMiniApp.clientClosedSubtitle') }}
-                </p>
-            </div>
+            <template v-if="!isProgrammer">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-sky-400">
+                        ErlanPro
+                    </p>
+                    <h1 class="mt-2 text-2xl font-bold tracking-tight">
+                        {{ t('supportMiniApp.clientClosedTitle') }}
+                    </h1>
+                </div>
+            </template>
 
             <div
                 v-if="loading"
@@ -102,17 +101,6 @@ function closeApp() {
                     {{ t('supportMiniApp.close') }}
                 </button>
             </div>
-
-            <p v-if="!botConfigured" class="text-center text-xs text-amber-300">
-                {{ t('supportMiniApp.botNotConfigured') }}
-            </p>
-
-            <p
-                v-if="botUsername"
-                class="text-center text-xs text-slate-500"
-            >
-                @{{ botUsername }}
-            </p>
         </div>
     </div>
 </template>

@@ -54,21 +54,26 @@ class TelegramSupportProgrammerMiniAppController extends Controller
         $this->requireProgrammer($request);
 
         $validated = $request->validate([
+            'name' => 'nullable|string|max:120',
             'project_ids' => 'required|array|min:1',
             'project_ids.*' => 'integer|exists:telegram_support_projects,id',
         ]);
+
+        if (isset($validated['name']) && trim((string) $validated['name']) !== '') {
+            $client->forceFill(['name' => trim((string) $validated['name'])])->save();
+        }
 
         $client->markAccepted();
         $client->projects()->sync($validated['project_ids']);
 
         $this->supportBot->sendMessage(
             (int) $client->client_chat_id,
-            "✅ Ваша заявка принята.\n\nТеперь можете писать сюда — сообщения уйдут в поддержку ErlanPro.",
+            '✅ Заявка принята. Пишите сюда.',
         );
 
         return response()->json([
             'ok' => true,
-            'message' => 'Клиент принят.',
+            'message' => 'Принято.',
             'client' => $this->clientPayload($client->fresh(['projects'])),
         ]);
     }
@@ -82,12 +87,12 @@ class TelegramSupportProgrammerMiniAppController extends Controller
 
         $this->supportBot->sendMessage(
             (int) $client->client_chat_id,
-            "❌ Заявка отклонена.\n\nМожете написать сюда новое сообщение — отправим заявку снова.",
+            '❌ Заявка отклонена. Напишите /start, чтобы отправить снова.',
         );
 
         return response()->json([
             'ok' => true,
-            'message' => 'Заявка отклонена.',
+            'message' => 'Отклонено.',
             'client' => $this->clientPayload($client->fresh(['projects'])),
         ]);
     }
@@ -97,19 +102,22 @@ class TelegramSupportProgrammerMiniAppController extends Controller
         $this->requireProgrammer($request);
 
         $validated = $request->validate([
-            'project_ids' => 'required|array|min:1',
+            'name' => 'nullable|string|max:120',
+            'project_ids' => 'nullable|array',
             'project_ids.*' => 'integer|exists:telegram_support_projects,id',
         ]);
 
-        if (! $client->isAccepted()) {
-            $client->markAccepted();
+        if (isset($validated['name']) && trim((string) $validated['name']) !== '') {
+            $client->forceFill(['name' => trim((string) $validated['name'])])->save();
         }
 
-        $client->projects()->sync($validated['project_ids']);
+        if (array_key_exists('project_ids', $validated)) {
+            $client->projects()->sync($validated['project_ids'] ?? []);
+        }
 
         return response()->json([
             'ok' => true,
-            'message' => 'Проекты обновлены.',
+            'message' => 'Сохранено.',
             'client' => $this->clientPayload($client->fresh(['projects'])),
         ]);
     }
@@ -297,8 +305,16 @@ class TelegramSupportProgrammerMiniAppController extends Controller
         $client = $message->client;
         abort_unless($client !== null, 404);
 
-        $text = "💬 Ответ поддержки ErlanPro:\n\n".trim($validated['body']);
-        $sent = $this->supportBot->sendMessage((int) $client->client_chat_id, $text);
+        $text = trim($validated['body']);
+        $replyTo = $message->client_telegram_message_id
+            ? (int) $message->client_telegram_message_id
+            : null;
+
+        $sent = $this->supportBot->sendMessage(
+            (int) $client->client_chat_id,
+            $text,
+            replyToMessageId: $replyTo,
+        );
 
         if ($sent === null) {
             return response()->json([
@@ -308,7 +324,7 @@ class TelegramSupportProgrammerMiniAppController extends Controller
 
         return response()->json([
             'ok' => true,
-            'message' => 'Ответ отправлен клиенту.',
+            'message' => 'Отправлено.',
         ]);
     }
 
@@ -320,12 +336,15 @@ class TelegramSupportProgrammerMiniAppController extends Controller
         $client = $message->client;
         abort_unless($client !== null, 404);
 
-        $projectName = $message->project?->name ?? 'проект';
-        $doneText = "✅ Готово!\n\n"
-            ."Ваше обращение по проекту «{$projectName}» выполнено 🎉\n\n"
-            .'Если появятся ещё вопросы — напишите нам снова 🙌';
+        $replyTo = $message->client_telegram_message_id
+            ? (int) $message->client_telegram_message_id
+            : null;
 
-        $this->supportBot->sendMessage((int) $client->client_chat_id, $doneText);
+        $this->supportBot->sendMessage(
+            (int) $client->client_chat_id,
+            '✅ Готово',
+            replyToMessageId: $replyTo,
+        );
 
         $message->update([
             'status' => TelegramSupportMessage::STATUS_DONE,
@@ -334,7 +353,7 @@ class TelegramSupportProgrammerMiniAppController extends Controller
 
         return response()->json([
             'ok' => true,
-            'message' => 'Отмечено выполненным.',
+            'message' => 'Готово.',
         ]);
     }
 

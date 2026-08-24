@@ -303,10 +303,10 @@ class SupportTelegramBotService
             return;
         }
 
-        $body = $text !== '' ? $text : '[вложение без текста]';
+        $body = $this->describeClientMessage($message, $text);
 
         if ($projects->count() === 1) {
-            $this->storeIncomingMessage($client, $projects->first(), $body, $messageId, $from);
+            $this->storeIncomingMessage($client, $projects->first(), $body, $messageId, $from, $message);
 
             return;
         }
@@ -314,6 +314,7 @@ class SupportTelegramBotService
         Cache::put($this->draftCacheKey($chatId), [
             'body' => $body,
             'message_id' => $messageId,
+            'has_media' => $this->messageHasMedia($message),
             'username' => isset($from['username']) ? ltrim((string) $from['username'], '@') : $client->username,
             'name' => trim(implode(' ', array_filter([
                 (string) ($from['first_name'] ?? ''),
@@ -334,7 +335,57 @@ class SupportTelegramBotService
     }
 
     /**
-     * First client messages become a support application (no Mini App).
+     * @param  array<string, mixed>  $message
+     */
+    private function describeClientMessage(array $message, string $text): string
+    {
+        if ($text !== '') {
+            return $text;
+        }
+
+        if (isset($message['photo'])) {
+            return '[Фото]';
+        }
+        if (isset($message['voice'])) {
+            return '[Голосовое]';
+        }
+        if (isset($message['video_note'])) {
+            return '[Видеосообщение]';
+        }
+        if (isset($message['video'])) {
+            return '[Видео]';
+        }
+        if (isset($message['audio'])) {
+            return '[Аудио]';
+        }
+        if (isset($message['document'])) {
+            $name = (string) (($message['document']['file_name'] ?? '') ?: 'файл');
+
+            return '[Файл: '.$name.']';
+        }
+        if (isset($message['sticker'])) {
+            return '[Стикер]';
+        }
+
+        return '[Вложение]';
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     */
+    private function messageHasMedia(array $message): bool
+    {
+        foreach (['photo', 'voice', 'video', 'video_note', 'audio', 'document', 'sticker', 'animation'] as $key) {
+            if (isset($message[$key])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Client wrote before accept / after reject — guide or re-apply.
      *
      * @param  array<string, mixed>  $from
      */
@@ -345,45 +396,47 @@ class SupportTelegramBotService
         string $text,
     ): void {
         if ($client?->isPending()) {
-            $this->sendMessage(
-                $chatId,
-                "⏳ Ваша заявка уже на рассмотрении.\n\nКак только её примут — пишите сюда снова, сообщения пойдут в поддержку.",
-            );
+            $this->sendMessage($chatId, 'Заявка на рассмотрении.');
 
             return;
         }
 
-        if ($text === '') {
-            $this->sendMessage(
-                $chatId,
-                'Напишите текстом, с чем нужна помощь — это и будет ваша заявка.',
-            );
+        // Rejected / new without /start — create application from this message or /start hint.
+        if ($text === '' || $text === '/start' || str_starts_with($text, '/start ')) {
+            $this->submitApplication([
+                'id' => (int) ($from['id'] ?? $chatId),
+                'username' => $from['username'] ?? null,
+                'first_name' => $from['first_name'] ?? null,
+                'last_name' => $from['last_name'] ?? null,
+            ], [
+                'name' => '',
+                'phone' => null,
+                'company_name' => null,
+                'message' => 'Заявка по /start',
+            ]);
+            $this->sendMessage($chatId, '✅ Заявка отправлена. Ожидайте ответа.');
 
             return;
         }
 
-        $telegramUser = [
+        $this->submitApplication([
             'id' => (int) ($from['id'] ?? $chatId),
             'username' => $from['username'] ?? null,
             'first_name' => $from['first_name'] ?? null,
             'last_name' => $from['last_name'] ?? null,
-        ];
-
-        $this->submitApplication($telegramUser, [
+        ], [
             'name' => '',
             'phone' => null,
             'company_name' => null,
             'message' => $text,
         ]);
 
-        $this->sendMessage(
-            $chatId,
-            "✅ Заявка отправлена.\n\nМы рассмотрим её и напишем сюда. После принятия сможете писать сообщения в поддержку.",
-        );
+        $this->sendMessage($chatId, '✅ Заявка отправлена. Ожидайте ответа.');
     }
 
     /**
      * @param  array<string, mixed>  $from
+     * @param  array<string, mixed>  $telegramMessage
      */
     public function storeIncomingMessage(
         TelegramSupportClient $client,
@@ -391,6 +444,7 @@ class SupportTelegramBotService
         string $body,
         ?int $clientTelegramMessageId = null,
         array $from = [],
+        array $telegramMessage = [],
     ): void {
         TelegramSupportMessage::query()->create([
             'telegram_support_client_id' => $client->id,
@@ -403,23 +457,27 @@ class SupportTelegramBotService
         $username = isset($from['username'])
             ? ltrim((string) $from['username'], '@')
             : $client->username;
-        $name = trim(implode(' ', array_filter([
-            (string) ($from['first_name'] ?? ''),
-            (string) ($from['last_name'] ?? ''),
-        ])));
+        $name = trim((string) ($client->name ?? ''));
         if ($name === '') {
-            $name = (string) ($client->name ?? '');
+            $name = trim(implode(' ', array_filter([
+                (string) ($from['first_name'] ?? ''),
+                (string) ($from['last_name'] ?? ''),
+            ])));
+        }
+        if ($name === '') {
+            $name = $username ? '@'.$username : 'Клиент';
         }
 
         $ownerChatId = $this->ownerChatId();
-        $header = '📩 Новое обращение · '.$project->name."\n"
-            .'От: '.($name !== '' ? $name : 'без имени')
-            .($username ? ' (@'.$username.')' : '')
-            ."\n— — —\n"
-            .$body
-            ."\n\n🖥️ Смотрите во «Входящие» в панели бота.";
+        $notify = $name.":\n".$body;
 
-        $ownerMessageId = $this->sendMessage($ownerChatId, $header);
+        $ownerMessageId = $this->sendMessage($ownerChatId, $notify);
+
+        $hasMedia = $this->messageHasMedia($telegramMessage) || ! empty($telegramMessage['has_media']);
+        if ($clientTelegramMessageId && $hasMedia) {
+            $this->copyMessage((int) $client->client_chat_id, $clientTelegramMessageId, $ownerChatId);
+        }
+
         if ($ownerMessageId !== null) {
             TelegramSupportRelay::query()->create([
                 'owner_chat_id' => $ownerChatId,
@@ -430,11 +488,6 @@ class SupportTelegramBotService
                 'client_name' => $name !== '' ? $name : null,
             ]);
         }
-
-        $this->sendMessage(
-            (int) $client->client_chat_id,
-            '✅ Сообщение по проекту «'.$project->name.'» передано в поддержку. Мы ответим здесь.',
-        );
     }
 
     private function draftCacheKey(int $chatId): string
@@ -495,6 +548,9 @@ class SupportTelegramBotService
             [
                 'username' => $draft['username'] ?? null,
                 'first_name' => $draft['name'] ?? null,
+            ],
+            [
+                'has_media' => (bool) ($draft['has_media'] ?? false),
             ],
         );
 
@@ -589,22 +645,32 @@ class SupportTelegramBotService
         }
 
         $text = trim((string) ($message['text'] ?? $message['caption'] ?? ''));
-        if ($text === '') {
+        $replyToClientId = $relay->client_message_id ? (int) $relay->client_message_id : null;
+
+        if ($text !== '') {
+            $sent = $this->sendMessage(
+                (int) $relay->client_chat_id,
+                $text,
+                replyToMessageId: $replyToClientId,
+            );
+        } elseif ($this->messageHasMedia($message)) {
+            $sent = $this->copyMessage(
+                (int) ($message['chat']['id'] ?? $this->ownerChatId()),
+                (int) ($message['message_id'] ?? 0),
+                (int) $relay->client_chat_id,
+                $replyToClientId,
+            );
+        } else {
             $this->sendMessage(
                 $this->ownerChatId(),
-                'Чтобы ответить клиенту, отправьте текстовый reply на сообщение поддержки.',
+                'Ответ пустой.',
             );
 
             return;
         }
 
-        $sent = $this->sendMessage(
-            (int) $relay->client_chat_id,
-            "💬 Ответ поддержки ErlanPro:\n\n".$text,
-        );
-
         if ($sent !== null) {
-            $this->sendMessage($this->ownerChatId(), '✅ Ответ отправлен клиенту.');
+            $this->sendMessage($this->ownerChatId(), '✅');
         }
     }
 
@@ -621,9 +687,7 @@ class SupportTelegramBotService
             $this->setChatMenuButton($chatId, 'Панель', 'web_app');
             $this->sendMessage(
                 $chatId,
-                "👋 Здравствуйте! Вы программист сайта ErlanPro.\n\n"
-                ."Откройте панель — Заявки, Проекты и Входящие.\n"
-                .'Браузерная админка для бота не используется.',
+                'Панель поддержки:',
                 withWebAppButton: true,
                 webAppButtonText: 'Открыть панель',
             );
@@ -635,36 +699,37 @@ class SupportTelegramBotService
         $client = $this->findClientByTelegramId($telegramUserId);
 
         if ($client?->isBlocked()) {
-            $this->sendMessage($chatId, '🚫 Доступ к поддержке ограничен.');
+            $this->sendMessage($chatId, '🚫 Доступ ограничен.');
 
             return;
         }
 
         if ($client?->isAccepted()) {
-            $this->sendMessage(
-                $chatId,
-                "Здравствуйте! Пишите сюда любое сообщение — оно уйдёт в поддержку ErlanPro.\n\n"
-                .'Если проектов несколько, бот спросит, о каком идёт речь.',
-            );
+            $this->sendMessage($chatId, 'Пишите сюда — сообщение уйдёт в поддержку.');
 
             return;
         }
 
         if ($client?->isPending()) {
-            $this->sendMessage(
-                $chatId,
-                "Ваша заявка уже отправлена и ожидает рассмотрения.\n\nКак только её примут — пишите сюда снова.",
-            );
+            $this->sendMessage($chatId, 'Заявка уже на рассмотрении.');
 
             return;
         }
 
-        $this->sendMessage(
-            $chatId,
-            "Здравствуйте! Это поддержка CRM ErlanPro.\n\n"
-            ."Просто напишите сюда сообщение — это и будет заявка.\n"
-            .'После принятия сможете писать в поддержку прямо в этом чате.',
-        );
+        // /start сразу создаёт заявку — без отдельного сообщения от клиента.
+        $this->submitApplication([
+            'id' => $telegramUserId,
+            'username' => $from['username'] ?? null,
+            'first_name' => $from['first_name'] ?? null,
+            'last_name' => $from['last_name'] ?? null,
+        ], [
+            'name' => '',
+            'phone' => null,
+            'company_name' => null,
+            'message' => 'Заявка по /start',
+        ]);
+
+        $this->sendMessage($chatId, '✅ Заявка отправлена. Ожидайте ответа.');
     }
 
     private function notifyOwnerAboutApplication(TelegramSupportClient $client): void
@@ -744,8 +809,8 @@ class SupportTelegramBotService
         string $text,
         bool $withWebAppButton = false,
         string $webAppButtonText = '📝 Открыть заявку',
-    ): ?int
-    {
+        ?int $replyToMessageId = null,
+    ): ?int {
         if ($this->token() === '') {
             return null;
         }
@@ -755,6 +820,11 @@ class SupportTelegramBotService
             'text' => $text,
             'disable_web_page_preview' => true,
         ];
+
+        if ($replyToMessageId !== null && $replyToMessageId > 0) {
+            $payload['reply_to_message_id'] = $replyToMessageId;
+            $payload['allow_sending_without_reply'] = true;
+        }
 
         if ($withWebAppButton) {
             $payload['reply_markup'] = [
@@ -781,6 +851,50 @@ class SupportTelegramBotService
         } catch (\Throwable $e) {
             Log::warning('Support Telegram bot send failed', [
                 'chat_id' => $chatId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    public function copyMessage(
+        int $fromChatId,
+        int $messageId,
+        int $toChatId,
+        ?int $replyToMessageId = null,
+    ): ?int {
+        if ($this->token() === '' || $fromChatId < 1 || $messageId < 1 || $toChatId < 1) {
+            return null;
+        }
+
+        $payload = [
+            'chat_id' => $toChatId,
+            'from_chat_id' => $fromChatId,
+            'message_id' => $messageId,
+        ];
+
+        if ($replyToMessageId !== null && $replyToMessageId > 0) {
+            $payload['reply_to_message_id'] = $replyToMessageId;
+            $payload['allow_sending_without_reply'] = true;
+        }
+
+        try {
+            $json = Http::baseUrl('https://api.telegram.org')
+                ->timeout(30)
+                ->asJson()
+                ->post('/bot'.$this->token().'/copyMessage', $payload)
+                ->throw()
+                ->json();
+
+            $copiedId = $json['result']['message_id'] ?? null;
+
+            return is_numeric($copiedId) ? (int) $copiedId : null;
+        } catch (\Throwable $e) {
+            Log::warning('Support Telegram bot copyMessage failed', [
+                'from' => $fromChatId,
+                'to' => $toChatId,
+                'message_id' => $messageId,
                 'error' => $e->getMessage(),
             ]);
 

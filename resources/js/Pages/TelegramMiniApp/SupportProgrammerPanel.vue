@@ -14,7 +14,9 @@ const notice = ref('');
 const appFilter = ref('pending');
 const clients = ref([]);
 const projects = ref([]);
-const selected = reactive({});
+const activeClient = ref(null);
+const modalName = ref('');
+const modalProjectIds = ref([]);
 
 const projectList = ref([]);
 const newProjectName = ref('');
@@ -65,20 +67,20 @@ async function api(routeName, params = {}, data = {}, method = 'post') {
     return res;
 }
 
-function syncSelected(list) {
-    Object.keys(selected).forEach((key) => delete selected[key]);
-    list.forEach((client) => {
-        selected[client.id] = [...(client.project_ids || [])];
-    });
-}
-
 async function loadApplications() {
     loading.value = true;
     try {
         const res = await api('tma.support.programmer.applications', {}, { status: appFilter.value });
         clients.value = res.clients || [];
         projects.value = res.projects || [];
-        syncSelected(clients.value);
+        if (activeClient.value) {
+            const fresh = clients.value.find((c) => c.id === activeClient.value.id);
+            if (fresh) {
+                openClient(fresh);
+            } else {
+                closeClient();
+            }
+        }
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось загрузить заявки.';
     } finally {
@@ -144,6 +146,7 @@ function selectTab(id) {
     tab.value = id;
     menuOpen.value = false;
     activeProject.value = null;
+    closeClient();
 }
 
 watch(tab, () => {
@@ -156,70 +159,95 @@ watch(appFilter, () => {
     }
 });
 
-function toggleProject(clientId, projectId) {
-    const list = selected[clientId] || [];
+function openClient(client) {
+    activeClient.value = client;
+    modalName.value = client.name || '';
+    modalProjectIds.value = [...(client.project_ids || [])];
+}
+
+function closeClient() {
+    activeClient.value = null;
+    modalName.value = '';
+    modalProjectIds.value = [];
+}
+
+function toggleModalProject(projectId) {
+    const list = [...modalProjectIds.value];
     const idx = list.indexOf(projectId);
     if (idx === -1) {
         list.push(projectId);
     } else {
         list.splice(idx, 1);
     }
-    selected[clientId] = list;
+    modalProjectIds.value = list;
 }
 
-async function accept(client) {
-    if (!(selected[client.id]?.length > 0)) {
-        error.value = 'Выберите хотя бы один проект.';
+async function accept() {
+    const client = activeClient.value;
+    if (!client) return;
+    if (!(modalProjectIds.value.length > 0)) {
+        error.value = 'Выберите проект.';
         return;
     }
     try {
         await api('tma.support.programmer.applications.accept', client.id, {
-            project_ids: selected[client.id],
+            name: modalName.value,
+            project_ids: modalProjectIds.value,
         });
+        closeClient();
         await loadApplications();
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось принять.';
     }
 }
 
-async function saveProjects(client) {
-    if (!(selected[client.id]?.length > 0)) {
-        error.value = 'Выберите хотя бы один проект.';
-        return;
-    }
+async function saveClient() {
+    const client = activeClient.value;
+    if (!client) return;
     try {
         await api('tma.support.programmer.applications.projects', client.id, {
-            project_ids: selected[client.id],
+            name: modalName.value,
+            project_ids: modalProjectIds.value,
         });
+        closeClient();
         await loadApplications();
     } catch (e) {
-        error.value = e?.response?.data?.message || 'Не удалось сохранить проекты.';
+        error.value = e?.response?.data?.message || 'Не удалось сохранить.';
     }
 }
 
-async function reject(client) {
-    if (!confirm('Отклонить заявку?')) return;
+async function reject() {
+    const client = activeClient.value;
+    if (!client) return;
+    if (!confirm('Отклонить?')) return;
     try {
         await api('tma.support.programmer.applications.reject', client.id);
+        closeClient();
         await loadApplications();
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось отклонить.';
     }
 }
 
-async function block(client) {
-    if (!confirm('Заблокировать клиента?')) return;
+async function block() {
+    const client = activeClient.value;
+    if (!client) return;
+    if (!confirm('Заблокировать?')) return;
     try {
         await api('tma.support.programmer.applications.block', client.id);
+        closeClient();
         await loadApplications();
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось заблокировать.';
     }
 }
 
-async function unblock(client) {
+async function unblock() {
+    const client = activeClient.value;
+    if (!client) return;
     try {
         await api('tma.support.programmer.applications.unblock', client.id);
+        closeClient();
         await loadApplications();
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось разблокировать.';
@@ -303,16 +331,11 @@ async function removeMessage(message) {
 <template>
     <div class="relative space-y-4">
         <header class="flex items-center justify-between gap-3">
-            <div>
-                <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Меню
-                </p>
-                <h2 class="text-lg font-semibold text-white">{{ currentTitle }}</h2>
-            </div>
+            <h2 class="text-xl font-semibold text-white">{{ currentTitle }}</h2>
             <button
                 type="button"
                 class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-white"
-                aria-label="Открыть меню"
+                aria-label="Меню"
                 @click="menuOpen = !menuOpen"
             >
                 <svg
@@ -348,17 +371,7 @@ async function removeMessage(message) {
             class="fixed inset-y-0 right-0 z-50 flex w-[min(100%,20rem)] flex-col border-l border-slate-800 bg-slate-950 p-4 shadow-2xl transition-transform duration-200"
             :class="menuOpen ? 'translate-x-0' : 'translate-x-full'"
         >
-            <div class="mb-4 flex items-center justify-between">
-                <p class="text-sm font-semibold text-white">Разделы</p>
-                <button
-                    type="button"
-                    class="rounded-lg px-2 py-1 text-sm text-slate-400"
-                    @click="menuOpen = false"
-                >
-                    Закрыть
-                </button>
-            </div>
-            <nav class="space-y-2">
+            <nav class="mt-2 space-y-2">
                 <button
                     v-for="item in tabs"
                     :key="item.id"
@@ -383,107 +396,146 @@ async function removeMessage(message) {
         <p v-if="loading" class="text-center text-sm text-slate-400">Загрузка…</p>
 
         <template v-if="tab === 'applications' && !loading">
-            <div class="flex flex-wrap gap-2">
+            <div class="space-y-2">
                 <button
                     v-for="item in appTabs"
                     :key="item.id"
                     type="button"
-                    class="rounded-full px-3 py-1.5 text-xs font-medium"
+                    class="flex w-full items-center rounded-xl px-4 py-3 text-left text-sm font-semibold"
                     :class="appFilter === item.id
                         ? 'bg-sky-500 text-slate-950'
-                        : 'bg-slate-800 text-slate-300'"
+                        : 'border border-slate-700 bg-slate-900 text-slate-200'"
                     @click="appFilter = item.id"
                 >
                     {{ item.label }}
                 </button>
             </div>
 
-            <article
-                v-for="client in clients"
-                :key="client.id"
-                class="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-4"
-            >
-                <div>
-                    <p class="font-semibold text-white">
-                        {{ client.name || 'Без имени' }}
-                        <span v-if="client.username" class="text-sm font-normal text-slate-400">
-                            @{{ client.username }}
-                        </span>
-                    </p>
-                    <p class="mt-1 text-xs text-slate-400">
-                        {{ client.phone || '—' }} · {{ client.company_name || 'без компании' }} · {{ client.created_at }}
-                    </p>
-                    <p class="mt-2 whitespace-pre-wrap text-sm text-slate-200">{{ client.message }}</p>
-                </div>
-
-                <div class="flex flex-wrap gap-2">
-                    <label
-                        v-for="project in projects"
-                        :key="project.id"
-                        class="inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs"
-                        :class="(selected[client.id] || []).includes(project.id)
-                            ? 'border-sky-500 bg-sky-500/10 text-sky-200'
-                            : 'border-slate-700 text-slate-300'"
-                    >
-                        <input
-                            type="checkbox"
-                            :checked="(selected[client.id] || []).includes(project.id)"
-                            @change="toggleProject(client.id, project.id)"
-                        >
-                        {{ project.name }}
-                    </label>
-                </div>
-
-                <div class="flex flex-wrap gap-2">
-                    <button
-                        v-if="client.status === 'pending' && !client.is_blocked"
-                        type="button"
-                        class="rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-slate-950"
-                        @click="accept(client)"
-                    >
-                        Принять
-                    </button>
-                    <button
-                        v-if="client.status === 'accepted' && !client.is_blocked"
-                        type="button"
-                        class="rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold text-white"
-                        @click="saveProjects(client)"
-                    >
-                        Сохранить проекты
-                    </button>
-                    <button
-                        v-if="client.status === 'pending' && !client.is_blocked"
-                        type="button"
-                        class="rounded-lg bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-200"
-                        @click="reject(client)"
-                    >
-                        Отклонить
-                    </button>
-                    <button
-                        v-if="!client.is_blocked"
-                        type="button"
-                        class="rounded-lg bg-rose-500/20 px-3 py-2 text-xs font-semibold text-rose-200"
-                        @click="block(client)"
-                    >
-                        Блок
-                    </button>
-                    <button
-                        v-else
-                        type="button"
-                        class="rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold text-white"
-                        @click="unblock(client)"
-                    >
-                        Разблок
-                    </button>
-                </div>
-            </article>
+            <div class="space-y-2">
+                <button
+                    v-for="client in clients"
+                    :key="client.id"
+                    type="button"
+                    class="flex w-full items-center rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3.5 text-left text-base font-semibold text-white"
+                    @click="openClient(client)"
+                >
+                    {{ client.name || 'Без имени' }}
+                </button>
+            </div>
 
             <p
                 v-if="clients.length === 0"
                 class="rounded-2xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400"
             >
-                Клиентских заявок пока нет.
+                Пусто.
             </p>
+
+            <div
+                v-if="activeClient"
+                class="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-4 sm:items-center"
+                @click.self="closeClient"
+            >
+                <div class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-4 shadow-2xl">
+                    <div class="mb-4 flex items-center justify-between gap-3">
+                        <h3 class="text-lg font-semibold text-white">Клиент</h3>
+                        <button
+                            type="button"
+                            class="text-sm text-slate-400"
+                            @click="closeClient"
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    <label class="mb-1 block text-xs text-slate-400">Имя</label>
+                    <input
+                        v-model="modalName"
+                        type="text"
+                        maxlength="120"
+                        class="mb-4 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-500"
+                    >
+
+                    <p
+                        v-if="activeClient.message"
+                        class="mb-4 whitespace-pre-wrap rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-300"
+                    >
+                        {{ activeClient.message }}
+                    </p>
+
+                    <p class="mb-2 text-xs text-slate-400">Проекты</p>
+                    <div class="mb-4 space-y-2">
+                        <button
+                            v-for="project in projects"
+                            :key="project.id"
+                            type="button"
+                            class="flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-semibold"
+                            :class="modalProjectIds.includes(project.id)
+                                ? 'border-sky-500 bg-sky-500/15 text-sky-100'
+                                : 'border-slate-700 bg-slate-900 text-slate-200'"
+                            @click="toggleModalProject(project.id)"
+                        >
+                            <span
+                                class="flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs"
+                                :class="modalProjectIds.includes(project.id)
+                                    ? 'border-sky-400 bg-sky-500 text-slate-950'
+                                    : 'border-slate-500'"
+                            >
+                                {{ modalProjectIds.includes(project.id) ? '✓' : '' }}
+                            </span>
+                            {{ project.name }}
+                        </button>
+                        <p
+                            v-if="projects.length === 0"
+                            class="text-sm text-slate-500"
+                        >
+                            Сначала создайте проекты.
+                        </p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <button
+                            v-if="activeClient.status === 'pending' && !activeClient.is_blocked"
+                            type="button"
+                            class="w-full rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950"
+                            @click="accept"
+                        >
+                            Принять
+                        </button>
+                        <button
+                            v-if="!activeClient.is_blocked"
+                            type="button"
+                            class="w-full rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-slate-950"
+                            @click="saveClient"
+                        >
+                            Сохранить
+                        </button>
+                        <button
+                            v-if="activeClient.status === 'pending' && !activeClient.is_blocked"
+                            type="button"
+                            class="w-full rounded-xl bg-amber-500/20 px-4 py-3 text-sm font-semibold text-amber-200"
+                            @click="reject"
+                        >
+                            Отклонить
+                        </button>
+                        <button
+                            v-if="!activeClient.is_blocked"
+                            type="button"
+                            class="w-full rounded-xl bg-rose-500/20 px-4 py-3 text-sm font-semibold text-rose-200"
+                            @click="block"
+                        >
+                            Блок
+                        </button>
+                        <button
+                            v-else
+                            type="button"
+                            class="w-full rounded-xl bg-slate-700 px-4 py-3 text-sm font-semibold text-white"
+                            @click="unblock"
+                        >
+                            Разблок
+                        </button>
+                    </div>
+                </div>
+            </div>
         </template>
 
         <template v-else-if="tab === 'projects' && !loading">
@@ -556,7 +608,7 @@ async function removeMessage(message) {
                     v-if="inboxProjects.length === 0"
                     class="rounded-2xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400"
                 >
-                    Проектов пока нет.
+                    Пусто.
                 </p>
             </template>
 
@@ -637,7 +689,7 @@ async function removeMessage(message) {
                     v-if="messages.length === 0"
                     class="rounded-2xl border border-dashed border-slate-700 px-4 py-8 text-center text-sm text-slate-400"
                 >
-                    Открытых сообщений нет.
+                    Пусто.
                 </p>
             </template>
         </template>
