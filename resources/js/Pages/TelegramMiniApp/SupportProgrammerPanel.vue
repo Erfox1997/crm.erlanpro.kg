@@ -1,15 +1,24 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
     initData: { type: String, required: true },
+    initialCounts: {
+        type: Object,
+        default: () => ({ pending_applications: 0, open_messages: 0 }),
+    },
 });
 
 const menuOpen = ref(false);
-const tab = ref('applications');
+const tab = ref('inbox');
 const loading = ref(false);
 const error = ref('');
 const notice = ref('');
+
+const badgeCounts = ref({
+    pending_applications: Number(props.initialCounts?.pending_applications) || 0,
+    open_messages: Number(props.initialCounts?.open_messages) || 0,
+});
 
 const appFilter = ref(null);
 const appsListOpen = ref(false);
@@ -25,13 +34,16 @@ const newProjectName = ref('');
 const inboxProjects = ref([]);
 const activeProject = ref(null);
 const messages = ref([]);
-const replyOpen = reactive({});
-const replyBody = reactive({});
+
+const replyMessageId = ref(null);
+const replyText = ref('');
+const replyInput = ref(null);
+const replySending = ref(false);
 
 const tabs = [
-    { id: 'applications', label: 'Заявки' },
-    { id: 'projects', label: 'Проекты' },
-    { id: 'inbox', label: 'Входящие' },
+    { id: 'inbox', label: 'Входящие', badgeKey: 'open_messages' },
+    { id: 'projects', label: 'Проекты', badgeKey: null },
+    { id: 'applications', label: 'Заявки', badgeKey: 'pending_applications' },
 ];
 
 const appTabs = [
@@ -41,6 +53,10 @@ const appTabs = [
     { id: 'blocked', label: 'Блок' },
     { id: 'all', label: 'Все' },
 ];
+
+const menuBadgeTotal = computed(() => (
+    (badgeCounts.value.pending_applications || 0) + (badgeCounts.value.open_messages || 0)
+));
 
 const currentTitle = computed(() => {
     if (tab.value === 'applications' && appsListOpen.value) {
@@ -52,6 +68,19 @@ const currentTitle = computed(() => {
 
     return tabs.find((item) => item.id === tab.value)?.label || 'Панель';
 });
+
+function tabBadge(item) {
+    if (!item.badgeKey) return 0;
+    return Number(badgeCounts.value[item.badgeKey]) || 0;
+}
+
+function applyCounts(counts) {
+    if (!counts) return;
+    badgeCounts.value = {
+        pending_applications: Number(counts.pending_applications) || 0,
+        open_messages: Number(counts.open_messages) || 0,
+    };
+}
 
 function jsonHeaders() {
     return {
@@ -74,7 +103,19 @@ async function api(routeName, params = {}, data = {}, method = 'post') {
     if (res.message) {
         notice.value = res.message;
     }
+    if (res.counts) {
+        applyCounts(res.counts);
+    }
     return res;
+}
+
+async function loadCounts() {
+    try {
+        const res = await api('tma.support.programmer.counts');
+        applyCounts(res.counts);
+    } catch {
+        // badges are non-critical
+    }
 }
 
 async function loadApplications() {
@@ -96,6 +137,7 @@ async function loadApplications() {
                 closeClient();
             }
         }
+        await loadCounts();
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось загрузить заявки.';
     } finally {
@@ -119,9 +161,11 @@ async function loadInbox() {
     loading.value = true;
     activeProject.value = null;
     messages.value = [];
+    cancelReply();
     try {
         const res = await api('tma.support.programmer.inbox');
         inboxProjects.value = res.projects || [];
+        applyCounts(res.counts);
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось загрузить входящие.';
     } finally {
@@ -131,13 +175,11 @@ async function loadInbox() {
 
 async function openInboxProject(project) {
     loading.value = true;
+    cancelReply();
     try {
         const res = await api('tma.support.programmer.inbox.show', project.id);
         activeProject.value = res.project;
         messages.value = res.messages || [];
-        messages.value.forEach((m) => {
-            replyBody[m.id] = replyBody[m.id] || '';
-        });
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось загрузить сообщения.';
     } finally {
@@ -152,6 +194,7 @@ async function refreshCurrentTab() {
         } else {
             clients.value = [];
             loading.value = false;
+            await loadCounts();
         }
     } else if (tab.value === 'projects') {
         await loadProjects();
@@ -168,6 +211,7 @@ function selectTab(id) {
     activeProject.value = null;
     appsListOpen.value = false;
     appFilter.value = null;
+    cancelReply();
     closeClient();
 }
 
@@ -185,9 +229,18 @@ function backToAppFilters() {
     closeClient();
 }
 
+function openMenu() {
+    menuOpen.value = true;
+    loadCounts();
+}
+
 watch(tab, () => {
     refreshCurrentTab();
 }, { immediate: true });
+
+onMounted(() => {
+    loadCounts();
+});
 
 function openClient(client) {
     activeClient.value = client;
@@ -316,35 +369,74 @@ async function removeProject(project) {
         });
         notice.value = 'Проект удалён.';
         await loadProjects();
+        await loadCounts();
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось удалить проект.';
     }
 }
 
+function cancelReply() {
+    replyMessageId.value = null;
+    replyText.value = '';
+    replySending.value = false;
+}
+
+async function focusReplyInput() {
+    await nextTick();
+    const el = replyInput.value;
+    if (!el) return;
+    el.focus();
+    // Telegram Desktop WebView often needs a delayed re-focus
+    setTimeout(() => {
+        replyInput.value?.focus();
+    }, 80);
+}
+
+function startReply(message) {
+    if (replyMessageId.value === message.id) {
+        cancelReply();
+        return;
+    }
+    replyMessageId.value = message.id;
+    replyText.value = '';
+    focusReplyInput();
+}
+
 async function complete(message) {
     if (!confirm('Отметить выполненным и уведомить клиента?')) return;
+    if (replyMessageId.value === message.id) {
+        cancelReply();
+    }
     try {
         await api('tma.support.programmer.messages.complete', message.id);
         await openInboxProject(activeProject.value);
+        await loadCounts();
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось отметить выполненным.';
     }
 }
 
-async function sendReply(message) {
-    const body = (replyBody[message.id] || '').trim();
-    if (!body) return;
+async function sendReply() {
+    const messageId = replyMessageId.value;
+    const body = replyText.value.trim();
+    if (!messageId || !body || replySending.value) return;
+
+    replySending.value = true;
     try {
-        await api('tma.support.programmer.messages.reply', message.id, { body });
-        replyOpen[message.id] = false;
-        replyBody[message.id] = '';
+        await api('tma.support.programmer.messages.reply', messageId, { body });
+        cancelReply();
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось отправить ответ.';
+        replySending.value = false;
+        focusReplyInput();
     }
 }
 
 async function removeMessage(message) {
     if (!confirm('Удалить сообщение без уведомления клиента?')) return;
+    if (replyMessageId.value === message.id) {
+        cancelReply();
+    }
     try {
         await window.axios.delete(route('tma.support.programmer.messages.destroy', message.id), {
             data: { init_data: props.initData },
@@ -352,6 +444,7 @@ async function removeMessage(message) {
         });
         notice.value = 'Сообщение удалено.';
         await openInboxProject(activeProject.value);
+        await loadCounts();
     } catch (e) {
         error.value = e?.response?.data?.message || 'Не удалось удалить сообщение.';
     }
@@ -359,14 +452,17 @@ async function removeMessage(message) {
 </script>
 
 <template>
-    <div class="relative space-y-4">
+    <div
+        class="relative space-y-4"
+        :class="replyMessageId ? 'pb-40' : ''"
+    >
         <header class="flex items-center justify-between gap-3">
             <h2 class="text-xl font-semibold text-white">{{ currentTitle }}</h2>
             <button
                 type="button"
-                class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-white"
+                class="relative inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-white"
                 aria-label="Меню"
-                @click="menuOpen = !menuOpen"
+                @click="menuOpen ? (menuOpen = false) : openMenu()"
             >
                 <svg
                     v-if="!menuOpen"
@@ -388,6 +484,12 @@ async function removeMessage(message) {
                 >
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
+                <span
+                    v-if="!menuOpen && menuBadgeTotal > 0"
+                    class="absolute -right-1.5 -top-1.5 min-w-[1.25rem] rounded-full bg-amber-400 px-1 py-0.5 text-center text-[10px] font-bold leading-none text-slate-950"
+                >
+                    +{{ menuBadgeTotal }}
+                </span>
             </button>
         </header>
 
@@ -399,20 +501,32 @@ async function removeMessage(message) {
 
         <aside
             class="fixed inset-y-0 right-0 z-50 flex w-[min(100%,20rem)] flex-col border-l border-slate-800 bg-slate-950 p-4 shadow-2xl transition-transform duration-200"
-            :class="menuOpen ? 'translate-x-0' : 'translate-x-full'"
+            :class="menuOpen
+                ? 'translate-x-0 pointer-events-auto'
+                : 'translate-x-full pointer-events-none'"
+            :aria-hidden="!menuOpen"
         >
             <nav class="mt-2 space-y-2">
                 <button
                     v-for="item in tabs"
                     :key="item.id"
                     type="button"
-                    class="flex w-full items-center rounded-xl px-4 py-3 text-left text-sm font-semibold"
+                    class="flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold"
                     :class="tab === item.id
                         ? 'bg-sky-500 text-slate-950'
                         : 'bg-slate-900 text-slate-200'"
                     @click="selectTab(item.id)"
                 >
-                    {{ item.label }}
+                    <span>{{ item.label }}</span>
+                    <span
+                        v-if="tabBadge(item) > 0"
+                        class="rounded-full px-2 py-0.5 text-xs font-bold"
+                        :class="tab === item.id
+                            ? 'bg-slate-950/20 text-slate-950'
+                            : 'bg-amber-400 text-slate-950'"
+                    >
+                        +{{ tabBadge(item) }}
+                    </span>
                 </button>
             </nav>
         </aside>
@@ -432,10 +546,16 @@ async function removeMessage(message) {
                         v-for="item in appTabs"
                         :key="item.id"
                         type="button"
-                        class="flex w-full items-center rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-left text-sm font-semibold text-slate-200"
+                        class="flex w-full items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-left text-sm font-semibold text-slate-200"
                         @click="openAppsFilter(item.id)"
                     >
-                        {{ item.label }}
+                        <span>{{ item.label }}</span>
+                        <span
+                            v-if="item.id === 'pending' && badgeCounts.pending_applications > 0"
+                            class="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-bold text-slate-950"
+                        >
+                            +{{ badgeCounts.pending_applications }}
+                        </span>
                     </button>
                 </div>
             </template>
@@ -657,7 +777,10 @@ async function removeMessage(message) {
                 <article
                     v-for="message in messages"
                     :key="message.id"
-                    class="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-4"
+                    class="space-y-3 rounded-2xl border p-4"
+                    :class="replyMessageId === message.id
+                        ? 'border-sky-500 bg-sky-500/10'
+                        : 'border-slate-800 bg-slate-900/80'"
                 >
                     <div>
                         <p class="font-semibold text-white">
@@ -714,10 +837,13 @@ async function removeMessage(message) {
                         </button>
                         <button
                             type="button"
-                            class="rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold text-white"
-                            @click="replyOpen[message.id] = !replyOpen[message.id]"
+                            class="rounded-lg px-3 py-2 text-xs font-semibold"
+                            :class="replyMessageId === message.id
+                                ? 'bg-sky-500 text-slate-950'
+                                : 'bg-slate-700 text-white'"
+                            @click="startReply(message)"
                         >
-                            💬 Ответ
+                            💬 {{ replyMessageId === message.id ? 'Отмена' : 'Ответ' }}
                         </button>
                         <button
                             type="button"
@@ -727,25 +853,6 @@ async function removeMessage(message) {
                             Удалить
                         </button>
                     </div>
-
-                    <form
-                        v-if="replyOpen[message.id]"
-                        class="space-y-2 border-t border-slate-800 pt-3"
-                        @submit.prevent="sendReply(message)"
-                    >
-                        <textarea
-                            v-model="replyBody[message.id]"
-                            rows="3"
-                            class="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-sky-500"
-                            placeholder="Ответ клиенту…"
-                        />
-                        <button
-                            type="submit"
-                            class="w-full rounded-xl bg-sky-500 px-3 py-2.5 text-sm font-semibold text-slate-950"
-                        >
-                            Отправить
-                        </button>
-                    </form>
                 </article>
 
                 <p
@@ -756,5 +863,41 @@ async function removeMessage(message) {
                 </p>
             </template>
         </template>
+
+        <form
+            v-if="replyMessageId"
+            class="fixed inset-x-0 bottom-0 z-[70] border-t border-slate-700 bg-slate-950/95 p-3 backdrop-blur"
+            @submit.prevent="sendReply"
+        >
+            <div class="mx-auto max-w-md space-y-2">
+                <textarea
+                    ref="replyInput"
+                    v-model="replyText"
+                    rows="3"
+                    inputmode="text"
+                    enterkeyhint="send"
+                    autocomplete="off"
+                    class="w-full resize-none rounded-xl border border-slate-600 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-sky-500"
+                    placeholder="Ответ клиенту…"
+                    @pointerdown.stop
+                />
+                <div class="flex gap-2">
+                    <button
+                        type="button"
+                        class="rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-200"
+                        @click="cancelReply"
+                    >
+                        Отмена
+                    </button>
+                    <button
+                        type="submit"
+                        class="flex-1 rounded-xl bg-sky-500 px-3 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-50"
+                        :disabled="replySending || !replyText.trim()"
+                    >
+                        {{ replySending ? 'Отправка…' : 'Отправить' }}
+                    </button>
+                </div>
+            </div>
+        </form>
     </div>
 </template>

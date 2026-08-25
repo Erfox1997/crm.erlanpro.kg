@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\TelegramSupportClient;
+use App\Models\TelegramSupportMessage;
 use App\Services\Telegram\SupportTelegramBotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,6 +43,18 @@ class TelegramSupportMiniAppController extends Controller
         if ($isProgrammer) {
             $this->supportBot->purgeProgrammerClientRecords();
 
+            $pendingApplications = TelegramSupportClient::query()
+                ->where('status', TelegramSupportClient::STATUS_PENDING)
+                ->whereNull('blocked_at')
+                ->orderBy('id')
+                ->get(['id', 'username'])
+                ->filter(fn (TelegramSupportClient $client) => ! $this->supportBot->isProgrammerUsername($client->username))
+                ->count();
+
+            $openMessages = TelegramSupportMessage::query()
+                ->where('status', TelegramSupportMessage::STATUS_OPEN)
+                ->count();
+
             return response()->json([
                 'ok' => true,
                 'is_programmer' => true,
@@ -51,6 +65,10 @@ class TelegramSupportMiniAppController extends Controller
                     'last_name' => $telegramUser['last_name'] ?? null,
                 ],
                 'application' => null,
+                'counts' => [
+                    'pending_applications' => $pendingApplications,
+                    'open_messages' => $openMessages,
+                ],
             ]);
         }
 

@@ -15,6 +15,10 @@ const loading = ref(true);
 const error = ref('');
 const initData = ref('');
 const isProgrammer = ref(false);
+const initialCounts = ref({
+    pending_applications: 0,
+    open_messages: 0,
+});
 
 onMounted(async () => {
     const tg = window.Telegram?.WebApp;
@@ -45,6 +49,12 @@ onMounted(async () => {
         });
 
         isProgrammer.value = Boolean(data.is_programmer);
+        if (data.counts) {
+            initialCounts.value = {
+                pending_applications: Number(data.counts.pending_applications) || 0,
+                open_messages: Number(data.counts.open_messages) || 0,
+            };
+        }
     } catch (e) {
         error.value = e?.response?.data?.message || t('supportMiniApp.loadFailed');
     } finally {
@@ -83,6 +93,7 @@ function closeApp() {
             <SupportProgrammerPanel
                 v-else-if="isProgrammer"
                 :init-data="initData"
+                :initial-counts="initialCounts"
             />
 
             <div

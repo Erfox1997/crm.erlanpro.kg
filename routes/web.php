@@ -62,6 +62,7 @@ Route::get('/tma/support', [TelegramSupportMiniAppController::class, 'entry'])->
 Route::post('/tma/support/bootstrap', [TelegramSupportMiniAppController::class, 'bootstrap'])->name('tma.support.bootstrap');
 Route::post('/tma/support/apply', [TelegramSupportMiniAppController::class, 'apply'])->name('tma.support.apply');
 
+Route::post('/tma/support/programmer/counts', [TelegramSupportProgrammerMiniAppController::class, 'counts'])->name('tma.support.programmer.counts');
 Route::post('/tma/support/programmer/applications', [TelegramSupportProgrammerMiniAppController::class, 'applications'])->name('tma.support.programmer.applications');
 Route::post('/tma/support/programmer/applications/{supportClient}/accept', [TelegramSupportProgrammerMiniAppController::class, 'accept'])->name('tma.support.programmer.applications.accept');
 Route::post('/tma/support/programmer/applications/{supportClient}/reject', [TelegramSupportProgrammerMiniAppController::class, 'reject'])->name('tma.support.programmer.applications.reject');

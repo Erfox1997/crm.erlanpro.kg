@@ -241,6 +241,16 @@ class TelegramSupportProgrammerMiniAppController extends Controller
         ]);
     }
 
+    public function counts(Request $request): JsonResponse
+    {
+        $this->requireProgrammer($request);
+
+        return response()->json([
+            'ok' => true,
+            'counts' => $this->badgeCounts(),
+        ]);
+    }
+
     public function inbox(Request $request): JsonResponse
     {
         $this->requireProgrammer($request);
@@ -260,6 +270,7 @@ class TelegramSupportProgrammerMiniAppController extends Controller
         return response()->json([
             'ok' => true,
             'projects' => $projects,
+            'counts' => $this->badgeCounts(),
         ]);
     }
 
@@ -393,6 +404,29 @@ class TelegramSupportProgrammerMiniAppController extends Controller
                 'Cache-Control' => 'private, max-age=3600',
             ],
         );
+    }
+
+    /**
+     * @return array{pending_applications: int, open_messages: int}
+     */
+    private function badgeCounts(): array
+    {
+        $pendingApplications = TelegramSupportClient::query()
+            ->where('status', TelegramSupportClient::STATUS_PENDING)
+            ->whereNull('blocked_at')
+            ->orderBy('id')
+            ->get(['id', 'username'])
+            ->filter(fn (TelegramSupportClient $client) => ! $this->supportBot->isProgrammerUsername($client->username))
+            ->count();
+
+        $openMessages = TelegramSupportMessage::query()
+            ->where('status', TelegramSupportMessage::STATUS_OPEN)
+            ->count();
+
+        return [
+            'pending_applications' => $pendingApplications,
+            'open_messages' => $openMessages,
+        ];
     }
 
     /**
