@@ -129,7 +129,10 @@ let removeInertiaErrorListener = null;
 const localConversations = ref(
     (props.conversations || []).map((conversation) => ({ ...conversation })),
 );
-const localMessages = ref((props.messages || []).map((message) => ({ ...message })));
+const localMessages = ref((props.messages || []).map((message) => ({
+    ...message,
+    stable_key: message.stable_key || message.client_id || message.id,
+})));
 
 const jsonRequestHeaders = {
     Accept: 'application/json',
@@ -340,7 +343,23 @@ function numericMessageId(id) {
 }
 
 function messageStableKey(message) {
-    return String(message?.client_id || message?.id || '');
+    return String(message?.stable_key || message?.client_id || message?.id || '');
+}
+
+function withStableIdentity(message, fallbackKey = null) {
+    const stableKey = String(
+        message?.stable_key
+        || message?.client_id
+        || fallbackKey
+        || message?.id
+        || '',
+    );
+
+    return {
+        ...message,
+        stable_key: stableKey,
+        client_id: message?.client_id || (String(message?.id || '').startsWith('tmp-') ? message.id : message?.client_id),
+    };
 }
 
 function isOptimisticMessage(message) {
@@ -360,6 +379,22 @@ function sortMessages(messages) {
 
         return numericMessageId(a.id) - numericMessageId(b.id);
     });
+}
+
+function patchOptimisticWithServer(local, server, { finalize = false } = {}) {
+    return withStableIdentity({
+        ...local,
+        id: server.id,
+        status: finalize
+            ? (server.status || local.status)
+            : (local.status === 'pending' ? 'pending' : (server.status || local.status)),
+        body: local.body || server.body,
+        // Keep local clock + previews so the bubble does not jump or remount
+        sent_at: local.sent_at || server.sent_at,
+        attachments: mergeConfirmedAttachments(local.attachments, server.attachments),
+        client_id: local.client_id || local.stable_key || local.id,
+        stable_key: local.stable_key || local.client_id || local.id,
+    }, local.stable_key || local.client_id || local.id);
 }
 
 function optimisticMatchesServer(local, server) {
@@ -401,7 +436,9 @@ function confirmOptimisticMessage(clientId, serverMessage) {
     let replaced = false;
 
     for (const message of localMessages.value) {
-        const isTarget = message.id === clientId || message.client_id === clientId;
+        const isTarget = message.id === clientId
+            || message.client_id === clientId
+            || message.stable_key === clientId;
         const isDuplicateServer = String(message.id) === serverId && !isTarget;
 
         if (isDuplicateServer) {
@@ -409,14 +446,7 @@ function confirmOptimisticMessage(clientId, serverMessage) {
         }
 
         if (isTarget) {
-            next.push({
-                ...message,
-                ...serverMessage,
-                // Keep optimistic identity so the bubble doesn't remount / jump
-                client_id: clientId,
-                sent_at: message.sent_at || serverMessage.sent_at,
-                attachments: mergeConfirmedAttachments(message.attachments, serverMessage.attachments),
-            });
+            next.push(patchOptimisticWithServer(message, serverMessage, { finalize: true }));
             replaced = true;
             continue;
         }
@@ -425,10 +455,11 @@ function confirmOptimisticMessage(clientId, serverMessage) {
     }
 
     if (!replaced) {
-        next.push({
+        next.push(withStableIdentity({
             ...serverMessage,
             client_id: clientId,
-        });
+            stable_key: clientId,
+        }, clientId));
     }
 
     // Keep current visual order — avoid re-sort flicker on confirm
@@ -521,39 +552,45 @@ function mergeMessages(updates, { scroll = true } = {}) {
 
     const list = [...localMessages.value];
     let added = 0;
+    const claimedPending = new Set();
 
     for (const update of updates) {
         const idKey = String(update.id);
         const existingIndex = list.findIndex((message) => String(message.id) === idKey);
 
         if (existingIndex >= 0) {
-            list[existingIndex] = {
-                ...list[existingIndex],
+            const prev = list[existingIndex];
+            list[existingIndex] = withStableIdentity({
+                ...prev,
                 ...update,
-                client_id: list[existingIndex].client_id || update.client_id,
-            };
+                client_id: prev.client_id || update.client_id,
+                stable_key: prev.stable_key || prev.client_id || update.id,
+                sent_at: prev.sent_at || update.sent_at,
+                attachments: mergeConfirmedAttachments(prev.attachments, update.attachments),
+            }, prev.stable_key || prev.client_id || update.id);
             continue;
         }
 
-        const pendingIndex = list.findIndex((message) => optimisticMatchesServer(message, update));
+        const pendingIndex = list.findIndex((message, index) => (
+            !claimedPending.has(index)
+            && optimisticMatchesServer(message, update)
+        ));
+
         if (pendingIndex >= 0) {
-            const clientId = list[pendingIndex].client_id || list[pendingIndex].id;
-            list[pendingIndex] = {
-                ...list[pendingIndex],
-                ...update,
-                client_id: clientId,
-            };
+            claimedPending.add(pendingIndex);
+            list[pendingIndex] = patchOptimisticWithServer(list[pendingIndex], update);
             continue;
         }
 
-        list.push({ ...update });
+        list.push(withStableIdentity({ ...update }, update.id));
         added += 1;
     }
 
-    localMessages.value = sortMessages(list);
+    // Only re-sort when brand-new messages arrive — patching pending must not reshuffle
+    localMessages.value = added > 0 ? sortMessages(list) : list;
 
     if (scroll && added > 0 && shouldStickToBottom) {
-        scrollToBottom();
+        scrollToBottom(false);
     }
 }
 
@@ -656,52 +693,56 @@ watch(
         watchedConversationId = conversationId;
 
         if (conversationChanged || localMessages.value.length === 0) {
-            localMessages.value = serverMessages;
+            localMessages.value = serverMessages.map((message) => withStableIdentity(message, message.id));
             shouldStickToBottom = true;
-            scrollToBottom();
+            scrollToBottom(false);
             return;
         }
 
-        const byId = new Map(serverMessages.map((message) => [String(message.id), message]));
-        const pendingLocals = [];
+        const serverById = new Map(serverMessages.map((message) => [String(message.id), message]));
+        const usedServerIds = new Set();
+        const next = [];
 
         for (const local of localMessages.value) {
-            const idKey = String(local.id);
-
             if (isOptimisticMessage(local)) {
-                const matchedServer = [...byId.values()].find((server) => optimisticMatchesServer(local, server));
+                const matchedServer = [...serverById.values()].find((server) => (
+                    !usedServerIds.has(String(server.id))
+                    && optimisticMatchesServer(local, server)
+                ));
+
                 if (matchedServer) {
-                    byId.set(String(matchedServer.id), {
-                        ...local,
-                        ...matchedServer,
-                        client_id: local.client_id || local.id,
-                        sent_at: local.sent_at || matchedServer.sent_at,
-                        attachments: mergeConfirmedAttachments(local.attachments, matchedServer.attachments),
-                    });
+                    usedServerIds.add(String(matchedServer.id));
+                    next.push(patchOptimisticWithServer(local, matchedServer));
                 } else {
-                    pendingLocals.push(local);
+                    next.push(local);
                 }
                 continue;
             }
 
-            if (!byId.has(idKey)) {
-                // Keep locally known messages that server list hasn't caught up with yet
-                pendingLocals.push(local);
-                continue;
+            const server = serverById.get(String(local.id));
+            if (server) {
+                usedServerIds.add(String(local.id));
+                next.push(withStableIdentity({
+                    ...local,
+                    ...server,
+                    client_id: local.client_id,
+                    stable_key: local.stable_key || local.client_id || local.id,
+                    sent_at: local.sent_at || server.sent_at,
+                    attachments: mergeConfirmedAttachments(local.attachments, server.attachments),
+                }, local.stable_key || local.client_id || local.id));
+            } else {
+                next.push(local);
             }
-
-            byId.set(idKey, {
-                ...local,
-                ...byId.get(idKey),
-                client_id: local.client_id,
-                sent_at: local.sent_at || byId.get(idKey)?.sent_at,
-            });
         }
 
-        localMessages.value = sortMessages([
-            ...Array.from(byId.values()),
-            ...pendingLocals.filter((local) => !byId.has(String(local.id))),
-        ]);
+        for (const server of serverMessages) {
+            if (!usedServerIds.has(String(server.id))) {
+                next.push(withStableIdentity(server, server.id));
+            }
+        }
+
+        // Preserve local visual order — never rebuild via Map + sort (that caused flicker)
+        localMessages.value = next;
     },
     { deep: true },
 );
@@ -1079,6 +1120,7 @@ async function applyQuickReply(reply) {
         {
             id: clientId,
             client_id: clientId,
+            stable_key: clientId,
             direction: 'outbound',
             body: previewBody,
             attachments: [],
@@ -1089,7 +1131,7 @@ async function applyQuickReply(reply) {
     sendForm.reset('body');
     sendError.value = '';
     shouldStickToBottom = true;
-    scrollToBottom();
+    scrollToBottom(true);
     touchConversationAfterSend(
         { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
         previewBody,
@@ -1180,6 +1222,7 @@ async function sendMessage() {
         {
             id: clientId,
             client_id: clientId,
+            stable_key: clientId,
             direction: 'outbound',
             body,
             attachments: optimisticAttachments,
@@ -1201,7 +1244,7 @@ async function sendMessage() {
     }
     sendError.value = '';
     shouldStickToBottom = true;
-    scrollToBottom();
+    scrollToBottom(true);
     touchConversationAfterSend(
         { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
         body || t('messenger.imageLabel'),
@@ -1579,6 +1622,7 @@ async function sendVoiceMessage() {
         {
             id: clientId,
             client_id: clientId,
+            stable_key: clientId,
             direction: 'outbound',
             body: '',
             attachments: [{
@@ -1593,7 +1637,7 @@ async function sendVoiceMessage() {
     ];
     sendError.value = '';
     shouldStickToBottom = true;
-    scrollToBottom();
+    scrollToBottom(true);
     touchConversationAfterSend(
         { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
         t('messenger.voiceLabel'),
@@ -1904,9 +1948,9 @@ function submitSaveQuickReply() {
     );
 }
 
-function scrollToBottom() {
+function scrollToBottom(smooth = false) {
     nextTick(() => {
-        messagesEnd.value?.scrollIntoView({ behavior: 'smooth' });
+        messagesEnd.value?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
     });
 }
 
@@ -2330,7 +2374,7 @@ function scrollToBottom() {
                         @scroll="onMessagesScroll"
                     >
                         <div
-                            v-if="messages.length === 0"
+                            v-if="localMessages.length === 0"
                             class="py-12 text-center text-sm text-[#667781]"
                         >
                             {{ t('messenger.noMessages') }}
