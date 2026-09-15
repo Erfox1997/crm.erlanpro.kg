@@ -29,22 +29,29 @@ php artisan migrate --force
 
 ## Сборка APK
 
-```bash
+Нужны: **JDK 21**, Android SDK (из Android Studio).
+
+```powershell
 cd mobile
 npm install
-# подставьте свой прод-URL при необходимости:
-# set CRM_APP_URL=https://crm.erlanpro.kg   (Windows)
-# export CRM_APP_URL=https://crm.erlanpro.kg (Linux/macOS)
 
-npx cap add android
-# положите google-services.json в mobile/android/app/
+# Windows: если путь к проекту с кириллицей — уже включено android.overridePathCheck в gradle.properties
+$env:JAVA_HOME="C:\Program Files\Microsoft\jdk-21.0.12.101-hotspot"
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+$env:Path="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:Path"
+
+npx cap add android   # только первый раз
+Copy-Item www\google-services.json android\app\google-services.json -Force
 npx cap sync android
-npx cap open android
+
+cd android
+.\gradlew.bat assembleDebug
 ```
 
-В Android Studio: **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
+APK: `mobile\android\app\build\outputs\apk\debug\app-debug.apk`
 
-APK раздаёте сотрудникам (файл / ссылка). При первом входе — логин CRM, дальше только мессенджер.
+Или через Android Studio: `npx cap open android` → **Build → Build APK(s)**.
+
 
 ## Как работает
 

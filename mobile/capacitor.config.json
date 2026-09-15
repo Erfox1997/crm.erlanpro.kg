@@ -1,0 +1,31 @@
+{
+  "appId": "kg.erlanpro.crm.messenger",
+  "appName": "ErlanPro Messenger",
+  "webDir": "www",
+  "server": {
+    "url": "https://crm.erlanpro.kg/app",
+    "cleartext": true,
+    "allowNavigation": [
+      "crm.erlanpro.kg",
+      "localhost",
+      "127.0.0.1"
+    ]
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#0f172a"
+    },
+    "StatusBar": {
+      "overlaysWebView": false,
+      "style": "DARK",
+      "backgroundColor": "#f0f2f5"
+    }
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

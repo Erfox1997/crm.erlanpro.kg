@@ -2,7 +2,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
         <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
@@ -18,7 +18,9 @@
             ))
             || request()->session()->get('telegram_mini_app')
             || request()->cookie('crm_tma')
+            || request()->cookie('crm_mobile')
             || request()->boolean('mini')
+            || request()->query('app') === 'android'
         )
             <script src="https://telegram.org/js/telegram-web-app.js"></script>
         @endif
@@ -26,7 +28,7 @@
         @vite(['resources/js/app.js', "resources/js/Pages/{$page['component']}.vue"])
         @inertiaHead
     </head>
-    <body class="font-sans antialiased {{ request()->session()->get('telegram_mini_app') || request()->cookie('crm_tma') || request()->boolean('mini') ? 'tma-app' : '' }}">
+    <body class="font-sans antialiased {{ request()->session()->get('telegram_mini_app') || request()->cookie('crm_tma') || request()->cookie('crm_mobile') || request()->boolean('mini') || request()->query('app') === 'android' ? 'tma-app' : '' }}">
         @inertia
     </body>
 </html>

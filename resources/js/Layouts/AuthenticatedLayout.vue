@@ -183,7 +183,9 @@ onUnmounted(() => {
 <template>
     <div
         class="flex flex-col bg-[#eef2f8] md:flex-row"
-        :class="fullHeight ? 'h-svh overflow-hidden' : 'min-h-svh'"
+        :class="fullHeight
+            ? (telegramMiniApp ? 'h-full min-h-0 overflow-hidden' : 'h-svh overflow-hidden')
+            : 'min-h-svh'"
     >
         <!-- Мобильная подложка -->
         <div

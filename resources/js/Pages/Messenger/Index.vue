@@ -707,6 +707,21 @@ async function registerNativePushToken() {
         return;
     }
 
+    try {
+        const StatusBar = capacitor.Plugins?.StatusBar;
+        if (StatusBar?.setOverlaysWebView) {
+            await StatusBar.setOverlaysWebView({ overlay: false });
+        }
+        if (StatusBar?.setBackgroundColor) {
+            await StatusBar.setBackgroundColor({ color: '#f0f2f5' });
+        }
+        if (StatusBar?.setStyle) {
+            await StatusBar.setStyle({ style: 'DARK' });
+        }
+    } catch {
+        // StatusBar plugin optional
+    }
+
     const PushNotifications = capacitor.Plugins?.PushNotifications;
     if (!PushNotifications) {
         return;
@@ -1933,7 +1948,7 @@ function scrollToBottom() {
                     </h2>
                     <div class="flex items-center gap-1">
                         <button
-                            v-if="filterPipelines.length && !isMiniApp"
+                            v-if="filterPipelines.length"
                             type="button"
                             class="rounded-full p-2 transition hover:bg-[#e9edef]"
                             :class="funnelFilterActive
@@ -1957,8 +1972,8 @@ function scrollToBottom() {
                             </svg>
                         </button>
                         <Link
-                            v-if="messengerConnected && !isMiniApp"
-                            :href="route('messenger.quick-replies.index')"
+                            v-if="messengerConnected"
+                            :href="route('messenger.quick-replies.index', isMiniApp ? { mini: 1 } : {})"
                             class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
 :title="t('messenger.quickRepliesTitle')"
                         >
@@ -1977,7 +1992,7 @@ function scrollToBottom() {
                             </svg>
                         </Link>
                         <button
-                            v-if="messengerConnected && !isMiniApp"
+                            v-if="messengerConnected"
                             type="button"
                             class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
                             :disabled="syncing"
@@ -2156,7 +2171,9 @@ function scrollToBottom() {
                     >
                         <button
                             type="button"
-                            class="rounded-full p-1 text-[#54656f] hover:bg-[#e9edef] lg:hidden"
+                            class="inline-flex shrink-0 items-center justify-center rounded-full text-[#54656f] hover:bg-[#e9edef] lg:hidden"
+                            :class="isMiniApp ? 'h-11 w-11' : 'p-1'"
+                            :aria-label="t('messenger.chats')"
                             @click="backToConversationList"
                         >
                             <svg
@@ -2201,7 +2218,7 @@ function scrollToBottom() {
                         </span>
 
                         <button
-                            v-if="shopConnected && !isMiniApp"
+                            v-if="shopConnected"
                             type="button"
                             class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-amber-600 sm:px-3 sm:text-xs"
 :title="t('messenger.sell.btn')"
@@ -2214,7 +2231,6 @@ function scrollToBottom() {
                         </button>
 
                         <button
-                            v-if="!isMiniApp"
                             type="button"
                             class="inline-flex shrink-0 items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-indigo-700 sm:px-3 sm:text-xs"
 :title="t('messenger.task')"
@@ -2227,7 +2243,6 @@ function scrollToBottom() {
                         </button>
 
                         <button
-                            v-if="!isMiniApp"
                             type="button"
                             class="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-medium text-[#008069] shadow-sm transition hover:bg-[#f0f2f5] sm:px-3 sm:py-1.5 sm:text-xs"
                             @click="openClientModal"
@@ -2237,7 +2252,7 @@ function scrollToBottom() {
                     </div>
 
                     <div
-                        v-if="funnelDeal && !isMiniApp"
+                        v-if="funnelDeal"
                         class="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#d1d7db] bg-[#f7f8fa] px-2.5 py-2 sm:px-4"
                     >
                         <span class="text-xs font-medium text-[#111b21]">
