@@ -369,6 +369,10 @@ function isOptimisticMessage(message) {
     );
 }
 
+function isTmpMessage(message) {
+    return String(message?.id || '').startsWith('tmp-');
+}
+
 function sortMessages(messages) {
     return [...messages].sort((a, b) => {
         const aTime = a.sent_at ? new Date(a.sent_at).getTime() : 0;
@@ -386,7 +390,7 @@ function patchOptimisticWithServer(local, server, { finalize = false } = {}) {
         ...local,
         id: server.id,
         status: finalize
-            ? (server.status || local.status)
+            ? (server.status || 'sent')
             : (local.status === 'pending' ? 'pending' : (server.status || local.status)),
         body: local.body || server.body,
         // Keep local clock + previews so the bubble does not jump or remount
@@ -397,8 +401,8 @@ function patchOptimisticWithServer(local, server, { finalize = false } = {}) {
     }, local.stable_key || local.client_id || local.id);
 }
 
-function optimisticMatchesServer(local, server) {
-    if (!isOptimisticMessage(local) || local.direction !== 'outbound' || server.direction !== 'outbound') {
+function optimisticContentMatches(local, server) {
+    if (local?.direction !== 'outbound' || server?.direction !== 'outbound') {
         return false;
     }
 
@@ -424,6 +428,63 @@ function optimisticMatchesServer(local, server) {
     }
 
     return !localBody && !serverBody && localAttachments.length > 0 && serverAttachments.length > 0;
+}
+
+function optimisticMatchesServer(local, server) {
+    // Only unbound tmp bubbles may absorb a server echo — never rematch soft-patched ids
+    if (!isTmpMessage(local)) {
+        return false;
+    }
+
+    return optimisticContentMatches(local, server);
+}
+
+/**
+ * Collapse poll/confirm races: tmp bubble + server echo must become one row.
+ */
+function dedupeLocalMessages(messages) {
+    const result = [];
+
+    for (const msg of messages) {
+        const nid = numericMessageId(msg.id);
+
+        if (nid && msg.direction === 'outbound') {
+            const tmpIdx = result.findIndex((kept) => isTmpMessage(kept) && optimisticContentMatches(kept, msg));
+            if (tmpIdx >= 0) {
+                result[tmpIdx] = patchOptimisticWithServer(result[tmpIdx], msg, { finalize: true });
+                continue;
+            }
+
+            const sameIdIdx = result.findIndex((kept) => numericMessageId(kept.id) === nid);
+            if (sameIdIdx >= 0) {
+                const kept = result[sameIdIdx];
+                result[sameIdIdx] = withStableIdentity({
+                    ...kept,
+                    ...msg,
+                    client_id: kept.client_id || msg.client_id,
+                    stable_key: kept.stable_key || kept.client_id || msg.id,
+                    sent_at: kept.sent_at || msg.sent_at,
+                    attachments: mergeConfirmedAttachments(kept.attachments, msg.attachments),
+                }, kept.stable_key || kept.client_id || msg.id);
+                continue;
+            }
+        }
+
+        if (isTmpMessage(msg) && msg.direction === 'outbound') {
+            const serverIdx = result.findIndex((kept) => (
+                numericMessageId(kept.id)
+                && optimisticContentMatches(msg, kept)
+            ));
+            if (serverIdx >= 0) {
+                result[serverIdx] = patchOptimisticWithServer(msg, result[serverIdx], { finalize: true });
+                continue;
+            }
+        }
+
+        result.push(msg);
+    }
+
+    return result;
 }
 
 function confirmOptimisticMessage(clientId, serverMessage) {
@@ -462,8 +523,7 @@ function confirmOptimisticMessage(clientId, serverMessage) {
         }, clientId));
     }
 
-    // Keep current visual order — avoid re-sort flicker on confirm
-    localMessages.value = next;
+    localMessages.value = dedupeLocalMessages(next);
 }
 
 function mergeConfirmedAttachments(localAttachments, serverAttachments) {
@@ -587,7 +647,7 @@ function mergeMessages(updates, { scroll = true } = {}) {
     }
 
     // Only re-sort when brand-new messages arrive — patching pending must not reshuffle
-    localMessages.value = added > 0 ? sortMessages(list) : list;
+    localMessages.value = dedupeLocalMessages(added > 0 ? sortMessages(list) : list);
 
     if (scroll && added > 0 && shouldStickToBottom) {
         scrollToBottom(false);
@@ -742,7 +802,7 @@ watch(
         }
 
         // Preserve local visual order — never rebuild via Map + sort (that caused flicker)
-        localMessages.value = next;
+        localMessages.value = dedupeLocalMessages(next);
     },
     { deep: true },
 );
