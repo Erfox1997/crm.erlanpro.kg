@@ -578,13 +578,28 @@ class FacebookMessengerService
             : now();
 
         $attachments = $this->attachments->resolveWebhookAttachments($integration, $message);
+        $body = (string) ($message['text'] ?? '');
+
+        if ($direction === 'outbound') {
+            $absorbed = MessengerMessage::absorbOutboundEcho(
+                (int) $conversation->id,
+                $body,
+                $externalId,
+                $attachments !== [],
+            );
+            if ($absorbed) {
+                $conversation->update(['last_message_at' => $sentAt]);
+
+                return false;
+            }
+        }
 
         MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
             'messenger_conversation_id' => $conversation->id,
             'direction' => $direction,
             'external_id' => $externalId,
-            'body' => (string) ($message['text'] ?? ''),
+            'body' => $body,
             'attachments' => $attachments !== [] ? $attachments : null,
             'status' => $direction === 'outbound' ? 'sent' : 'received',
             'sent_at' => $sentAt,

@@ -719,6 +719,20 @@ class WappiMessengerService
         $attachments = $this->materializeInboundAttachments($integration->company_id, $message, $attachments);
         $sentAt = $this->resolveSentAt($message);
 
+        if ($direction === 'outbound') {
+            $absorbed = MessengerMessage::absorbOutboundEcho(
+                (int) $conversation->id,
+                $body,
+                $externalId,
+                $attachments !== [],
+            );
+            if ($absorbed) {
+                $conversation->update(['last_message_at' => $sentAt]);
+
+                return false;
+            }
+        }
+
         MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
             'messenger_conversation_id' => $conversation->id,

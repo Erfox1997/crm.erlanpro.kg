@@ -125,6 +125,9 @@ let shouldStickToBottom = true;
 let chatToastTimer = null;
 let removeInertiaSuccessListener = null;
 let removeInertiaErrorListener = null;
+/** @type {Set<string>} */
+const inFlightClientIds = new Set();
+let lastOutboundConfirmAt = 0;
 
 const localConversations = ref(
     (props.conversations || []).map((conversation) => ({ ...conversation })),
@@ -524,6 +527,8 @@ function confirmOptimisticMessage(clientId, serverMessage) {
     }
 
     localMessages.value = dedupeLocalMessages(next);
+    inFlightClientIds.delete(clientId);
+    lastOutboundConfirmAt = Date.now();
 }
 
 function mergeConfirmedAttachments(localAttachments, serverAttachments) {
@@ -613,6 +618,10 @@ function mergeMessages(updates, { scroll = true } = {}) {
     const list = [...localMessages.value];
     let added = 0;
     const claimedPending = new Set();
+    const hasPendingOutbound = list.some((message) => (
+        message.direction === 'outbound'
+        && (isTmpMessage(message) || (message.status === 'pending' && String(message.stable_key || '').startsWith('tmp-')))
+    )) || inFlightClientIds.size > 0;
 
     for (const update of updates) {
         const idKey = String(update.id);
@@ -633,7 +642,15 @@ function mergeMessages(updates, { scroll = true } = {}) {
 
         const pendingIndex = list.findIndex((message, index) => (
             !claimedPending.has(index)
-            && optimisticMatchesServer(message, update)
+            && (
+                optimisticMatchesServer(message, update)
+                || (
+                    message.direction === 'outbound'
+                    && update.direction === 'outbound'
+                    && String(message.stable_key || '').startsWith('tmp-')
+                    && optimisticContentMatches(message, update)
+                )
+            )
         ));
 
         if (pendingIndex >= 0) {
@@ -642,11 +659,32 @@ function mergeMessages(updates, { scroll = true } = {}) {
             continue;
         }
 
+        // Provider webhook echo: same outbound text within a few seconds — do not add a second bubble
+        if (update.direction === 'outbound') {
+            const echoIndex = list.findIndex((message) => (
+                message.direction === 'outbound'
+                && optimisticContentMatches(message, update)
+                && Math.abs(new Date(message.sent_at || 0).getTime() - new Date(update.sent_at || 0).getTime()) < 60_000
+            ));
+            if (echoIndex >= 0) {
+                list[echoIndex] = withStableIdentity({
+                    ...list[echoIndex],
+                    id: list[echoIndex].id || update.id,
+                    status: list[echoIndex].status === 'pending' ? list[echoIndex].status : (update.status || list[echoIndex].status),
+                }, list[echoIndex].stable_key || list[echoIndex].client_id || update.id);
+                continue;
+            }
+
+            if (hasPendingOutbound || (Date.now() - lastOutboundConfirmAt) < 8_000) {
+                // Wait for confirmOptimisticMessage — avoid race duplicates
+                continue;
+            }
+        }
+
         list.push(withStableIdentity({ ...update }, update.id));
         added += 1;
     }
 
-    // Only re-sort when brand-new messages arrive — patching pending must not reshuffle
     localMessages.value = dedupeLocalMessages(added > 0 ? sortMessages(list) : list);
 
     if (scroll && added > 0 && shouldStickToBottom) {
@@ -764,10 +802,32 @@ watch(
         const next = [];
 
         for (const local of localMessages.value) {
-            if (isOptimisticMessage(local)) {
+            const localNumericId = numericMessageId(local.id);
+
+            // Already bound to a server id — never append the same id again from props
+            if (localNumericId) {
+                usedServerIds.add(String(localNumericId));
+                const server = serverById.get(String(localNumericId));
+                if (server) {
+                    next.push(withStableIdentity({
+                        ...local,
+                        ...server,
+                        client_id: local.client_id,
+                        stable_key: local.stable_key || local.client_id || local.id,
+                        sent_at: local.sent_at || server.sent_at,
+                        attachments: mergeConfirmedAttachments(local.attachments, server.attachments),
+                        status: local.status === 'pending' ? local.status : (server.status || local.status),
+                    }, local.stable_key || local.client_id || local.id));
+                } else {
+                    next.push(local);
+                }
+                continue;
+            }
+
+            if (isTmpMessage(local) || isOptimisticMessage(local)) {
                 const matchedServer = [...serverById.values()].find((server) => (
                     !usedServerIds.has(String(server.id))
-                    && optimisticMatchesServer(local, server)
+                    && optimisticContentMatches(local, server)
                 ));
 
                 if (matchedServer) {
@@ -779,26 +839,30 @@ watch(
                 continue;
             }
 
-            const server = serverById.get(String(local.id));
-            if (server) {
-                usedServerIds.add(String(local.id));
-                next.push(withStableIdentity({
-                    ...local,
-                    ...server,
-                    client_id: local.client_id,
-                    stable_key: local.stable_key || local.client_id || local.id,
-                    sent_at: local.sent_at || server.sent_at,
-                    attachments: mergeConfirmedAttachments(local.attachments, server.attachments),
-                }, local.stable_key || local.client_id || local.id));
-            } else {
-                next.push(local);
-            }
+            next.push(local);
         }
 
         for (const server of serverMessages) {
-            if (!usedServerIds.has(String(server.id))) {
-                next.push(withStableIdentity(server, server.id));
+            if (usedServerIds.has(String(server.id))) {
+                continue;
             }
+
+            // Skip provider echoes of our recent outbound while a send is in flight
+            if (
+                server.direction === 'outbound'
+                && (
+                    inFlightClientIds.size > 0
+                    || next.some((message) => (
+                        message.direction === 'outbound'
+                        && optimisticContentMatches(message, server)
+                        && Math.abs(new Date(message.sent_at || 0).getTime() - new Date(server.sent_at || 0).getTime()) < 60_000
+                    ))
+                )
+            ) {
+                continue;
+            }
+
+            next.push(withStableIdentity(server, server.id));
         }
 
         // Preserve local visual order — never rebuild via Map + sort (that caused flicker)
@@ -1188,6 +1252,7 @@ async function applyQuickReply(reply) {
             sent_at: new Date().toISOString(),
         },
     ];
+    inFlightClientIds.add(clientId);
     sendForm.reset('body');
     sendError.value = '';
     shouldStickToBottom = true;
@@ -1209,6 +1274,7 @@ async function applyQuickReply(reply) {
             touchConversationAfterSend(data.conversation, previewBody);
         }
     } catch (error) {
+        inFlightClientIds.delete(clientId);
         localMessages.value = localMessages.value.map((message) => (
             message.id === clientId
                 ? { ...message, status: 'failed' }
@@ -1291,6 +1357,8 @@ async function sendMessage() {
         },
     ];
 
+    inFlightClientIds.add(clientId);
+
     const formData = new FormData();
     formData.append('body', body);
     if (imageFile) {
@@ -1325,6 +1393,7 @@ async function sendMessage() {
             touchConversationAfterSend(data.conversation, body);
         }
     } catch (error) {
+        inFlightClientIds.delete(clientId);
         localMessages.value = localMessages.value.map((message) => (
             message.id === clientId
                 ? { ...message, status: 'failed' }
@@ -1695,6 +1764,7 @@ async function sendVoiceMessage() {
             sent_at: new Date().toISOString(),
         },
     ];
+    inFlightClientIds.add(clientId);
     sendError.value = '';
     shouldStickToBottom = true;
     scrollToBottom(true);
@@ -1722,6 +1792,7 @@ async function sendVoiceMessage() {
             touchConversationAfterSend(data.conversation, t('messenger.voiceLabel'));
         }
     } catch (error) {
+        inFlightClientIds.delete(clientId);
         localMessages.value = localMessages.value.map((message) => (
             message.id === clientId
                 ? { ...message, status: 'failed' }

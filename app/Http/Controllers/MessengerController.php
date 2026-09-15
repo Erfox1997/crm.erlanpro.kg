@@ -604,6 +604,9 @@ class MessengerController extends Controller
         }
 
         try {
+            /** @var \App\Models\MessengerMessage|null $sentMessage */
+            $sentMessage = null;
+
             if ($conversation->channel === IntegrationProvider::Wappi->value) {
                 $integration = $this->wappi->integrationForCompany($companyId);
                 if (! $integration) {
@@ -611,7 +614,7 @@ class MessengerController extends Controller
                 }
 
                 if ($request->hasFile('image')) {
-                    $this->sendImage($this->wappi, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
+                    $sentMessage = $this->sendImage($this->wappi, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
                 } elseif ($request->hasFile('audio')) {
                     $audio = $request->file('audio');
                     $path = $audio->getRealPath();
@@ -620,7 +623,7 @@ class MessengerController extends Controller
                         return $this->messengerSendError($request, __('Не удалось прочитать аудиофайл.'));
                     }
 
-                    $this->wappi->sendAudioMessage(
+                    $sentMessage = $this->wappi->sendAudioMessage(
                         $integration,
                         $conversation,
                         $path,
@@ -628,7 +631,7 @@ class MessengerController extends Controller
                         $audio->getMimeType(),
                     );
                 } else {
-                    $this->wappi->sendMessage($integration, $conversation, (string) $validated['body']);
+                    $sentMessage = $this->wappi->sendMessage($integration, $conversation, (string) $validated['body']);
                 }
             } elseif ($conversation->channel === IntegrationProvider::Facebook->value) {
                 $integration = $this->facebook->integrationForConversation($conversation, $companyId);
@@ -637,11 +640,11 @@ class MessengerController extends Controller
                 }
 
                 if ($request->hasFile('image')) {
-                    $this->sendImage($this->facebook, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
+                    $sentMessage = $this->sendImage($this->facebook, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
                 } elseif ($request->hasFile('audio')) {
-                    $this->sendAudio($this->facebook, $integration, $conversation, $request->file('audio'));
+                    $sentMessage = $this->sendAudio($this->facebook, $integration, $conversation, $request->file('audio'));
                 } else {
-                    $this->facebook->sendMessage($integration, $conversation, (string) $validated['body']);
+                    $sentMessage = $this->facebook->sendMessage($integration, $conversation, (string) $validated['body']);
                 }
             } elseif ($conversation->channel === IntegrationProvider::Instagram->value) {
                 $integration = $this->instagram->integrationForConversation($conversation, $companyId);
@@ -650,11 +653,11 @@ class MessengerController extends Controller
                 }
 
                 if ($request->hasFile('image')) {
-                    $this->sendImage($this->instagram, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
+                    $sentMessage = $this->sendImage($this->instagram, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
                 } elseif ($request->hasFile('audio')) {
-                    $this->sendAudio($this->instagram, $integration, $conversation, $request->file('audio'));
+                    $sentMessage = $this->sendAudio($this->instagram, $integration, $conversation, $request->file('audio'));
                 } else {
-                    $this->instagram->sendMessage($integration, $conversation, (string) $validated['body']);
+                    $sentMessage = $this->instagram->sendMessage($integration, $conversation, (string) $validated['body']);
                 }
             } elseif ($conversation->channel === IntegrationProvider::Telegram->value) {
                 $integration = $this->telegram->integrationForCompany($companyId);
@@ -663,11 +666,11 @@ class MessengerController extends Controller
                 }
 
                 if ($request->hasFile('image')) {
-                    $this->sendImage($this->telegram, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
+                    $sentMessage = $this->sendImage($this->telegram, $integration, $conversation, $request->file('image'), (string) ($validated['body'] ?? ''));
                 } elseif ($request->hasFile('audio')) {
-                    $this->sendTelegramAudio($integration, $conversation, $request->file('audio'));
+                    $sentMessage = $this->sendTelegramAudio($integration, $conversation, $request->file('audio'));
                 } else {
-                    $this->telegram->sendMessage($integration, $conversation, (string) $validated['body']);
+                    $sentMessage = $this->telegram->sendMessage($integration, $conversation, (string) $validated['body']);
                 }
             } else {
                 return $this->messengerSendError($request, __('Канал не поддерживается.'));
@@ -676,7 +679,7 @@ class MessengerController extends Controller
             $this->chatDistribution->claimIfNeeded($conversation, $user);
             $conversation->update(['last_message_at' => now()]);
 
-            return $this->messengerSendSuccess($request, $conversation);
+            return $this->messengerSendSuccess($request, $conversation, $sentMessage);
         } catch (RequestException $e) {
             $error = match ($conversation->channel) {
                 IntegrationProvider::Wappi->value => $this->formatWappiRequestError($e),
@@ -809,13 +812,19 @@ class MessengerController extends Controller
         ];
     }
 
-    protected function messengerSendSuccess(Request $request, MessengerConversation $conversation): RedirectResponse|JsonResponse
-    {
+    protected function messengerSendSuccess(
+        Request $request,
+        MessengerConversation $conversation,
+        ?MessengerMessage $sentMessage = null,
+    ): RedirectResponse|JsonResponse {
         $conversation->refresh();
 
-        $message = $conversation->messages()
-            ->orderByDesc('id')
-            ->first();
+        $message = $sentMessage;
+        if (! $message) {
+            $message = $conversation->messages()
+                ->orderByDesc('id')
+                ->first();
+        }
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -1042,13 +1051,13 @@ class MessengerController extends Controller
         CompanyIntegration $integration,
         MessengerConversation $conversation,
         UploadedFile $audio,
-    ): void {
+    ): MessengerMessage {
         $path = $audio->getRealPath();
         if (! is_string($path) || $path === '') {
             throw new \RuntimeException(__('Не удалось прочитать аудиофайл.'));
         }
 
-        $this->telegram->sendAudioMessage(
+        return $this->telegram->sendAudioMessage(
             $integration,
             $conversation,
             $path,
@@ -1074,13 +1083,13 @@ class MessengerController extends Controller
         CompanyIntegration $integration,
         MessengerConversation $conversation,
         UploadedFile $audio,
-    ): void {
+    ): MessengerMessage {
         $path = $audio->getRealPath();
         if (! is_string($path) || $path === '') {
             throw new \RuntimeException(__('Не удалось прочитать аудиофайл.'));
         }
 
-        $service->sendAudioMessage(
+        return $service->sendAudioMessage(
             $integration,
             $conversation,
             $path,
@@ -1095,13 +1104,13 @@ class MessengerController extends Controller
         MessengerConversation $conversation,
         UploadedFile $image,
         ?string $caption = null,
-    ): void {
+    ): MessengerMessage {
         $path = $image->getRealPath();
         if (! is_string($path) || $path === '') {
             throw new \RuntimeException(__('Не удалось прочитать изображение.'));
         }
 
-        $service->sendImageMessage(
+        return $service->sendImageMessage(
             $integration,
             $conversation,
             $path,
