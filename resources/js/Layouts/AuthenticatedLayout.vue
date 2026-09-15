@@ -941,10 +941,10 @@ onUnmounted(() => {
             </header>
 
             <div
-                v-if="$page.props.flash?.success"
+                v-if="page.props.flash?.success && !String(page.component || '').startsWith('Messenger/')"
                 class="border-b border-green-100 bg-green-50 px-4 py-3 text-sm text-green-800"
             >
-                {{ $page.props.flash.success }}
+                {{ page.props.flash.success }}
             </div>
 
             <header

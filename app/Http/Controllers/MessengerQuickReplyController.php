@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MessengerMessage;
 use App\Models\MessengerQuickReply;
+use App\Models\MessengerQuickReplyFolder;
 use App\Services\Messenger\ChatDistributionService;
 use App\Services\Messenger\MessengerQuickReplyImportService;
 use App\Services\Meta\MetaAttachmentService;
@@ -12,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -29,6 +31,19 @@ class MessengerQuickReplyController extends Controller
     {
         $companyId = (int) $request->user()->company_id;
 
+        $folders = MessengerQuickReplyFolder::query()
+            ->where('company_id', $companyId)
+            ->withCount('quickReplies')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (MessengerQuickReplyFolder $folder) => [
+                'id' => $folder->id,
+                'name' => $folder->name,
+                'sort_order' => $folder->sort_order,
+                'replies_count' => (int) $folder->quick_replies_count,
+            ]);
+
         $quickReplies = MessengerQuickReply::query()
             ->where('company_id', $companyId)
             ->orderBy('sort_order')
@@ -37,8 +52,90 @@ class MessengerQuickReplyController extends Controller
             ->map(fn (MessengerQuickReply $item) => $this->mapForFrontend($item));
 
         return Inertia::render('Messenger/QuickReplies', [
+            'folders' => $folders,
             'quickReplies' => $quickReplies,
         ]);
+    }
+
+    public function storeFolder(Request $request): RedirectResponse
+    {
+        $companyId = (int) $request->user()->company_id;
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+        ]);
+
+        $sortOrder = (int) MessengerQuickReplyFolder::query()
+            ->where('company_id', $companyId)
+            ->max('sort_order') + 1;
+
+        MessengerQuickReplyFolder::query()->create([
+            'company_id' => $companyId,
+            'name' => trim($validated['name']),
+            'sort_order' => $sortOrder,
+        ]);
+
+        return back()->with('success', __('Папка создана.'));
+    }
+
+    public function updateFolder(Request $request, MessengerQuickReplyFolder $folder): RedirectResponse
+    {
+        abort_unless($folder->company_id === (int) $request->user()->company_id, 403);
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+        ]);
+
+        $folder->update([
+            'name' => trim($validated['name']),
+        ]);
+
+        return back()->with('success', __('Папка переименована.'));
+    }
+
+    public function destroyFolder(Request $request, MessengerQuickReplyFolder $folder): RedirectResponse
+    {
+        abort_unless($folder->company_id === (int) $request->user()->company_id, 403);
+
+        $folder->delete();
+
+        return back()->with('success', __('Папка удалена. Шаблоны перенесены в «Без папки».'));
+    }
+
+    public function move(Request $request, MessengerQuickReply $quickReply): RedirectResponse
+    {
+        $companyId = (int) $request->user()->company_id;
+        abort_unless($quickReply->company_id === $companyId, 403);
+
+        $validated = $request->validate([
+            'folder_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('messenger_quick_reply_folders', 'id')->where(
+                    fn ($query) => $query->where('company_id', $companyId),
+                ),
+            ],
+        ]);
+
+        $folderId = array_key_exists('folder_id', $validated) && $validated['folder_id'] !== null
+            ? (int) $validated['folder_id']
+            : null;
+
+        $sortOrder = (int) MessengerQuickReply::query()
+            ->where('company_id', $companyId)
+            ->when(
+                $folderId === null,
+                fn ($q) => $q->whereNull('folder_id'),
+                fn ($q) => $q->where('folder_id', $folderId),
+            )
+            ->max('sort_order') + 1;
+
+        $quickReply->update([
+            'folder_id' => $folderId,
+            'sort_order' => $sortOrder,
+        ]);
+
+        return back()->with('success', __('Шаблон перемещён.'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -51,6 +148,13 @@ class MessengerQuickReplyController extends Controller
             'title' => 'required|string|max:120',
             'body' => 'nullable|string|max:2000',
             'attachment' => 'nullable|file|max:16384',
+            'folder_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('messenger_quick_reply_folders', 'id')->where(
+                    fn ($query) => $query->where('company_id', $companyId),
+                ),
+            ],
         ]);
 
         if ($type === 'text' && trim((string) ($validated['body'] ?? '')) === '') {
@@ -61,8 +165,17 @@ class MessengerQuickReplyController extends Controller
             return back()->withErrors(['attachment' => __('Загрузите файл для шаблона.')]);
         }
 
+        $folderId = array_key_exists('folder_id', $validated) && $validated['folder_id'] !== null
+            ? (int) $validated['folder_id']
+            : null;
+
         $sortOrder = (int) MessengerQuickReply::query()
             ->where('company_id', $companyId)
+            ->when(
+                $folderId === null,
+                fn ($q) => $q->whereNull('folder_id'),
+                fn ($q) => $q->where('folder_id', $folderId),
+            )
             ->max('sort_order') + 1;
 
         $attachmentMeta = in_array($type, ['audio', 'image'], true)
@@ -75,6 +188,7 @@ class MessengerQuickReplyController extends Controller
 
         MessengerQuickReply::query()->create([
             'company_id' => $companyId,
+            'folder_id' => $folderId,
             'type' => $type,
             'title' => $validated['title'],
             'body' => $validated['body'] ?? null,
@@ -139,10 +253,12 @@ class MessengerQuickReplyController extends Controller
 
         $sortOrder = (int) MessengerQuickReply::query()
             ->where('company_id', $companyId)
+            ->whereNull('folder_id')
             ->max('sort_order') + 1;
 
         MessengerQuickReply::query()->create([
             'company_id' => $companyId,
+            'folder_id' => null,
             'type' => $type,
             'title' => $title,
             'body' => $body !== '' ? $body : null,
@@ -157,7 +273,8 @@ class MessengerQuickReplyController extends Controller
 
     public function update(Request $request, MessengerQuickReply $quickReply): RedirectResponse
     {
-        abort_unless($quickReply->company_id === (int) $request->user()->company_id, 403);
+        $companyId = (int) $request->user()->company_id;
+        abort_unless($quickReply->company_id === $companyId, 403);
 
         $type = (string) $request->input('type', $quickReply->type);
 
@@ -166,6 +283,13 @@ class MessengerQuickReplyController extends Controller
             'title' => 'required|string|max:120',
             'body' => 'nullable|string|max:2000',
             'attachment' => 'nullable|file|max:16384',
+            'folder_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('messenger_quick_reply_folders', 'id')->where(
+                    fn ($query) => $query->where('company_id', $companyId),
+                ),
+            ],
         ]);
 
         if ($type === 'text' && trim((string) ($validated['body'] ?? '')) === '') {
@@ -191,10 +315,15 @@ class MessengerQuickReplyController extends Controller
             ];
         }
 
+        $folderId = array_key_exists('folder_id', $validated)
+            ? ($validated['folder_id'] !== null ? (int) $validated['folder_id'] : null)
+            : $quickReply->folder_id;
+
         $quickReply->update([
             'type' => $type,
             'title' => $validated['title'],
             'body' => $validated['body'] ?? null,
+            'folder_id' => $folderId,
             ...$attachmentMeta,
         ]);
 
@@ -274,12 +403,13 @@ class MessengerQuickReplyController extends Controller
     }
 
     /**
-     * @return array{id: int, title: string, type: string, body: ?string, attachment_url: ?string, attachment_mime: ?string, attachment_name: ?string}
+     * @return array{id: int, folder_id: ?int, title: string, type: string, body: ?string, attachment_url: ?string, attachment_mime: ?string, attachment_name: ?string}
      */
     protected function mapForFrontend(MessengerQuickReply $item): array
     {
         return [
             'id' => $item->id,
+            'folder_id' => $item->folder_id,
             'title' => $item->title,
             'type' => $item->type,
             'body' => $item->body,

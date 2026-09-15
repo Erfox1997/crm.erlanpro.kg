@@ -1,0 +1,23 @@
+{
+  "name": "crm-erlanpro-messenger",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Android shell for ErlanPro CRM Messenger (Capacitor)",
+  "scripts": {
+    "build:web": "node -e \"require('fs').mkdirSync('www',{recursive:true})\"",
+    "sync": "npx cap sync android",
+    "open": "npx cap open android",
+    "add:android": "npx cap add android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.2",
+    "@capacitor/app": "^7.0.1",
+    "@capacitor/core": "^7.4.2",
+    "@capacitor/push-notifications": "^7.0.1",
+    "@capacitor/splash-screen": "^7.0.1",
+    "@capacitor/status-bar": "^7.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.2"
+  }
+}

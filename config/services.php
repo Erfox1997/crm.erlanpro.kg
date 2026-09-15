@@ -100,4 +100,9 @@ return [
         'timeout' => (int) env('OPENAI_TIMEOUT', 30),
     ],
 
+    'fcm' => [
+        // Firebase Console → Project settings → Cloud Messaging → Server key (Legacy)
+        'server_key' => env('FCM_SERVER_KEY'),
+    ],
+
 ];

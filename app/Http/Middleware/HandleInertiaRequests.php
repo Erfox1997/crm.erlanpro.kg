@@ -58,7 +58,10 @@ class HandleInertiaRequests extends Middleware
             ],
             'telegramMiniApp' => (bool) (
                 $request->session()->get('telegram_mini_app')
+                || $request->cookie('crm_tma')
+                || $request->cookie('crm_mobile')
                 || $request->boolean('mini')
+                || $request->query('app') === 'android'
             ),
         ];
     }

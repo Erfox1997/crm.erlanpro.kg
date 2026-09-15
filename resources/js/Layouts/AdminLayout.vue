@@ -176,7 +176,7 @@ const user = computed(() => page.props.auth.user);
                                     />
                                 </svg>
                             </template>
-                            {{ t('admin.ruleUpdates') }}
+                            {{ t('admin.ruleUpdates.title') }}
                         </CrmSidebarLink>
                     </div>
                 </div>

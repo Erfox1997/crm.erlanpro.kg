@@ -52,15 +52,21 @@ class ManagerTelegramBotService
         return $this->token() !== '';
     }
 
-    public function webAppUrl(): string
+    public function webAppUrl(?int $conversationId = null): string
     {
         $configured = trim((string) config('services.telegram.manager_webapp_url', ''));
 
-        if ($configured !== '') {
-            return $configured;
+        $base = $configured !== ''
+            ? $configured
+            : rtrim((string) config('app.url'), '/').'/tma';
+
+        if (! $conversationId) {
+            return $base;
         }
 
-        return rtrim((string) config('app.url'), '/').'/tma';
+        $separator = str_contains($base, '?') ? '&' : '?';
+
+        return $base.$separator.'conversation='.$conversationId;
     }
 
     /**
@@ -261,7 +267,12 @@ class ManagerTelegramBotService
                 continue;
             }
 
-            $this->sendMessage((int) $user->telegram_id, $text, true);
+            $this->sendMessage(
+                (int) $user->telegram_id,
+                $text,
+                true,
+                (int) $conversation->id,
+            );
         }
     }
 
@@ -292,8 +303,12 @@ class ManagerTelegramBotService
             ->values();
     }
 
-    public function sendMessage(int $chatId, string $text, bool $withWebAppButton = false): void
-    {
+    public function sendMessage(
+        int $chatId,
+        string $text,
+        bool $withWebAppButton = false,
+        ?int $conversationId = null,
+    ): void {
         if (! $this->isConfigured()) {
             return;
         }
@@ -309,7 +324,7 @@ class ManagerTelegramBotService
                 'inline_keyboard' => [[
                     [
                         'text' => 'Открыть мессенджер',
-                        'web_app' => ['url' => $this->webAppUrl()],
+                        'web_app' => ['url' => $this->webAppUrl($conversationId)],
                     ],
                 ]],
             ];

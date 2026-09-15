@@ -17,11 +17,12 @@ class TelegramMiniAppController extends Controller
         private ManagerTelegramBotService $managerBot,
     ) {}
 
-    public function entry(): Response
+    public function entry(Request $request): Response
     {
         return Inertia::render('TelegramMiniApp/Entry', [
             'botConfigured' => $this->managerBot->isConfigured(),
             'botUsername' => $this->managerBot->botUsername(),
+            'conversationId' => $request->integer('conversation') ?: null,
         ]);
     }
 
@@ -29,6 +30,7 @@ class TelegramMiniAppController extends Controller
     {
         $validated = $request->validate([
             'init_data' => ['required', 'string'],
+            'conversation' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $telegramUser = $this->managerBot->validateInitData($validated['init_data']);
@@ -41,7 +43,7 @@ class TelegramMiniAppController extends Controller
         $user = $this->managerBot->resolveUserFromTelegram($telegramUser);
         if (! $user) {
             return response()->json([
-                'message' => __('Доступ запрещён. Ваш Telegram не привязан к сотруднику компании в CRM.'),
+                'message' => __('Доступ запрещён. Ваш Telegram не привязан к сотруднику компании в CRM. Укажите @username в «Сотрудники» / профиле и нажмите /start в боте.'),
             ], 403);
         }
 
@@ -61,13 +63,23 @@ class TelegramMiniAppController extends Controller
         $request->session()->regenerate();
         $request->session()->put('telegram_mini_app', true);
 
+        $params = ['mini' => 1];
+        if (! empty($validated['conversation'])) {
+            $params['conversation'] = (int) $validated['conversation'];
+        }
+
+        $redirect = route('messenger.index', $params);
+        $cookie = cookie('crm_tma', '1', 60 * 24 * 60, '/', null, false, false, false, 'lax'); // 60 days
+
         if ($request->expectsJson()) {
             return response()->json([
                 'ok' => true,
-                'redirect' => route('messenger.index', ['mini' => 1]),
-            ]);
+                'redirect' => $redirect,
+            ])->cookie($cookie);
         }
 
-        return redirect()->route('messenger.index', ['mini' => 1]);
+        return redirect()
+            ->route('messenger.index', $params)
+            ->cookie($cookie);
     }
 }

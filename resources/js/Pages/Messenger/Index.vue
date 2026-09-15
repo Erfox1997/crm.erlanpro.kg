@@ -104,6 +104,7 @@ const props = defineProps({
 });
 
 const page = usePage();
+const isMiniApp = computed(() => Boolean(page.props.telegramMiniApp));
 
 const messagesEnd = ref(null);
 const messagesContainer = ref(null);
@@ -115,16 +116,20 @@ const messageInput = ref(null);
 const imageInput = ref(null);
 const sendError = ref('');
 const quickReplyTargetId = ref(null);
-
-const localConversations = ref(
-    (props.conversations || []).map((conversation) => ({ ...conversation })),
-);
-const localMessages = ref((props.messages || []).map((message) => ({ ...message })));
+const chatToast = ref(null);
 
 let pollSince = new Date(Date.now() - 15_000).toISOString();
 let pollTimer = null;
 let pollInFlight = false;
 let shouldStickToBottom = true;
+let chatToastTimer = null;
+let removeInertiaSuccessListener = null;
+let removeInertiaErrorListener = null;
+
+const localConversations = ref(
+    (props.conversations || []).map((conversation) => ({ ...conversation })),
+);
+const localMessages = ref((props.messages || []).map((message) => ({ ...message })));
 
 const jsonRequestHeaders = {
     Accept: 'application/json',
@@ -252,10 +257,178 @@ function cloneList(items) {
     return (items || []).map((item) => ({ ...item }));
 }
 
+function showChatToast(message, type = 'success', durationMs = 2000) {
+    const text = typeof message === 'string' ? message.trim() : '';
+    if (!text) {
+        return;
+    }
+
+    if (chatToastTimer) {
+        window.clearTimeout(chatToastTimer);
+        chatToastTimer = null;
+    }
+
+    chatToast.value = {
+        id: Date.now(),
+        message: text,
+        type,
+    };
+
+    chatToastTimer = window.setTimeout(() => {
+        chatToast.value = null;
+        chatToastTimer = null;
+        if (type === 'error') {
+            sendError.value = '';
+            aiError.value = '';
+        }
+    }, durationMs);
+}
+
+function setSendError(message) {
+    const text = message || '';
+    sendError.value = text;
+    if (text) {
+        showChatToast(text, 'error', 2200);
+    }
+}
+
+function setAiError(message) {
+    const text = message || '';
+    aiError.value = text;
+    if (text) {
+        showChatToast(text, 'error', 2200);
+    }
+}
+
+function firstErrorMessage(errors, keys = []) {
+    if (!errors || typeof errors !== 'object') {
+        return '';
+    }
+
+    for (const key of keys) {
+        const value = errors[key];
+        if (Array.isArray(value) && value[0]) {
+            return String(value[0]);
+        }
+        if (typeof value === 'string' && value.trim()) {
+            return value.trim();
+        }
+    }
+
+    return '';
+}
+
+function showNoticesFromPageProps(pageProps) {
+    if (!pageProps) {
+        return;
+    }
+
+    if (pageProps.flash?.success) {
+        showChatToast(pageProps.flash.success, 'success');
+    }
+
+    const errorMessage = firstErrorMessage(pageProps.errors, ['sync', 'client', 'stage', 'body']);
+    if (errorMessage) {
+        showChatToast(errorMessage, 'error', 2200);
+    }
+}
+
 function numericMessageId(id) {
     const value = Number(id);
 
     return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function messageStableKey(message) {
+    return String(message?.client_id || message?.id || '');
+}
+
+function isOptimisticMessage(message) {
+    return Boolean(
+        message
+        && (message.status === 'pending' || String(message.id).startsWith('tmp-')),
+    );
+}
+
+function sortMessages(messages) {
+    return [...messages].sort((a, b) => {
+        const aTime = a.sent_at ? new Date(a.sent_at).getTime() : 0;
+        const bTime = b.sent_at ? new Date(b.sent_at).getTime() : 0;
+        if (aTime !== bTime) {
+            return aTime - bTime;
+        }
+
+        return numericMessageId(a.id) - numericMessageId(b.id);
+    });
+}
+
+function optimisticMatchesServer(local, server) {
+    if (!isOptimisticMessage(local) || local.direction !== 'outbound' || server.direction !== 'outbound') {
+        return false;
+    }
+
+    const localBody = (local.body || '').trim();
+    const serverBody = (server.body || '').trim();
+    const localAttachments = Array.isArray(local.attachments) ? local.attachments : [];
+    const serverAttachments = Array.isArray(server.attachments) ? server.attachments : [];
+    const localHasAudio = localAttachments.some((item) => item.type === 'audio');
+    const serverHasAudio = serverAttachments.some((item) => item.type === 'audio');
+    const localHasImage = localAttachments.some((item) => item.type === 'image');
+    const serverHasImage = serverAttachments.some((item) => item.type === 'image');
+
+    if (localHasAudio && serverHasAudio) {
+        return true;
+    }
+
+    if (localHasImage && serverHasImage && localBody === serverBody) {
+        return true;
+    }
+
+    if (localBody && serverBody && localBody === serverBody) {
+        return true;
+    }
+
+    return !localBody && !serverBody && localAttachments.length > 0 && serverAttachments.length > 0;
+}
+
+function confirmOptimisticMessage(clientId, serverMessage) {
+    if (!serverMessage) {
+        return;
+    }
+
+    const serverId = String(serverMessage.id);
+    const next = [];
+    let replaced = false;
+
+    for (const message of localMessages.value) {
+        const isTarget = message.id === clientId || message.client_id === clientId;
+        const isDuplicateServer = String(message.id) === serverId && !isTarget;
+
+        if (isDuplicateServer) {
+            continue;
+        }
+
+        if (isTarget) {
+            next.push({
+                ...message,
+                ...serverMessage,
+                client_id: clientId,
+            });
+            replaced = true;
+            continue;
+        }
+
+        next.push(message);
+    }
+
+    if (!replaced) {
+        next.push({
+            ...serverMessage,
+            client_id: clientId,
+        });
+    }
+
+    localMessages.value = sortMessages(next);
 }
 
 function lastKnownMessageId() {
@@ -312,28 +485,38 @@ function mergeMessages(updates, { scroll = true } = {}) {
         return;
     }
 
-    const byKey = new Map(
-        localMessages.value.map((message) => [String(message.id), message]),
-    );
+    const list = [...localMessages.value];
     let added = 0;
 
     for (const update of updates) {
-        const key = String(update.id);
-        if (!byKey.has(key)) {
-            added += 1;
+        const idKey = String(update.id);
+        const existingIndex = list.findIndex((message) => String(message.id) === idKey);
+
+        if (existingIndex >= 0) {
+            list[existingIndex] = {
+                ...list[existingIndex],
+                ...update,
+                client_id: list[existingIndex].client_id || update.client_id,
+            };
+            continue;
         }
-        byKey.set(key, { ...byKey.get(key), ...update });
+
+        const pendingIndex = list.findIndex((message) => optimisticMatchesServer(message, update));
+        if (pendingIndex >= 0) {
+            const clientId = list[pendingIndex].client_id || list[pendingIndex].id;
+            list[pendingIndex] = {
+                ...list[pendingIndex],
+                ...update,
+                client_id: clientId,
+            };
+            continue;
+        }
+
+        list.push({ ...update });
+        added += 1;
     }
 
-    localMessages.value = Array.from(byKey.values()).sort((a, b) => {
-        const aTime = a.sent_at ? new Date(a.sent_at).getTime() : 0;
-        const bTime = b.sent_at ? new Date(b.sent_at).getTime() : 0;
-        if (aTime !== bTime) {
-            return aTime - bTime;
-        }
-
-        return numericMessageId(a.id) - numericMessageId(b.id);
-    });
+    localMessages.value = sortMessages(list);
 
     if (scroll && added > 0 && shouldStickToBottom) {
         scrollToBottom();
@@ -355,7 +538,7 @@ function touchConversationAfterSend(conversationUpdate, previewBody = '') {
 }
 
 async function pollUpdates() {
-    if (pollInFlight || document.hidden || !messengerConnected.value) {
+    if (pollInFlight || (!isMiniApp.value && document.hidden) || !messengerConnected.value) {
         return;
     }
 
@@ -416,13 +599,9 @@ function onVisibilityChange() {
 watch(
     () => props.conversations,
     (conversations) => {
-        const pendingIds = new Set(
-            localMessages.value
-                .filter((message) => message.status === 'pending' || String(message.id).startsWith('tmp-'))
-                .map((message) => message.id),
-        );
+        const hasPending = localMessages.value.some((message) => isOptimisticMessage(message));
 
-        if (pendingIds.size === 0) {
+        if (!hasPending) {
             localConversations.value = cloneList(conversations);
             return;
         }
@@ -432,26 +611,55 @@ watch(
     { deep: true },
 );
 
+let watchedConversationId = props.selectedConversation?.id ?? null;
+
 watch(
     () => [props.selectedConversation?.id, props.messages],
     () => {
-        const pending = localMessages.value.filter(
-            (message) => message.status === 'pending' || String(message.id).startsWith('tmp-'),
-        );
+        const conversationId = props.selectedConversation?.id ?? null;
         const serverMessages = cloneList(props.messages);
+        const conversationChanged = conversationId !== watchedConversationId;
+        watchedConversationId = conversationId;
 
-        if (pending.length === 0) {
+        if (conversationChanged || localMessages.value.length === 0) {
             localMessages.value = serverMessages;
-        } else {
-            const byId = new Map(serverMessages.map((message) => [String(message.id), message]));
-            for (const message of pending) {
-                if (!byId.has(String(message.id))) {
-                    byId.set(String(message.id), message);
-                }
-            }
-            localMessages.value = Array.from(byId.values());
+            shouldStickToBottom = true;
+            scrollToBottom();
+            return;
         }
 
+        const byId = new Map(serverMessages.map((message) => [String(message.id), message]));
+
+        for (const local of localMessages.value) {
+            const idKey = String(local.id);
+
+            if (isOptimisticMessage(local)) {
+                const matchedServer = [...byId.values()].find((server) => optimisticMatchesServer(local, server));
+                if (matchedServer) {
+                    byId.set(String(matchedServer.id), {
+                        ...local,
+                        ...matchedServer,
+                        client_id: local.client_id || local.id,
+                    });
+                } else if (!byId.has(idKey)) {
+                    byId.set(idKey, local);
+                }
+                continue;
+            }
+
+            if (!byId.has(idKey)) {
+                byId.set(idKey, local);
+                continue;
+            }
+
+            byId.set(idKey, {
+                ...local,
+                ...byId.get(idKey),
+                client_id: local.client_id,
+            });
+        }
+
+        localMessages.value = sortMessages(Array.from(byId.values()));
         shouldStickToBottom = true;
         scrollToBottom();
     },
@@ -461,12 +669,102 @@ watch(
 onMounted(() => {
     document.addEventListener('visibilitychange', onVisibilityChange);
     startPolling();
+
+    if (isMiniApp.value) {
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.ready();
+            tg.expand();
+            try {
+                tg.setHeaderColor?.('#f0f2f5');
+                tg.setBackgroundColor?.('#efeae2');
+                tg.disableVerticalSwipes?.();
+            } catch {
+                // older clients
+            }
+        }
+
+        registerNativePushToken();
+    }
+
+    showNoticesFromPageProps(page.props);
+
+    removeInertiaSuccessListener = router.on('success', (event) => {
+        showNoticesFromPageProps(event.detail?.page?.props);
+    });
+
+    removeInertiaErrorListener = router.on('error', (errors) => {
+        const errorMessage = firstErrorMessage(errors, ['sync', 'client', 'stage', 'body']);
+        if (errorMessage) {
+            showChatToast(errorMessage, 'error', 2200);
+        }
+    });
 });
+
+async function registerNativePushToken() {
+    const capacitor = window.Capacitor;
+    if (!capacitor?.isNativePlatform?.()) {
+        return;
+    }
+
+    const PushNotifications = capacitor.Plugins?.PushNotifications;
+    if (!PushNotifications) {
+        return;
+    }
+
+    try {
+        let perm = await PushNotifications.checkPermissions();
+        if (perm.receive !== 'granted') {
+            perm = await PushNotifications.requestPermissions();
+        }
+        if (perm.receive !== 'granted') {
+            return;
+        }
+
+        await PushNotifications.register();
+
+        PushNotifications.addListener('registration', async (event) => {
+            const token = event?.value;
+            if (!token) {
+                return;
+            }
+
+            try {
+                await window.axios.post(route('device-tokens.store'), {
+                    token,
+                    platform: capacitor.getPlatform?.() || 'android',
+                    app: 'messenger',
+                }, { headers: jsonRequestHeaders });
+            } catch {
+                // ignore push registration errors
+            }
+        });
+
+        PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+            const conversationId = Number(
+                action?.notification?.data?.conversation_id
+                || action?.notification?.data?.conversationId
+                || 0,
+            );
+            if (conversationId > 0) {
+                openConversation(conversationId);
+            }
+        });
+    } catch {
+        // Capacitor bridge missing plugins — ignore
+    }
+}
 
 onUnmounted(() => {
     document.removeEventListener('visibilitychange', onVisibilityChange);
     stopPolling();
     clearImagePreview();
+    if (chatToastTimer) {
+        window.clearTimeout(chatToastTimer);
+        chatToastTimer = null;
+    }
+    removeInertiaSuccessListener?.();
+    removeInertiaErrorListener?.();
 });
 
 const slashQuickReplyQuery = computed(() => {
@@ -547,11 +845,26 @@ function stageBadgeStyle(color) {
     };
 }
 
+function messengerVisitParams(extra = {}) {
+    return {
+        ...(isMiniApp.value ? { mini: 1 } : {}),
+        ...extra,
+    };
+}
+
 function openConversation(id) {
     quickReplyTargetId.value = null;
     router.get(
         route('messenger.index'),
-        { conversation: id },
+        messengerVisitParams({ conversation: id }),
+        { preserveState: true, preserveScroll: true },
+    );
+}
+
+function backToConversationList() {
+    router.get(
+        route('messenger.index'),
+        messengerVisitParams(),
         { preserveState: true, preserveScroll: true },
     );
 }
@@ -606,7 +919,10 @@ function onSalePending({ clientId, total, currency: saleCurrency }) {
 async function onSaleFinished({ clientId, ok, message, warning }) {
     if (ok) {
         localMessages.value = localMessages.value.filter((item) => item.id !== clientId);
-        sendError.value = warning || '';
+        sendError.value = '';
+        if (warning) {
+            showChatToast(warning, 'success');
+        }
         await pollUpdates();
         shouldStickToBottom = true;
         scrollToBottom();
@@ -629,7 +945,7 @@ async function onSaleFinished({ clientId, ok, message, warning }) {
             }
             : item
     ));
-    sendError.value = message || t('messenger.err.saleCreate');
+    setSendError(message || t('messenger.err.saleCreate'));
 }
 
 async function onQuoteFinished({ ok, message }) {
@@ -640,7 +956,7 @@ async function onQuoteFinished({ ok, message }) {
         return;
     }
 
-    sendError.value = message || t('messenger.err.calcSend');
+    setSendError(message || t('messenger.err.calcSend'));
 }
 
 function openFilterModal() {
@@ -731,10 +1047,7 @@ async function applyQuickReply(reply) {
             { headers: jsonRequestHeaders },
         );
 
-        localMessages.value = localMessages.value.filter((message) => message.id !== clientId);
-        if (data?.message) {
-            mergeMessages([data.message]);
-        }
+        confirmOptimisticMessage(clientId, data?.message);
         if (data?.conversation) {
             touchConversationAfterSend(data.conversation, previewBody);
         }
@@ -744,9 +1057,11 @@ async function applyQuickReply(reply) {
                 ? { ...message, status: 'failed' }
                 : message
         ));
-        sendError.value = error?.response?.data?.message
+        setSendError(
+            error?.response?.data?.message
             || error?.response?.data?.errors?.body?.[0]
-            || t('messenger.err.template');
+            || t('messenger.err.template'),
+        );
     }
 }
 
@@ -844,13 +1159,9 @@ async function sendMessage() {
             { headers: jsonRequestHeaders },
         );
 
-        if (previewUrl) {
+        confirmOptimisticMessage(clientId, data?.message);
+        if (previewUrl && data?.message) {
             URL.revokeObjectURL(previewUrl);
-        }
-
-        localMessages.value = localMessages.value.filter((message) => message.id !== clientId);
-        if (data?.message) {
-            mergeMessages([data.message]);
         }
         if (data?.conversation) {
             touchConversationAfterSend(data.conversation, body);
@@ -861,9 +1172,11 @@ async function sendMessage() {
                 ? { ...message, status: 'failed' }
                 : message
         ));
-        sendError.value = error?.response?.data?.message
+        setSendError(
+            error?.response?.data?.message
             || error?.response?.data?.errors?.body?.[0]
-            || t('messenger.err.message');
+            || t('messenger.err.message'),
+        );
         if (!sendForm.body && body) {
             sendForm.body = body;
         }
@@ -877,7 +1190,7 @@ async function improveWithAi() {
 
     const body = sendForm.body.trim();
     if (!body) {
-        aiError.value = t('messenger.err.aiEmpty');
+        setAiError(t('messenger.err.aiEmpty'));
         return;
     }
 
@@ -891,8 +1204,10 @@ async function improveWithAi() {
             nextTick(() => messageInput.value?.focus());
         }
     } catch (error) {
-        aiError.value = error?.response?.data?.message
-            || t('messenger.err.ai');
+        setAiError(
+            error?.response?.data?.message
+            || t('messenger.err.ai'),
+        );
     } finally {
         aiImproving.value = false;
     }
@@ -1229,10 +1544,9 @@ async function sendVoiceMessage() {
             { headers: jsonRequestHeaders },
         );
 
-        URL.revokeObjectURL(localUrl);
-        localMessages.value = localMessages.value.filter((message) => message.id !== clientId);
+        confirmOptimisticMessage(clientId, data?.message);
         if (data?.message) {
-            mergeMessages([data.message]);
+            URL.revokeObjectURL(localUrl);
         }
         if (data?.conversation) {
             touchConversationAfterSend(data.conversation, t('messenger.voiceLabel'));
@@ -1243,9 +1557,11 @@ async function sendVoiceMessage() {
                 ? { ...message, status: 'failed' }
                 : message
         ));
-        sendError.value = error?.response?.data?.message
+        setSendError(
+            error?.response?.data?.message
             || error?.response?.data?.errors?.body?.[0]
-            || t('messenger.err.voiceSend');
+            || t('messenger.err.voiceSend'),
+        );
     }
 }
 
@@ -1355,7 +1671,7 @@ const messagesWithDateDividers = computed(() => {
 
         items.push({
             type: 'message',
-            key: `message-${message.id}`,
+            key: `message-${messageStableKey(message)}`,
             message,
         });
     }
@@ -1538,25 +1854,72 @@ function scrollToBottom() {
 
     <AuthenticatedLayout full-height>
         <div
-            v-if="$page.props.flash?.success"
-            class="shrink-0 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800"
+            class="flex min-h-0 flex-1 flex-col overflow-hidden"
+            :class="isMiniApp ? 'p-0' : 'p-0 sm:p-3'"
         >
-            {{ $page.props.flash.success }}
-        </div>
+        <div
+            class="relative flex min-h-0 flex-1 overflow-hidden bg-white"
+            :class="isMiniApp ? '' : 'rounded-xl border border-[#d1d7db] shadow-sm'"
+        >
+            <div
+                class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center p-4 lg:left-[360px]"
+            >
+                <Transition
+                    enter-active-class="transition duration-200 ease-out"
+                    enter-from-class="opacity-0 translate-y-2 scale-95"
+                    enter-to-class="opacity-100 translate-y-0 scale-100"
+                    leave-active-class="transition duration-150 ease-in"
+                    leave-from-class="opacity-100 translate-y-0 scale-100"
+                    leave-to-class="opacity-0 translate-y-1 scale-95"
+                >
+                    <div
+                        v-if="chatToast"
+                        :key="chatToast.id"
+                        class="flex max-w-[min(100%,22rem)] items-center gap-2.5 rounded-2xl px-4 py-3 text-left text-[13px] font-medium leading-snug shadow-[0_10px_30px_rgba(17,27,33,0.28)] backdrop-blur-md"
+                        :class="chatToast.type === 'error'
+                            ? 'bg-[#ea4335]/95 text-white'
+                            : 'bg-[#111b21]/92 text-white'"
+                    >
+                        <span
+                            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                            :class="chatToast.type === 'error' ? 'bg-white/20' : 'bg-[#00a884]/30'"
+                        >
+                            <svg
+                                v-if="chatToast.type === 'error'"
+                                class="h-4 w-4"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M6 6l12 12M18 6L6 18"
+                                />
+                            </svg>
+                            <svg
+                                v-else
+                                class="h-4 w-4 text-[#25d366]"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M5 13l4 4L19 7"
+                                />
+                            </svg>
+                        </span>
+                        <span class="min-w-0 flex-1">{{ chatToast.message }}</span>
+                    </div>
+                </Transition>
+            </div>
 
-        <div
-            v-if="$page.props.errors?.sync"
-            class="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
-        >
-            {{ $page.props.errors.sync }}
-        </div>
-
-        <div
-            class="flex min-h-0 flex-1 flex-col overflow-hidden p-0 sm:p-3"
-        >
-        <div
-            class="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-[#d1d7db] bg-white shadow-sm"
-        >
             <!-- Chat list -->
             <aside
                 class="flex h-full min-h-0 w-full flex-col border-[#d1d7db] bg-white lg:w-[360px] lg:shrink-0 lg:border-r"
@@ -1570,7 +1933,7 @@ function scrollToBottom() {
                     </h2>
                     <div class="flex items-center gap-1">
                         <button
-                            v-if="filterPipelines.length"
+                            v-if="filterPipelines.length && !isMiniApp"
                             type="button"
                             class="rounded-full p-2 transition hover:bg-[#e9edef]"
                             :class="funnelFilterActive
@@ -1594,7 +1957,7 @@ function scrollToBottom() {
                             </svg>
                         </button>
                         <Link
-                            v-if="messengerConnected"
+                            v-if="messengerConnected && !isMiniApp"
                             :href="route('messenger.quick-replies.index')"
                             class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
 :title="t('messenger.quickRepliesTitle')"
@@ -1614,7 +1977,7 @@ function scrollToBottom() {
                             </svg>
                         </Link>
                         <button
-                            v-if="messengerConnected"
+                            v-if="messengerConnected && !isMiniApp"
                             type="button"
                             class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
                             :disabled="syncing"
@@ -1794,7 +2157,7 @@ function scrollToBottom() {
                         <button
                             type="button"
                             class="rounded-full p-1 text-[#54656f] hover:bg-[#e9edef] lg:hidden"
-                            @click="router.get(route('messenger.index'))"
+                            @click="backToConversationList"
                         >
                             <svg
                                 class="h-5 w-5"
@@ -1838,7 +2201,7 @@ function scrollToBottom() {
                         </span>
 
                         <button
-                            v-if="shopConnected"
+                            v-if="shopConnected && !isMiniApp"
                             type="button"
                             class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-amber-600 sm:px-3 sm:text-xs"
 :title="t('messenger.sell.btn')"
@@ -1851,6 +2214,7 @@ function scrollToBottom() {
                         </button>
 
                         <button
+                            v-if="!isMiniApp"
                             type="button"
                             class="inline-flex shrink-0 items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-indigo-700 sm:px-3 sm:text-xs"
 :title="t('messenger.task')"
@@ -1863,6 +2227,7 @@ function scrollToBottom() {
                         </button>
 
                         <button
+                            v-if="!isMiniApp"
                             type="button"
                             class="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-medium text-[#008069] shadow-sm transition hover:bg-[#f0f2f5] sm:px-3 sm:py-1.5 sm:text-xs"
                             @click="openClientModal"
@@ -1872,7 +2237,7 @@ function scrollToBottom() {
                     </div>
 
                     <div
-                        v-if="funnelDeal"
+                        v-if="funnelDeal && !isMiniApp"
                         class="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#d1d7db] bg-[#f7f8fa] px-2.5 py-2 sm:px-4"
                     >
                         <span class="text-xs font-medium text-[#111b21]">
@@ -2098,13 +2463,6 @@ function scrollToBottom() {
                         </div>
 
                         <div
-                            v-if="sendError"
-                            class="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
-                        >
-                            {{ sendError }}
-                        </div>
-
-                        <div
                             v-if="imagePreviewUrl"
                             class="mb-2 flex items-center gap-3 rounded-lg bg-white px-3 py-2 shadow-sm"
                         >
@@ -2286,10 +2644,6 @@ function scrollToBottom() {
                                 </svg>
                             </button>
                         </div>
-                        <InputError
-                            class="mt-2"
-                            :message="sendError || sendForm.errors.body || aiError"
-                        />
                     </form>
                     </div>
                 </template>

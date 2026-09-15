@@ -499,7 +499,21 @@
     "createHint": "Create a quick reply for Messenger",
     "availableAs": "In chat it will be available as",
     "pickNewFile": "Choose a new file",
-    "commandPh": "welcome"
+    "commandPh": "welcome",
+    "folders": {
+      "title": "Folders",
+      "all": "All",
+      "root": "No folder",
+      "create": "Folder",
+      "rename": "Rename folder",
+      "name": "Folder name",
+      "namePh": "e.g. Payments",
+      "folder": "Folder",
+      "move": "Move",
+      "moveTitle": "Move template",
+      "emptyFolder": "No templates in this folder yet.",
+      "confirmDelete": "Delete folder “{name}”? Templates will stay in “No folder”."
+    }
   },
   "funnels": {
     "title": "Funnels",

@@ -152,3 +152,39 @@ tail -n 80 storage/logs/laravel.log
 
 php artisan migrate --force
 php artisan config:clear
+
+8. Ошибка 413 Request Entity Too Large (nginx) на /messenger/quick-replies:
+
+# Причина: nginx обрезает тело запроса ДО Laravel.
+# На странице быстрых ответов грузятся: фото/аудио шаблона (до 16 МБ в коде) или Excel-импорт (до 5 МБ).
+# Дефолт nginx часто client_max_body_size 1m — файл > 1 МБ → белая страница nginx 413.
+
+# В конфиге сайта (например /etc/nginx/sites-available/crm.erlanpro.kg) внутри server { ... }:
+client_max_body_size 20m;
+
+# И в PHP (если лимит меньше), например /etc/php/8.3/fpm/php.ini:
+# upload_max_filesize = 20M
+# post_max_size = 20M
+
+# Применить:
+sudo nginx -t && sudo systemctl reload nginx
+# sudo systemctl restart php8.3-fpm   # если правили php.ini (версия PHP может отличаться)
+
+9. Telegram Mini App + Android Messenger APK (push/badge):
+
+# Mini App: сотрудники без Android — бот → «Открыть мессенджер» (/tma).
+# Уведомление в Telegram теперь открывает конкретный чат (?conversation=ID).
+# Cookie crm_tma держит компактный UI ~60 дней.
+
+# Android APK (пока без Play Market) — см. mobile/README.md
+# В .env на проде:
+FCM_SERVER_KEY=firebase_legacy_cloud_messaging_server_key
+
+php artisan migrate --force
+php artisan config:clear
+npm run build
+
+# Сборка APK:
+#   cd mobile && npm install && npx cap add android && npx cap sync android && npx cap open android
+# google-services.json → mobile/android/app/
+# Capacitor открывает https://crm.erlanpro.kg/app → логин → только мессенджер.

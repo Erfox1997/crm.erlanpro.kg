@@ -3,14 +3,36 @@ import { Head } from '@inertiajs/vue3';
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-defineProps({
+const props = defineProps({
     botConfigured: { type: Boolean, default: false },
     botUsername: { type: String, default: '' },
+    conversationId: { type: Number, default: null },
 });
 
 const { t } = useI18n();
 const status = ref('');
 const error = ref('');
+
+function resolveConversationId() {
+    if (props.conversationId) {
+        return props.conversationId;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = Number(params.get('conversation') || 0);
+    if (fromQuery > 0) {
+        return fromQuery;
+    }
+
+    const tg = window.Telegram?.WebApp;
+    const startParam = String(tg?.initDataUnsafe?.start_param || '');
+    const match = startParam.match(/^(?:c|conversation)[_-]?(\d+)$/i);
+    if (match) {
+        return Number(match[1]);
+    }
+
+    return null;
+}
 
 onMounted(async () => {
     status.value = t('miniApp.opening');
@@ -24,6 +46,11 @@ onMounted(async () => {
 
     tg.ready();
     tg.expand();
+    try {
+        tg.disableVerticalSwipes?.();
+    } catch {
+        // older clients
+    }
 
     const initData = tg.initData || '';
     if (!initData) {
@@ -32,9 +59,12 @@ onMounted(async () => {
         return;
     }
 
+    const conversation = resolveConversationId();
+
     try {
         const { data } = await window.axios.post(route('tma.auth'), {
             init_data: initData,
+            conversation,
         }, {
             headers: {
                 Accept: 'application/json',

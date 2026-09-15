@@ -18,6 +18,8 @@ use App\Http\Controllers\DealController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\FunnelController;
 use App\Http\Controllers\IntegrationController;
+use App\Http\Controllers\DevicePushTokenController;
+use App\Http\Controllers\MobileAppController;
 use App\Http\Controllers\MessengerController;
 use App\Http\Controllers\MessengerQuickReplyController;
 use App\Http\Controllers\MetaOAuthController;
@@ -58,6 +60,7 @@ Route::post('/webhooks/telegram-support/{secret}', [TelegramSupportWebhookContro
 
 Route::get('/tma', [TelegramMiniAppController::class, 'entry'])->name('tma.entry');
 Route::post('/tma/auth', [TelegramMiniAppController::class, 'auth'])->name('tma.auth');
+Route::get('/app', [MobileAppController::class, 'entry'])->name('mobile.app.entry');
 Route::get('/tma/support', [TelegramSupportMiniAppController::class, 'entry'])->name('tma.support.entry');
 Route::post('/tma/support/bootstrap', [TelegramSupportMiniAppController::class, 'bootstrap'])->name('tma.support.bootstrap');
 Route::post('/tma/support/apply', [TelegramSupportMiniAppController::class, 'apply'])->name('tma.support.apply');
@@ -154,6 +157,8 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
     Route::delete('/messenger/conversations', [MessengerController::class, 'clearAll'])->name('messenger.clear');
     Route::post('/messenger/ai-improve', [MessengerController::class, 'improveWithAi'])->name('messenger.ai-improve');
+    Route::post('/device-tokens', [DevicePushTokenController::class, 'store'])->name('device-tokens.store');
+    Route::delete('/device-tokens', [DevicePushTokenController::class, 'destroy'])->name('device-tokens.destroy');
     Route::get('/comments', [CommentsController::class, 'index'])->name('comments.index');
     Route::post('/comments/sync', [CommentsController::class, 'sync'])->name('comments.sync');
     Route::post('/comments/{comment}/reply', [CommentsController::class, 'reply'])->name('comments.reply');
@@ -166,6 +171,10 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::post('/messenger/quick-replies', [MessengerQuickReplyController::class, 'store'])->name('messenger.quick-replies.store');
     Route::post('/messenger/quick-replies/import', [MessengerQuickReplyController::class, 'import'])->name('messenger.quick-replies.import');
     Route::get('/messenger/quick-replies/sample', [MessengerQuickReplyController::class, 'sample'])->name('messenger.quick-replies.sample');
+    Route::post('/messenger/quick-replies/folders', [MessengerQuickReplyController::class, 'storeFolder'])->name('messenger.quick-replies.folders.store');
+    Route::put('/messenger/quick-replies/folders/{folder}', [MessengerQuickReplyController::class, 'updateFolder'])->name('messenger.quick-replies.folders.update');
+    Route::delete('/messenger/quick-replies/folders/{folder}', [MessengerQuickReplyController::class, 'destroyFolder'])->name('messenger.quick-replies.folders.destroy');
+    Route::patch('/messenger/quick-replies/{quickReply}/folder', [MessengerQuickReplyController::class, 'move'])->name('messenger.quick-replies.move');
     Route::get('/messenger/quick-replies/{quickReply}/attachment', [MessengerQuickReplyController::class, 'attachment'])->name('messenger.quick-replies.attachment');
     Route::put('/messenger/quick-replies/{quickReply}', [MessengerQuickReplyController::class, 'update'])->name('messenger.quick-replies.update');
     Route::delete('/messenger/quick-replies/{quickReply}', [MessengerQuickReplyController::class, 'destroy'])->name('messenger.quick-replies.destroy');

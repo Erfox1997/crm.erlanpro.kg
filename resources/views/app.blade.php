@@ -11,14 +11,22 @@
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
         <!-- Scripts -->
-        @if (!empty($page['component']) && str_starts_with($page['component'], 'TelegramMiniApp/'))
+        @if (
+            (! empty($page['component']) && (
+                str_starts_with($page['component'], 'TelegramMiniApp/')
+                || $page['component'] === 'Messenger/Index'
+            ))
+            || request()->session()->get('telegram_mini_app')
+            || request()->cookie('crm_tma')
+            || request()->boolean('mini')
+        )
             <script src="https://telegram.org/js/telegram-web-app.js"></script>
         @endif
         @routes
         @vite(['resources/js/app.js', "resources/js/Pages/{$page['component']}.vue"])
         @inertiaHead
     </head>
-    <body class="font-sans antialiased">
+    <body class="font-sans antialiased {{ request()->session()->get('telegram_mini_app') || request()->cookie('crm_tma') || request()->boolean('mini') ? 'tma-app' : '' }}">
         @inertia
     </body>
 </html>

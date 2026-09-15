@@ -4,18 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class MessengerQuickReply extends Model
+class MessengerQuickReplyFolder extends Model
 {
     protected $fillable = [
         'company_id',
-        'folder_id',
-        'title',
-        'type',
-        'body',
-        'attachment_path',
-        'attachment_mime',
-        'attachment_name',
+        'name',
         'sort_order',
     ];
 
@@ -23,7 +18,6 @@ class MessengerQuickReply extends Model
     {
         return [
             'sort_order' => 'integer',
-            'folder_id' => 'integer',
         ];
     }
 
@@ -32,8 +26,8 @@ class MessengerQuickReply extends Model
         return $this->belongsTo(Company::class);
     }
 
-    public function folder(): BelongsTo
+    public function quickReplies(): HasMany
     {
-        return $this->belongsTo(MessengerQuickReplyFolder::class, 'folder_id');
+        return $this->hasMany(MessengerQuickReply::class, 'folder_id');
     }
 }
