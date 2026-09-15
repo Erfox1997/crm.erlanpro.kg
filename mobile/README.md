@@ -9,13 +9,16 @@ Telegram Mini App остаётся для сотрудников без Android.
 1. Node.js 20+
 2. Android Studio (SDK 34+)
 3. Firebase проект + `google-services.json`
-4. На сервере CRM в `.env`:
+4. На сервере CRM — **Firebase HTTP v1** (не Legacy Server key):
+
+Firebase Console → ⚙️ Project settings → **Service accounts** → **Generate new private key**  
+Сохраните JSON как `storage/app/firebase-credentials.json` (на проде и локально, файл не в git).
+
+В `.env`:
 
 ```env
-FCM_SERVER_KEY=ваш_legacy_server_key_из_firebase
+FCM_CREDENTIALS=storage/app/firebase-credentials.json
 ```
-
-Firebase Console → Project settings → Cloud Messaging → **Cloud Messaging API (Legacy)** → Server key.
 
 После правки `.env` на проде:
 

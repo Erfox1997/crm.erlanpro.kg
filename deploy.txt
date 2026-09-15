@@ -177,8 +177,12 @@ sudo nginx -t && sudo systemctl reload nginx
 # Cookie crm_tma держит компактный UI ~60 дней.
 
 # Android APK (пока без Play Market) — см. mobile/README.md
+# FCM HTTP v1 (Cloud Messaging API V1 = Enabled; Legacy не нужен):
+# Firebase Console → Project settings → Service accounts → Generate new private key
+# Скопировать JSON на сервер (не в git):
+#   storage/app/firebase-credentials.json
 # В .env на проде:
-FCM_SERVER_KEY=firebase_legacy_cloud_messaging_server_key
+FCM_CREDENTIALS=storage/app/firebase-credentials.json
 
 php artisan migrate --force
 php artisan config:clear

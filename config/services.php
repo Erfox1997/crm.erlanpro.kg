@@ -101,8 +101,9 @@ return [
     ],
 
     'fcm' => [
-        // Firebase Console → Project settings → Cloud Messaging → Server key (Legacy)
-        'server_key' => env('FCM_SERVER_KEY'),
+        // Firebase Console → Project settings → Service accounts → Generate new private key
+        // Put JSON on server (not in git), e.g. storage/app/firebase-credentials.json
+        'credentials' => env('FCM_CREDENTIALS', 'storage/app/firebase-credentials.json'),
     ],
 
 ];
