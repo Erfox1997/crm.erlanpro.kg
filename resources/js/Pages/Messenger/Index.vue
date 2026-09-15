@@ -412,7 +412,10 @@ function confirmOptimisticMessage(clientId, serverMessage) {
             next.push({
                 ...message,
                 ...serverMessage,
+                // Keep optimistic identity so the bubble doesn't remount / jump
                 client_id: clientId,
+                sent_at: message.sent_at || serverMessage.sent_at,
+                attachments: mergeConfirmedAttachments(message.attachments, serverMessage.attachments),
             });
             replaced = true;
             continue;
@@ -428,7 +431,38 @@ function confirmOptimisticMessage(clientId, serverMessage) {
         });
     }
 
-    localMessages.value = sortMessages(next);
+    // Keep current visual order — avoid re-sort flicker on confirm
+    localMessages.value = next;
+}
+
+function mergeConfirmedAttachments(localAttachments, serverAttachments) {
+    const local = Array.isArray(localAttachments) ? localAttachments : [];
+    const server = Array.isArray(serverAttachments) ? serverAttachments : [];
+
+    if (server.length === 0) {
+        return local;
+    }
+
+    if (local.length === 0) {
+        return server;
+    }
+
+    return server.map((item, index) => {
+        const prev = local[index];
+        if (!prev) {
+            return item;
+        }
+
+        if (prev.url && String(prev.url).startsWith('blob:') && item.url) {
+            return { ...prev, ...item };
+        }
+
+        if (prev.url && !item.url) {
+            return { ...item, url: prev.url };
+        }
+
+        return { ...prev, ...item };
+    });
 }
 
 function lastKnownMessageId() {
@@ -629,6 +663,7 @@ watch(
         }
 
         const byId = new Map(serverMessages.map((message) => [String(message.id), message]));
+        const pendingLocals = [];
 
         for (const local of localMessages.value) {
             const idKey = String(local.id);
@@ -640,15 +675,18 @@ watch(
                         ...local,
                         ...matchedServer,
                         client_id: local.client_id || local.id,
+                        sent_at: local.sent_at || matchedServer.sent_at,
+                        attachments: mergeConfirmedAttachments(local.attachments, matchedServer.attachments),
                     });
-                } else if (!byId.has(idKey)) {
-                    byId.set(idKey, local);
+                } else {
+                    pendingLocals.push(local);
                 }
                 continue;
             }
 
             if (!byId.has(idKey)) {
-                byId.set(idKey, local);
+                // Keep locally known messages that server list hasn't caught up with yet
+                pendingLocals.push(local);
                 continue;
             }
 
@@ -656,12 +694,14 @@ watch(
                 ...local,
                 ...byId.get(idKey),
                 client_id: local.client_id,
+                sent_at: local.sent_at || byId.get(idKey)?.sent_at,
             });
         }
 
-        localMessages.value = sortMessages(Array.from(byId.values()));
-        shouldStickToBottom = true;
-        scrollToBottom();
+        localMessages.value = sortMessages([
+            ...Array.from(byId.values()),
+            ...pendingLocals.filter((local) => !byId.has(String(local.id))),
+        ]);
     },
     { deep: true },
 );
@@ -1444,7 +1484,13 @@ async function startRecording() {
     }
 
     try {
-        recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Capacitor Android needs RECORD_AUDIO in the manifest + a real getUserMedia prompt
+        recordingStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+            },
+        });
         const mimeType = pickRecorderMimeType(props.selectedConversation.channel);
 
         if (props.selectedConversation.channel === 'instagram' && ! mimeType) {
@@ -1478,8 +1524,13 @@ async function startRecording() {
         recordingTimer = window.setInterval(() => {
             recordingSeconds.value += 1;
         }, 1000);
-    } catch {
+    } catch (error) {
         stopRecordingTracks();
+        const name = String(error?.name || '');
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+            window.alert(t('messenger.err.mic'));
+            return;
+        }
         window.alert(t('messenger.err.mic'));
     }
 }
@@ -1699,10 +1750,7 @@ function outboundTicks(message) {
         return '!';
     }
 
-    if (message.status === 'pending') {
-        return '✓';
-    }
-
+    // Always show double ticks immediately so send doesn't flicker single → double
     return '✓✓';
 }
 
