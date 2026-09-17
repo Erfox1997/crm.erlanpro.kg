@@ -340,6 +340,7 @@
     "noneFound": "Nothing found",
     "selectChat": "Select a chat on the left to read and reply.",
     "noMessages": "No messages yet.",
+    "loadingMessages": "Loading…",
     "sell": {
       "btn": "Sell",
       "title": "Sale",

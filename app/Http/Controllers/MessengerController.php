@@ -154,62 +154,19 @@ class MessengerController extends Controller
             ->all();
 
         if ($selectedId) {
-            $conversation = MessengerConversation::query()
-                ->where('company_id', $companyId)
-                ->whereKey((int) $selectedId)
-                ->with(['client', 'assignee:id,name'])
-                ->first();
+            $detail = $this->conversationDetailPayload(
+                $user,
+                $companyId,
+                (int) $selectedId,
+                $messengerField,
+                $wappiIntegration,
+            );
 
-            if ($conversation && ! $this->chatDistribution->userCanViewConversation($user, $conversation)) {
-                $conversation = null;
-            }
-
-            if ($conversation) {
-                $this->unread->markConversationRead($conversation);
-                $this->wappi->repairStoredParticipantPhone(
-                    $conversation,
-                    $this->wappi->ownProfilePhone($wappiIntegration),
-                );
-                $conversation->refresh();
-
-                $selectedConversation = [
-                    'id' => $conversation->id,
-                    'channel' => $conversation->channel,
-                    'channel_label' => IntegrationProvider::tryFrom($conversation->channel)?->label() ?? $conversation->channel,
-                    'participant_name' => $conversation->participant_name,
-                    'participant_username' => $this->wappi->correctedParticipantUsername(
-                        $conversation,
-                        $this->wappi->ownProfilePhone($wappiIntegration),
-                    ),
-                    'participant_id' => $conversation->participant_id,
-                    'client_id' => $conversation->client_id,
-                    'display_name' => $this->clientFields->resolveMessengerDisplayName(
-                        $conversation,
-                        $conversation->client,
-                        $messengerField,
-                    ),
-                    'assigned_user_id' => $conversation->assigned_user_id,
-                    'assigned_user_name' => $conversation->assignee?->name,
-                ];
-
-                $funnelDeal = $this->messengerFunnel->dealPayloadForConversation($conversation);
-
-                $conversation->refresh()->load('client');
-
-                if ($conversation->client) {
-                    $linkedClient = [
-                        'id' => $conversation->client->id,
-                        'name' => $conversation->client->name,
-                        'phone' => $conversation->client->phone,
-                        'custom_fields' => $conversation->client->custom_fields ?? [],
-                    ];
-                }
-
-                $messages = $conversation->messages()
-                    ->orderBy('sent_at')
-                    ->orderBy('id')
-                    ->get()
-                    ->map(fn (MessengerMessage $m) => $this->serializeMessage($m, $conversation->channel));
+            if ($detail !== null) {
+                $selectedConversation = $detail['conversation'];
+                $messages = $detail['messages'];
+                $linkedClient = $detail['linkedClient'];
+                $funnelDeal = $detail['funnelDeal'];
             }
         }
 
@@ -258,6 +215,44 @@ class MessengerController extends Controller
 
         return response()->json([
             'unread_count' => $this->unread->totalUnreadForCompany((int) $user->company_id, $user),
+        ]);
+    }
+
+    public function showConversation(Request $request, MessengerConversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
+
+        if ((int) $conversation->company_id !== $companyId) {
+            abort(404);
+        }
+
+        if (! $this->chatDistribution->userCanViewConversation($user, $conversation)) {
+            abort(403);
+        }
+
+        $messengerField = $this->clientFields->messengerFieldDefinition($companyId);
+        $wappiIntegration = $this->wappi->integrationForCompany($companyId);
+
+        $detail = $this->conversationDetailPayload(
+            $user,
+            $companyId,
+            (int) $conversation->id,
+            $messengerField,
+            $wappiIntegration,
+            $conversation,
+        );
+
+        if ($detail === null) {
+            abort(404);
+        }
+
+        return response()->json([
+            'conversation' => $detail['conversation'],
+            'messages' => $detail['messages'],
+            'linkedClient' => $detail['linkedClient'],
+            'funnelDeal' => $detail['funnelDeal'],
+            'unread_count' => $this->unread->totalUnreadForCompany($companyId, $user),
         ]);
     }
 
@@ -845,6 +840,91 @@ class MessengerController extends Controller
         } catch (\Throwable $e) {
             return $this->messengerSendError($request, $e->getMessage());
         }
+    }
+
+    /**
+     * @return array{
+     *     conversation: array<string, mixed>,
+     *     messages: list<array<string, mixed>>,
+     *     linkedClient: ?array<string, mixed>,
+     *     funnelDeal: mixed
+     * }|null
+     */
+    protected function conversationDetailPayload(
+        mixed $user,
+        int $companyId,
+        int $conversationId,
+        mixed $messengerField,
+        ?CompanyIntegration $wappiIntegration,
+        ?MessengerConversation $conversation = null,
+    ): ?array {
+        $conversation ??= MessengerConversation::query()
+            ->where('company_id', $companyId)
+            ->whereKey($conversationId)
+            ->with(['client', 'assignee:id,name'])
+            ->first();
+
+        if (! $conversation) {
+            return null;
+        }
+
+        if (! $this->chatDistribution->userCanViewConversation($user, $conversation)) {
+            return null;
+        }
+
+        $this->unread->markConversationRead($conversation);
+        $this->wappi->repairStoredParticipantPhone(
+            $conversation,
+            $this->wappi->ownProfilePhone($wappiIntegration),
+        );
+        $conversation->refresh()->load(['client', 'assignee:id,name']);
+
+        $selectedConversation = [
+            'id' => $conversation->id,
+            'channel' => $conversation->channel,
+            'channel_label' => IntegrationProvider::tryFrom($conversation->channel)?->label() ?? $conversation->channel,
+            'participant_name' => $conversation->participant_name,
+            'participant_username' => $this->wappi->correctedParticipantUsername(
+                $conversation,
+                $this->wappi->ownProfilePhone($wappiIntegration),
+            ),
+            'participant_id' => $conversation->participant_id,
+            'client_id' => $conversation->client_id,
+            'display_name' => $this->clientFields->resolveMessengerDisplayName(
+                $conversation,
+                $conversation->client,
+                $messengerField,
+            ),
+            'assigned_user_id' => $conversation->assigned_user_id,
+            'assigned_user_name' => $conversation->assignee?->name,
+        ];
+
+        $funnelDeal = $this->messengerFunnel->dealPayloadForConversation($conversation);
+
+        $linkedClient = null;
+        if ($conversation->client) {
+            $linkedClient = [
+                'id' => $conversation->client->id,
+                'name' => $conversation->client->name,
+                'phone' => $conversation->client->phone,
+                'custom_fields' => $conversation->client->custom_fields ?? [],
+            ];
+        }
+
+        $messages = $conversation->messages()
+            ->orderBy('sent_at')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (MessengerMessage $m) => $this->serializeMessage($m, $conversation->channel))
+            ->values()
+            ->all();
+
+        return [
+            'conversation' => $selectedConversation,
+            'messages' => $messages,
+            'linkedClient' => $linkedClient,
+            'funnelDeal' => $funnelDeal,
+        ];
     }
 
     /**

@@ -146,10 +146,27 @@ let lastOutboundConfirmAt = 0;
 const localConversations = ref(
     (props.conversations || []).map((conversation) => ({ ...conversation })),
 );
+const selectedConversation = ref(
+    props.selectedConversation ? { ...props.selectedConversation } : null,
+);
+const linkedClient = ref(props.linkedClient ? { ...props.linkedClient } : null);
+const funnelDeal = ref(props.funnelDeal ? { ...props.funnelDeal } : null);
 const localMessages = ref((props.messages || []).map((message) => ({
     ...message,
     stable_key: message.stable_key || message.client_id || message.id,
 })));
+const messagesLoading = ref(false);
+/** @type {Map<number, any[]>} */
+const messageCache = new Map();
+if (selectedConversation.value?.id && localMessages.value.length > 0) {
+    messageCache.set(
+        selectedConversation.value.id,
+        localMessages.value.map((message) => ({ ...message })),
+    );
+}
+let conversationLoadToken = 0;
+/** @type {AbortController|null} */
+let conversationAbort = null;
 
 const jsonRequestHeaders = {
     Accept: 'application/json',
@@ -623,7 +640,7 @@ function mergeConversations(updates) {
 
     for (const update of updates) {
         const current = byId.get(update.id);
-        const selectedId = props.selectedConversation?.id;
+        const selectedId = selectedConversation.value?.id;
         const merged = {
             ...(current || {}),
             ...update,
@@ -714,6 +731,10 @@ function mergeMessages(updates, { scroll = true } = {}) {
 
     localMessages.value = dedupeLocalMessages(added > 0 ? sortMessages(list) : list);
 
+    if (selectedConversation.value?.id) {
+        rememberMessages(selectedConversation.value.id, localMessages.value);
+    }
+
     if (scroll && added > 0 && shouldStickToBottom) {
         scrollToBottom(false);
     }
@@ -742,8 +763,8 @@ async function pollUpdates() {
 
     try {
         const params = { since: pollSince };
-        if (props.selectedConversation?.id) {
-            params.conversation_id = props.selectedConversation.id;
+        if (selectedConversation.value?.id) {
+            params.conversation_id = selectedConversation.value.id;
             params.after_message_id = lastKnownMessageId();
         }
 
@@ -758,10 +779,10 @@ async function pollUpdates() {
 
         mergeConversations(data?.conversations || []);
 
-        if (props.selectedConversation?.id) {
+        if (selectedConversation.value?.id) {
             mergeMessages(data?.messages || []);
             mergeConversations([{
-                id: props.selectedConversation.id,
+                id: selectedConversation.value.id,
                 unread_count: 0,
             }]);
         }
@@ -813,18 +834,26 @@ watch(
     { deep: true },
 );
 
-let watchedConversationId = props.selectedConversation?.id ?? null;
+let watchedConversationId = selectedConversation.value?.id ?? null;
 
 watch(
-    () => [props.selectedConversation?.id, props.messages],
-    () => {
-        const conversationId = props.selectedConversation?.id ?? null;
-        const serverMessages = cloneList(props.messages);
-        const conversationChanged = conversationId !== watchedConversationId;
-        watchedConversationId = conversationId;
+    () => props.messages,
+    (messages) => {
+        const propId = props.selectedConversation?.id ?? null;
+        const activeId = selectedConversation.value?.id ?? null;
+
+        // Ignore stale Inertia props while SPA-navigating between chats.
+        if (!propId || propId !== activeId) {
+            return;
+        }
+
+        const serverMessages = cloneList(messages || []);
+        const conversationChanged = propId !== watchedConversationId;
+        watchedConversationId = propId;
 
         if (conversationChanged || localMessages.value.length === 0) {
             localMessages.value = serverMessages.map((message) => withStableIdentity(message, message.id));
+            messageCache.set(propId, localMessages.value.map((message) => ({ ...message })));
             if (conversationChanged) {
                 messageMenuId.value = null;
                 replyToMessage.value = null;
@@ -841,7 +870,6 @@ watch(
         for (const local of localMessages.value) {
             const localNumericId = numericMessageId(local.id);
 
-            // Already bound to a server id — never append the same id again from props
             if (localNumericId) {
                 usedServerIds.add(String(localNumericId));
                 const server = serverById.get(String(localNumericId));
@@ -884,7 +912,6 @@ watch(
                 continue;
             }
 
-            // Skip provider echoes of our recent outbound while a send is in flight
             if (
                 server.direction === 'outbound'
                 && (
@@ -902,8 +929,44 @@ watch(
             next.push(withStableIdentity(server, server.id));
         }
 
-        // Preserve local visual order — never rebuild via Map + sort (that caused flicker)
         localMessages.value = dedupeLocalMessages(next);
+        messageCache.set(propId, localMessages.value.map((message) => ({ ...message })));
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.linkedClient,
+    (client) => {
+        const propId = props.selectedConversation?.id ?? null;
+        if (!propId || propId !== selectedConversation.value?.id) {
+            return;
+        }
+        linkedClient.value = client ? { ...client } : null;
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.funnelDeal,
+    (deal) => {
+        const propId = props.selectedConversation?.id ?? null;
+        if (!propId || propId !== selectedConversation.value?.id) {
+            return;
+        }
+        funnelDeal.value = deal ? { ...deal } : null;
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.selectedConversation,
+    (conversation) => {
+        const propId = conversation?.id ?? null;
+        if (!propId || propId !== selectedConversation.value?.id) {
+            return;
+        }
+        selectedConversation.value = { ...conversation };
     },
     { deep: true },
 );
@@ -1021,6 +1084,9 @@ onUnmounted(() => {
     document.removeEventListener('click', closeEmojiPicker);
     document.removeEventListener('click', closeConversationMenu);
     stopPolling();
+    conversationLoadToken += 1;
+    conversationAbort?.abort();
+    conversationAbort = null;
     clearImagePreview();
     if (chatToastTimer) {
         window.clearTimeout(chatToastTimer);
@@ -1123,15 +1189,157 @@ function messengerVisitParams(extra = {}) {
     };
 }
 
+function syncConversationUrl(conversationId = null) {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    const url = new URL(window.location.href);
+    if (conversationId) {
+        url.searchParams.set('conversation', String(conversationId));
+    } else {
+        url.searchParams.delete('conversation');
+    }
+
+    if (isMiniApp.value) {
+        url.searchParams.set('mini', '1');
+    }
+
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState(window.history.state, '', next);
+}
+
+function conversationFromList(id) {
+    const row = localConversations.value.find((item) => item.id === id);
+    if (!row) {
+        return { id };
+    }
+
+    return {
+        id: row.id,
+        channel: row.channel,
+        channel_label: row.channel_label,
+        participant_name: row.participant_name,
+        participant_username: row.participant_username,
+        participant_id: row.participant_id,
+        client_id: row.client_id ?? null,
+        display_name: row.display_name,
+        assigned_user_id: row.assigned_user_id,
+        assigned_user_name: row.assigned_user_name,
+    };
+}
+
+function rememberMessages(conversationId, messages) {
+    if (!conversationId) {
+        return;
+    }
+
+    messageCache.set(
+        conversationId,
+        (messages || []).map((message) => ({ ...message })),
+    );
+}
+
+async function loadConversationDetail(id) {
+    const token = ++conversationLoadToken;
+
+    if (conversationAbort) {
+        conversationAbort.abort();
+    }
+    conversationAbort = new AbortController();
+
+    const hasCache = messageCache.has(id);
+    messagesLoading.value = !hasCache;
+
+    try {
+        const { data } = await window.axios.get(route('messenger.conversations.show', id), {
+            headers: jsonRequestHeaders,
+            signal: conversationAbort.signal,
+        });
+
+        if (token !== conversationLoadToken || selectedConversation.value?.id !== id) {
+            return;
+        }
+
+        if (data?.conversation) {
+            selectedConversation.value = { ...data.conversation };
+        }
+        linkedClient.value = data?.linkedClient ? { ...data.linkedClient } : null;
+        funnelDeal.value = data?.funnelDeal ? { ...data.funnelDeal } : null;
+
+        const incoming = (data?.messages || []).map((message) => withStableIdentity(message, message.id));
+        const hasPending = localMessages.value.some((message) => isOptimisticMessage(message));
+
+        if (hasPending) {
+            mergeMessages(incoming, { scroll: false });
+        } else {
+            localMessages.value = incoming;
+        }
+
+        rememberMessages(id, localMessages.value);
+        watchedConversationId = id;
+        mergeConversations([{ id, unread_count: 0 }]);
+
+        if (data?.unread_count !== undefined) {
+            syncAppBadge(data.unread_count);
+        } else {
+            syncAppBadge(localUnreadTotal.value);
+        }
+
+        shouldStickToBottom = true;
+        scrollToBottom(false);
+    } catch (error) {
+        if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') {
+            return;
+        }
+        if (token === conversationLoadToken) {
+            showChatToast(
+                error?.response?.data?.message || t('messenger.err.message'),
+                'error',
+                2200,
+            );
+        }
+    } finally {
+        if (token === conversationLoadToken) {
+            messagesLoading.value = false;
+        }
+    }
+}
+
 function openConversation(id) {
+    const conversationId = Number(id);
+    if (!conversationId) {
+        return;
+    }
+
     messageMenuId.value = null;
     conversationMenuId.value = null;
     replyToMessage.value = null;
-    router.get(
-        route('messenger.index'),
-        messengerVisitParams({ conversation: id }),
-        { preserveState: true, preserveScroll: true },
-    );
+    emojiPickerOpen.value = false;
+    sendError.value = '';
+
+    if (selectedConversation.value?.id && selectedConversation.value.id !== conversationId) {
+        rememberMessages(selectedConversation.value.id, localMessages.value);
+    }
+
+    selectedConversation.value = conversationFromList(conversationId);
+    linkedClient.value = null;
+    funnelDeal.value = null;
+    mergeConversations([{ id: conversationId, unread_count: 0 }]);
+    syncConversationUrl(conversationId);
+
+    const cached = messageCache.get(conversationId);
+    if (cached?.length) {
+        localMessages.value = cached.map((message) => ({ ...message }));
+        watchedConversationId = conversationId;
+        shouldStickToBottom = true;
+        scrollToBottom(false);
+    } else {
+        localMessages.value = [];
+        watchedConversationId = conversationId;
+    }
+
+    loadConversationDetail(conversationId);
 }
 
 function closeConversationMenu() {
@@ -1196,7 +1404,7 @@ async function markConversationAsUnread(conversation) {
                 : item
         ));
 
-        if (props.selectedConversation?.id === conversation.id) {
+        if (selectedConversation.value?.id === conversation.id) {
             backToConversationList();
         }
 
@@ -1212,11 +1420,27 @@ async function markConversationAsUnread(conversation) {
 }
 
 function backToConversationList() {
-    router.get(
-        route('messenger.index'),
-        messengerVisitParams(),
-        { preserveState: true, preserveScroll: true },
-    );
+    if (selectedConversation.value?.id) {
+        rememberMessages(selectedConversation.value.id, localMessages.value);
+    }
+
+    conversationLoadToken += 1;
+    if (conversationAbort) {
+        conversationAbort.abort();
+        conversationAbort = null;
+    }
+
+    messageMenuId.value = null;
+    conversationMenuId.value = null;
+    replyToMessage.value = null;
+    emojiPickerOpen.value = false;
+    messagesLoading.value = false;
+    selectedConversation.value = null;
+    linkedClient.value = null;
+    funnelDeal.value = null;
+    localMessages.value = [];
+    watchedConversationId = null;
+    syncConversationUrl(null);
 }
 
 function messagePlainText(message) {
@@ -1387,7 +1611,7 @@ function onSalePending({ clientId, total, currency: saleCurrency }) {
     shouldStickToBottom = true;
     scrollToBottom();
     touchConversationAfterSend(
-        { id: props.selectedConversation?.id, last_message_at: new Date().toISOString() },
+        { id: selectedConversation.value?.id, last_message_at: new Date().toISOString() },
         t('messenger.receipt'),
     );
 }
@@ -1479,7 +1703,7 @@ function syncConversations() {
 }
 
 async function applyQuickReply(reply) {
-    if (!props.selectedConversation) {
+    if (!selectedConversation.value) {
         return;
     }
 
@@ -1514,13 +1738,13 @@ async function applyQuickReply(reply) {
     shouldStickToBottom = true;
     scrollToBottom(true);
     touchConversationAfterSend(
-        { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
+        { id: selectedConversation.value.id, last_message_at: new Date().toISOString() },
         previewBody,
     );
 
     try {
         const { data } = await window.axios.post(
-            route('messenger.send-quick-reply', [props.selectedConversation.id, reply.id]),
+            route('messenger.send-quick-reply', [selectedConversation.value.id, reply.id]),
             {},
             { headers: jsonRequestHeaders },
         );
@@ -1629,7 +1853,7 @@ function insertEmoji(emoji) {
 
 async function sendMessage() {
     emojiPickerOpen.value = false;
-    if (!props.selectedConversation || slashQuickRepliesOpen.value) {
+    if (!selectedConversation.value || slashQuickRepliesOpen.value) {
         return;
     }
 
@@ -1686,13 +1910,13 @@ async function sendMessage() {
     shouldStickToBottom = true;
     scrollToBottom(true);
     touchConversationAfterSend(
-        { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
+        { id: selectedConversation.value.id, last_message_at: new Date().toISOString() },
         body || t('messenger.imageLabel'),
     );
 
     try {
         const { data } = await window.axios.post(
-            route('messenger.send', props.selectedConversation.id),
+            route('messenger.send', selectedConversation.value.id),
             formData,
             { headers: jsonRequestHeaders },
         );
@@ -1790,7 +2014,7 @@ function closeImageLightbox() {
 }
 
 function prefillClientFieldValue(key) {
-    const saved = props.linkedClient?.custom_fields?.[key];
+    const saved = linkedClient.value?.custom_fields?.[key];
     if (saved !== undefined && saved !== null && String(saved).trim() !== '') {
         return String(saved);
     }
@@ -1799,11 +2023,11 @@ function prefillClientFieldValue(key) {
 }
 
 const messengerApiName = computed(() => {
-    return props.selectedConversation?.participant_name?.trim() || '';
+    return selectedConversation.value?.participant_name?.trim() || '';
 });
 
 const messengerApiContact = computed(() => {
-    const conversation = props.selectedConversation;
+    const conversation = selectedConversation.value;
     if (!conversation) {
         return '';
     }
@@ -1826,7 +2050,7 @@ const messengerApiContact = computed(() => {
 });
 
 function apiValueForField(key) {
-    const conversation = props.selectedConversation;
+    const conversation = selectedConversation.value;
     if (!conversation) {
         return '';
     }
@@ -1877,11 +2101,11 @@ function openClientModal() {
 }
 
 function saveClientData() {
-    if (!props.selectedConversation) {
+    if (!selectedConversation.value) {
         return;
     }
 
-    clientForm.post(route('messenger.save-client', props.selectedConversation.id), {
+    clientForm.post(route('messenger.save-client', selectedConversation.value.id), {
         preserveScroll: true,
         onSuccess: () => {
             showClientModal.value = false;
@@ -1890,16 +2114,16 @@ function saveClientData() {
 }
 
 function updateDealStage() {
-    if (!props.selectedConversation || !props.funnelDeal || !dealStageForm.stage_id) {
+    if (!selectedConversation.value || !funnelDeal.value || !dealStageForm.stage_id) {
         return;
     }
 
-    if (Number(dealStageForm.stage_id) === props.funnelDeal.stage_id) {
+    if (Number(dealStageForm.stage_id) === funnelDeal.value.stage_id) {
         return;
     }
 
     dealStageForm.patch(
-        route('messenger.update-deal-stage', props.selectedConversation.id),
+        route('messenger.update-deal-stage', selectedConversation.value.id),
         {
             preserveScroll: true,
         },
@@ -1907,11 +2131,11 @@ function updateDealStage() {
 }
 
 function updateDealPipeline() {
-    if (!props.selectedConversation || !dealPipelineForm.pipeline_id) {
+    if (!selectedConversation.value || !dealPipelineForm.pipeline_id) {
         return;
     }
 
-    if (Number(dealPipelineForm.pipeline_id) === props.funnelDeal?.pipeline_id) {
+    if (Number(dealPipelineForm.pipeline_id) === funnelDeal.value?.pipeline_id) {
         return;
     }
 
@@ -1925,13 +2149,13 @@ function updateDealPipeline() {
 
     dealPipelineForm.stage_id = String(firstStage.id);
     dealPipelineForm.patch(
-        route('messenger.update-deal-pipeline', props.selectedConversation.id),
+        route('messenger.update-deal-pipeline', selectedConversation.value.id),
         { preserveScroll: true },
     );
 }
 
 watch(
-    () => props.funnelDeal?.stage_id,
+    () => funnelDeal.value?.stage_id,
     (stageId) => {
         dealStageForm.stage_id = stageId ? String(stageId) : '';
         dealStageForm.clearErrors();
@@ -1940,7 +2164,7 @@ watch(
 );
 
 watch(
-    () => props.funnelDeal?.pipeline_id,
+    () => funnelDeal.value?.pipeline_id,
     (pipelineId) => {
         dealPipelineForm.pipeline_id = pipelineId ? String(pipelineId) : '';
         dealPipelineForm.clearErrors();
@@ -1949,7 +2173,7 @@ watch(
 );
 
 watch(
-    () => [props.selectedConversation?.id, props.linkedClient?.id, props.clientFieldDefinitions],
+    () => [selectedConversation.value?.id, linkedClient.value?.id, props.clientFieldDefinitions],
     () => {
         if (showClientModal.value) {
             resetClientForm();
@@ -1991,7 +2215,7 @@ function pickRecorderMimeType(channel) {
 }
 
 async function startRecording() {
-    if (!props.selectedConversation || isRecording.value) {
+    if (!selectedConversation.value || isRecording.value) {
         return;
     }
 
@@ -2008,9 +2232,9 @@ async function startRecording() {
                 noiseSuppression: true,
             },
         });
-        const mimeType = pickRecorderMimeType(props.selectedConversation.channel);
+        const mimeType = pickRecorderMimeType(selectedConversation.value.channel);
 
-        if (props.selectedConversation.channel === 'instagram' && ! mimeType) {
+        if (selectedConversation.value.channel === 'instagram' && ! mimeType) {
             stopRecordingTracks();
             window.alert(
                 t('messenger.igFormatLong'),
@@ -2072,12 +2296,12 @@ function stopRecording() {
 }
 
 async function sendVoiceMessage() {
-    if (!props.selectedConversation || audioChunks.length === 0) {
+    if (!selectedConversation.value || audioChunks.length === 0) {
         return;
     }
 
     const mimeType = mediaRecorder?.mimeType || audioChunks[0]?.type || 'audio/webm';
-    const channel = props.selectedConversation.channel;
+    const channel = selectedConversation.value.channel;
     const extension = channel === 'instagram'
         ? (mimeType.includes('wav') ? 'wav' : 'm4a')
         : channel === 'wappi'
@@ -2114,7 +2338,7 @@ async function sendVoiceMessage() {
     shouldStickToBottom = true;
     scrollToBottom(true);
     touchConversationAfterSend(
-        { id: props.selectedConversation.id, last_message_at: new Date().toISOString() },
+        { id: selectedConversation.value.id, last_message_at: new Date().toISOString() },
         t('messenger.voiceLabel'),
     );
 
@@ -2124,7 +2348,7 @@ async function sendVoiceMessage() {
 
     try {
         const { data } = await window.axios.post(
-            route('messenger.send', props.selectedConversation.id),
+            route('messenger.send', selectedConversation.value.id),
             formData,
             { headers: jsonRequestHeaders },
         );
@@ -2464,7 +2688,7 @@ function tomorrowDateValue() {
 }
 
 function openTaskModal() {
-    if (!props.selectedConversation) {
+    if (!selectedConversation.value) {
         return;
     }
 
@@ -2481,12 +2705,12 @@ function closeTaskModal() {
 }
 
 function submitTask() {
-    if (!props.selectedConversation) {
+    if (!selectedConversation.value) {
         return;
     }
 
     taskForm.post(
-        route('messenger.conversations.tasks.store', props.selectedConversation.id),
+        route('messenger.conversations.tasks.store', selectedConversation.value.id),
         {
             preserveScroll: true,
             onSuccess: () => closeTaskModal(),
@@ -2983,7 +3207,7 @@ function scrollToBottom(smooth = false) {
                             v-if="localMessages.length === 0"
                             class="py-12 text-center text-sm text-[#667781]"
                         >
-                            {{ t('messenger.noMessages') }}
+                            {{ messagesLoading ? t('messenger.loadingMessages') : t('messenger.noMessages') }}
                         </div>
 
                         <template

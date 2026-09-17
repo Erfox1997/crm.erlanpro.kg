@@ -155,6 +155,8 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::get('/messenger', [MessengerController::class, 'index'])->name('messenger.index');
     Route::get('/messenger/updates', [MessengerController::class, 'updates'])->name('messenger.updates');
     Route::get('/messenger/unread-count', [MessengerController::class, 'unreadCount'])->name('messenger.unread-count');
+    Route::get('/messenger/conversations/{conversation}', [MessengerController::class, 'showConversation'])
+        ->name('messenger.conversations.show');
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
     Route::delete('/messenger/conversations', [MessengerController::class, 'clearAll'])->name('messenger.clear');
     Route::post('/messenger/ai-improve', [MessengerController::class, 'improveWithAi'])->name('messenger.ai-improve');
