@@ -10,6 +10,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { localeTag } from '@/i18n';
+import { syncAppBadge } from '@/utils/syncAppBadge';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -116,8 +117,20 @@ const messageInput = ref(null);
 const imageInput = ref(null);
 const sendError = ref('');
 const messageMenuId = ref(null);
+const messageMenuPlacement = ref('below');
+const conversationMenuId = ref(null);
 const replyToMessage = ref(null);
+const emojiPickerOpen = ref(false);
 const chatToast = ref(null);
+
+const composerEmojis = [
+    '😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😎',
+    '🤔', '😅', '😢', '😭', '😡', '👍', '👎', '👏',
+    '🙏', '🔥', '❤️', '💔', '✨', '🎉', '✅', '❌',
+    '💯', '🤝', '💪', '🙌', '👌', '✌️', '🤗', '😴',
+    '🤩', '😇', '🤷', '🙈', '☀️', '🌙', '⭐', '🌹',
+    '☕', '🍕', '🎂', '📱', '💰', '📍', '⏰', '👋',
+];
 
 let pollSince = new Date(Date.now() - 15_000).toISOString();
 let pollTimer = null;
@@ -142,6 +155,14 @@ const jsonRequestHeaders = {
     Accept: 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
 };
+
+const localUnreadTotal = computed(() => (
+    localConversations.value.reduce((sum, item) => sum + (Number(item.unread_count) || 0), 0)
+));
+
+watch(localUnreadTotal, (count) => {
+    syncAppBadge(count);
+});
 
 const sendForm = useForm({
     body: '',
@@ -739,6 +760,12 @@ async function pollUpdates() {
                 unread_count: 0,
             }]);
         }
+
+        if (data?.unread_count !== undefined) {
+            syncAppBadge(data.unread_count);
+        } else {
+            syncAppBadge(localUnreadTotal.value);
+        }
     } catch {
         // Keep polling; transient network errors are fine.
     } finally {
@@ -879,6 +906,8 @@ watch(
 onMounted(() => {
     document.addEventListener('visibilitychange', onVisibilityChange);
     document.addEventListener('click', closeMessageMenu);
+    document.addEventListener('click', closeEmojiPicker);
+    document.addEventListener('click', closeConversationMenu);
     startPolling();
 
     if (isMiniApp.value) {
@@ -984,6 +1013,8 @@ async function registerNativePushToken() {
 onUnmounted(() => {
     document.removeEventListener('visibilitychange', onVisibilityChange);
     document.removeEventListener('click', closeMessageMenu);
+    document.removeEventListener('click', closeEmojiPicker);
+    document.removeEventListener('click', closeConversationMenu);
     stopPolling();
     clearImagePreview();
     if (chatToastTimer) {
@@ -1081,12 +1112,90 @@ function messengerVisitParams(extra = {}) {
 
 function openConversation(id) {
     messageMenuId.value = null;
+    conversationMenuId.value = null;
     replyToMessage.value = null;
     router.get(
         route('messenger.index'),
         messengerVisitParams({ conversation: id }),
         { preserveState: true, preserveScroll: true },
     );
+}
+
+function closeConversationMenu() {
+    conversationMenuId.value = null;
+}
+
+function openConversationMenu(conversationId, event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    conversationMenuId.value = conversationMenuId.value === conversationId ? null : conversationId;
+}
+
+let conversationLongPressTimer = null;
+let conversationLongPressFired = false;
+
+function onConversationPointerDown(conversationId, event) {
+    if (event.pointerType === 'mouse' && event.button !== 0) {
+        return;
+    }
+
+    conversationLongPressFired = false;
+    clearTimeout(conversationLongPressTimer);
+    conversationLongPressTimer = window.setTimeout(() => {
+        conversationLongPressFired = true;
+        conversationMenuId.value = conversationId;
+    }, 480);
+}
+
+function onConversationPointerUp() {
+    clearTimeout(conversationLongPressTimer);
+    conversationLongPressTimer = null;
+}
+
+function onConversationClick(conversationId) {
+    if (conversationLongPressFired) {
+        conversationLongPressFired = false;
+        return;
+    }
+
+    openConversation(conversationId);
+}
+
+async function markConversationAsUnread(conversation) {
+    if (!conversation?.id) {
+        return;
+    }
+
+    closeConversationMenu();
+
+    try {
+        const { data } = await window.axios.post(
+            route('messenger.mark-unread', conversation.id),
+            {},
+            { headers: jsonRequestHeaders },
+        );
+
+        const unreadCount = Math.max(1, Number(data?.unread_count ?? 1));
+
+        localConversations.value = localConversations.value.map((item) => (
+            item.id === conversation.id
+                ? { ...item, unread_count: unreadCount }
+                : item
+        ));
+
+        if (props.selectedConversation?.id === conversation.id) {
+            backToConversationList();
+        }
+
+        showChatToast(t('messenger.markedUnreadToast'), 'success', 1600);
+        syncAppBadge(localUnreadTotal.value);
+    } catch (error) {
+        showChatToast(
+            error?.response?.data?.message || t('messenger.err.message'),
+            'error',
+            2200,
+        );
+    }
 }
 
 function backToConversationList() {
@@ -1120,13 +1229,30 @@ function messagePreviewShort(message, max = 80) {
     return `${text.slice(0, max - 1)}…`;
 }
 
-function openMessageMenu(message) {
+function openMessageMenu(message, event) {
     if (!message || String(message.id).startsWith('tmp-') || message.status === 'pending') {
         messageMenuId.value = null;
         return;
     }
 
-    messageMenuId.value = messageMenuId.value === message.id ? null : message.id;
+    if (messageMenuId.value === message.id) {
+        messageMenuId.value = null;
+        return;
+    }
+
+    const bubble = event?.currentTarget;
+    const rect = bubble?.getBoundingClientRect?.();
+    const menuHeight = 220;
+    const spaceBelow = rect ? window.innerHeight - rect.bottom : 0;
+    const spaceAbove = rect ? rect.top : 0;
+
+    if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
+        messageMenuPlacement.value = 'above';
+    } else {
+        messageMenuPlacement.value = 'below';
+    }
+
+    messageMenuId.value = message.id;
 }
 
 function closeMessageMenu() {
@@ -1418,26 +1544,78 @@ function quickReplyPreview(reply) {
 }
 
 function onMessageInputKeydown(event) {
-    if (!slashQuickRepliesOpen.value || filteredSlashQuickReplies.value.length === 0) {
-        return;
+    if (slashQuickRepliesOpen.value && filteredSlashQuickReplies.value.length > 0) {
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            slashActiveIndex.value = (slashActiveIndex.value + 1) % filteredSlashQuickReplies.value.length;
+            return;
+        }
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            slashActiveIndex.value = (slashActiveIndex.value - 1 + filteredSlashQuickReplies.value.length)
+                % filteredSlashQuickReplies.value.length;
+            return;
+        }
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            applyQuickReply(filteredSlashQuickReplies.value[slashActiveIndex.value]);
+            return;
+        }
+        if (event.key === 'Escape') {
+            sendForm.body = '';
+            return;
+        }
     }
 
-    if (event.key === 'ArrowDown') {
+    // Enter = new line (especially on mobile). Ctrl/Cmd+Enter = send.
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
-        slashActiveIndex.value = (slashActiveIndex.value + 1) % filteredSlashQuickReplies.value.length;
-    } else if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        slashActiveIndex.value = (slashActiveIndex.value - 1 + filteredSlashQuickReplies.value.length)
-            % filteredSlashQuickReplies.value.length;
-    } else if (event.key === 'Enter') {
-        event.preventDefault();
-        applyQuickReply(filteredSlashQuickReplies.value[slashActiveIndex.value]);
-    } else if (event.key === 'Escape') {
-        sendForm.body = '';
+        sendMessage();
     }
 }
 
+function resizeMessageInput() {
+    const el = messageInput.value;
+    if (!el) {
+        return;
+    }
+
+    el.style.height = 'auto';
+    const maxHeight = 120;
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+}
+
+function toggleEmojiPicker() {
+    emojiPickerOpen.value = !emojiPickerOpen.value;
+}
+
+function closeEmojiPicker() {
+    emojiPickerOpen.value = false;
+}
+
+function insertEmoji(emoji) {
+    const el = messageInput.value;
+    const value = sendForm.body || '';
+    const start = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? start;
+
+    sendForm.body = `${value.slice(0, start)}${emoji}${value.slice(end)}`;
+    emojiPickerOpen.value = false;
+
+    nextTick(() => {
+        el?.focus();
+        const pos = start + emoji.length;
+        try {
+            el?.setSelectionRange(pos, pos);
+        } catch {
+            // some WebViews ignore selection APIs
+        }
+        resizeMessageInput();
+    });
+}
+
 async function sendMessage() {
+    emojiPickerOpen.value = false;
     if (!props.selectedConversation || slashQuickRepliesOpen.value) {
         return;
     }
@@ -1490,6 +1668,7 @@ async function sendMessage() {
     if (imageInput.value) {
         imageInput.value.value = '';
     }
+    nextTick(() => resizeMessageInput());
     sendError.value = '';
     shouldStickToBottom = true;
     scrollToBottom(true);
@@ -2105,6 +2284,98 @@ function messageHasContent(message) {
         || (Array.isArray(message.attachments) && message.attachments.length > 0);
 }
 
+/**
+ * Split message text into plain text / link segments (URLs + phone numbers).
+ * @returns {Array<{ type: 'text'|'link', value: string, href?: string }>}
+ */
+function linkifyMessageSegments(text) {
+    const source = String(text ?? '');
+    if (source === '') {
+        return [];
+    }
+
+    const urlPattern = /https?:\/\/[^\s<]+|www\.[^\s<]+/gi;
+    const phonePattern = /(?:\+|00)?(?:\d[\s\-().]*){8,}\d/g;
+    /** @type {Array<{ start: number, end: number, type: 'url'|'phone', raw: string }>} */
+    const matches = [];
+
+    for (const match of source.matchAll(urlPattern)) {
+        matches.push({
+            start: match.index,
+            end: match.index + match[0].length,
+            type: 'url',
+            raw: match[0],
+        });
+    }
+
+    for (const match of source.matchAll(phonePattern)) {
+        const start = match.index;
+        const end = start + match[0].length;
+        const digits = match[0].replace(/\D+/g, '');
+        if (digits.length < 9 || digits.length > 15) {
+            continue;
+        }
+        if (matches.some((item) => start < item.end && end > item.start)) {
+            continue;
+        }
+        matches.push({ start, end, type: 'phone', raw: match[0] });
+    }
+
+    matches.sort((a, b) => a.start - b.start || b.end - a.end);
+
+    const segments = [];
+    let cursor = 0;
+
+    for (const match of matches) {
+        if (match.start < cursor) {
+            continue;
+        }
+
+        if (match.start > cursor) {
+            segments.push({ type: 'text', value: source.slice(cursor, match.start) });
+        }
+
+        if (match.type === 'url') {
+            let raw = match.raw;
+            let trailing = '';
+            while (/[),.;:!?]$/.test(raw) && !/[/?#&=]$/.test(raw.slice(0, -1))) {
+                trailing = `${raw.slice(-1)}${trailing}`;
+                raw = raw.slice(0, -1);
+            }
+
+            const href = raw.startsWith('http') ? raw : `https://${raw}`;
+            segments.push({ type: 'link', value: raw, href, external: true });
+            if (trailing) {
+                segments.push({ type: 'text', value: trailing });
+            }
+        } else {
+            let digits = match.raw.replace(/\D+/g, '');
+            if (digits.startsWith('0') && digits.length === 10) {
+                digits = `996${digits.slice(1)}`;
+            }
+
+            const href = (digits.startsWith('996') || match.raw.trim().startsWith('+') || digits.length >= 11)
+                ? `https://wa.me/${digits}`
+                : `tel:${digits}`;
+
+            segments.push({
+                type: 'link',
+                value: match.raw,
+                href,
+                external: !href.startsWith('tel:'),
+            });
+        }
+
+        cursor = match.end;
+    }
+
+    if (cursor < source.length) {
+        segments.push({ type: 'text', value: source.slice(cursor) });
+    }
+
+    return segments.length > 0 ? segments : [{ type: 'text', value: source }];
+}
+
 function canSaveAsQuickReply(message) {
     if (
         String(message.id).startsWith('tmp-')
@@ -2411,6 +2682,7 @@ function scrollToBottom(smooth = false) {
                     <li
                         v-for="conversation in filteredConversations"
                         :key="conversation.id"
+                        class="relative"
                     >
                         <button
                             type="button"
@@ -2418,7 +2690,12 @@ function scrollToBottom(smooth = false) {
                             :class="{
                                 'bg-[#f0f2f5]': selectedConversation?.id === conversation.id,
                             }"
-                            @click="openConversation(conversation.id)"
+                            @click="onConversationClick(conversation.id)"
+                            @contextmenu="openConversationMenu(conversation.id, $event)"
+                            @pointerdown="onConversationPointerDown(conversation.id, $event)"
+                            @pointerup="onConversationPointerUp"
+                            @pointerleave="onConversationPointerUp"
+                            @pointercancel="onConversationPointerUp"
                         >
                             <div class="relative shrink-0">
                                 <div
@@ -2474,6 +2751,24 @@ function scrollToBottom(smooth = false) {
                                 </div>
                             </div>
                         </button>
+
+                        <div
+                            v-if="conversationMenuId === conversation.id"
+                            class="absolute right-2 top-12 z-40 min-w-[13rem] overflow-hidden rounded-lg bg-white py-1 text-sm text-[#111b21] shadow-lg ring-1 ring-black/10"
+                            @click.stop
+                        >
+                            <button
+                                type="button"
+                                class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[#f0f2f5]"
+                                @click="markConversationAsUnread(conversation)"
+                            >
+                                <svg class="h-4 w-4 shrink-0 text-[#54656f]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="9" />
+                                    <path stroke-linecap="round" d="M12 8v4M12 16h.01" />
+                                </svg>
+                                <span>{{ t('messenger.markUnread') }}</span>
+                            </button>
+                        </div>
                     </li>
 
                     <li
@@ -2541,7 +2836,12 @@ function scrollToBottom(smooth = false) {
                             {{ avatarInitials(selectedConversation) }}
                         </div>
 
-                        <div class="min-w-0 flex-1">
+                        <button
+                            type="button"
+                            class="min-w-0 flex-1 rounded-lg px-1 py-0.5 text-left transition hover:bg-[#e9edef]"
+                            :title="linkedClient ? t('messenger.clientData') : t('messenger.saveContact')"
+                            @click="openClientModal"
+                        >
                             <p class="truncate text-sm font-medium text-[#111b21] sm:text-base">
                                 {{ participantLabel(selectedConversation) }}
                             </p>
@@ -2551,7 +2851,7 @@ function scrollToBottom(smooth = false) {
                             >
                                 @{{ selectedConversation.participant_username }}
                             </p>
-                        </div>
+                        </button>
 
                         <span
                             class="hidden rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase sm:inline"
@@ -2583,14 +2883,6 @@ function scrollToBottom(smooth = false) {
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
 <span class="hidden sm:inline">{{ t('messenger.task') }}</span>
-                        </button>
-
-                        <button
-                            type="button"
-                            class="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-medium text-[#008069] shadow-sm transition hover:bg-[#f0f2f5] sm:px-3 sm:py-1.5 sm:text-xs"
-                            @click="openClientModal"
-                        >
-{{ linkedClient ? t('messenger.clientData') : t('messenger.saveContact') }}
                         </button>
                     </div>
 
@@ -2658,14 +2950,15 @@ function scrollToBottom(smooth = false) {
                                     item.message.status === 'failed' ? 'ring-1 ring-red-300 opacity-80' : '',
                                     messageMenuId === item.message.id ? 'ring-1 ring-[#00a884]/60' : '',
                                 ]"
-                                @click.stop="openMessageMenu(item.message)"
+                                @click.stop="openMessageMenu(item.message, $event)"
                             >
                                 <div
                                     v-if="messageMenuId === item.message.id"
                                     class="absolute z-30 min-w-[12rem] overflow-hidden rounded-lg bg-white py-1 text-sm text-[#111b21] shadow-lg ring-1 ring-black/10"
-                                    :class="item.message.direction === 'outbound'
-                                        ? 'right-0 top-full mt-1'
-                                        : 'left-0 top-full mt-1'"
+                                    :class="[
+                                        item.message.direction === 'outbound' ? 'right-0' : 'left-0',
+                                        messageMenuPlacement === 'above' ? 'bottom-full mb-1' : 'top-full mt-1',
+                                    ]"
                                     @click.stop
                                 >
                                     <button
@@ -2719,7 +3012,20 @@ function scrollToBottom(smooth = false) {
                                     v-if="item.message.body?.trim()"
                                     class="whitespace-pre-wrap break-words text-[#111b21]"
                                 >
-                                    {{ item.message.body }}
+                                    <template
+                                        v-for="(segment, segmentIndex) in linkifyMessageSegments(item.message.body)"
+                                        :key="segmentIndex"
+                                    >
+                                        <a
+                                            v-if="segment.type === 'link'"
+                                            :href="segment.href"
+                                            class="text-[#027eb5] underline underline-offset-2 hover:text-[#015f8a]"
+                                            :target="segment.external === false ? undefined : '_blank'"
+                                            :rel="segment.external === false ? undefined : 'noopener noreferrer'"
+                                            @click.stop
+                                        >{{ segment.value }}</a>
+                                        <template v-else>{{ segment.value }}</template>
+                                    </template>
                                 </p>
 
                                 <div
@@ -2932,6 +3238,49 @@ function scrollToBottom(smooth = false) {
                                 </svg>
                             </button>
 
+                            <div class="relative shrink-0" @click.stop>
+                                <button
+                                    type="button"
+                                    class="flex h-9 w-9 items-center justify-center rounded-full transition disabled:opacity-40 sm:h-10 sm:w-10"
+                                    :class="emojiPickerOpen
+                                        ? 'bg-[#e7f8f2] text-[#008069]'
+                                        : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'"
+                                    :disabled="isRecording"
+                                    :title="t('messenger.emoji')"
+                                    @click="toggleEmojiPicker"
+                                >
+                                    <svg
+                                        class="h-5 w-5"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        aria-hidden="true"
+                                    >
+                                        <circle cx="12" cy="12" r="9" />
+                                        <path stroke-linecap="round" d="M8.5 10.5h.01M15.5 10.5h.01" />
+                                        <path stroke-linecap="round" d="M8.5 14.5s1.5 2 3.5 2 3.5-2 3.5-2" />
+                                    </svg>
+                                </button>
+
+                                <div
+                                    v-if="emojiPickerOpen"
+                                    class="absolute bottom-full left-0 z-40 mb-2 w-[17.5rem] rounded-xl bg-white p-2 shadow-lg ring-1 ring-black/10 sm:w-[19rem]"
+                                >
+                                    <div class="grid max-h-44 grid-cols-8 gap-0.5 overflow-y-auto">
+                                        <button
+                                            v-for="emoji in composerEmojis"
+                                            :key="emoji"
+                                            type="button"
+                                            class="flex h-9 w-9 items-center justify-center rounded-lg text-xl leading-none transition hover:bg-[#f0f2f5] active:bg-[#e9edef]"
+                                            @click="insertEmoji(emoji)"
+                                        >
+                                            {{ emoji }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
                             <button
                                 v-if="chatGptConnected"
                                 type="button"
@@ -3001,15 +3350,16 @@ function scrollToBottom(smooth = false) {
                                     </button>
                                 </div>
 
-                                <input
+                                <textarea
                                     ref="messageInput"
                                     v-model="sendForm.body"
-                                    type="text"
+                                    rows="1"
 :placeholder="t('messenger.messagePh')"
-                                    class="w-full rounded-lg border-0 bg-white px-3 py-2 text-[13px] text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30 sm:px-4 sm:py-2.5 sm:text-sm"
+                                    class="max-h-[7.5rem] min-h-[2.25rem] w-full resize-none overflow-y-auto rounded-lg border-0 bg-white px-3 py-2 text-[13px] leading-snug text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30 sm:min-h-[2.5rem] sm:px-4 sm:py-2.5 sm:text-sm"
                                     :disabled="isRecording"
                                     @keydown="onMessageInputKeydown"
-                                >
+                                    @input="resizeMessageInput"
+                                />
                             </div>
 
                             <button

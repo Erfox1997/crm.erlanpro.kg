@@ -20,6 +20,7 @@ class MessengerConversation extends Model
         'assigned_user_id',
         'last_message_at',
         'last_read_at',
+        'is_marked_unread',
     ];
 
     protected function casts(): array
@@ -27,6 +28,7 @@ class MessengerConversation extends Model
         return [
             'last_message_at' => 'datetime',
             'last_read_at' => 'datetime',
+            'is_marked_unread' => 'boolean',
         ];
     }
 

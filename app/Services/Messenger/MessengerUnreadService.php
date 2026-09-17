@@ -4,6 +4,7 @@ namespace App\Services\Messenger;
 
 use App\Models\MessengerConversation;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class MessengerUnreadService
@@ -14,7 +15,7 @@ class MessengerUnreadService
 
     public function unreadCountForConversation(MessengerConversation $conversation): int
     {
-        return (int) $conversation->messages()
+        $count = (int) $conversation->messages()
             ->where('direction', 'inbound')
             ->when(
                 $conversation->last_read_at,
@@ -22,6 +23,12 @@ class MessengerUnreadService
                 fn ($query) => $query,
             )
             ->count();
+
+        if ($conversation->is_marked_unread) {
+            return max($count, 1);
+        }
+
+        return $count;
     }
 
     public function totalUnreadForCompany(int $companyId, ?User $user = null): int
@@ -35,24 +42,52 @@ class MessengerUnreadService
                     ->orWhereColumn('m.sent_at', '>', 'c.last_read_at');
             });
 
-        if ($user !== null && ! $user->is_platform_admin && $user->company_role !== 'owner') {
-            $mode = $this->chatDistribution->modeForCompany($companyId);
+        $this->applyVisibility($query, $companyId, $user, 'c');
 
-            $query->where(function ($inner) use ($user, $mode) {
-                $inner->where('c.assigned_user_id', $user->id);
+        $messageUnread = (int) $query->count();
 
-                if ($mode === ChatDistributionService::MODE_FIRST_RESPONDER) {
-                    $inner->orWhereNull('c.assigned_user_id');
-                }
+        $markedOnly = DB::table('messenger_conversations as c')
+            ->where('c.company_id', $companyId)
+            ->where('c.is_marked_unread', true)
+            ->whereNotExists(function ($exists) {
+                $exists->select(DB::raw(1))
+                    ->from('messenger_messages as m')
+                    ->whereColumn('m.messenger_conversation_id', 'c.id')
+                    ->where('m.direction', 'inbound')
+                    ->where(function ($inner) {
+                        $inner->whereNull('c.last_read_at')
+                            ->orWhereColumn('m.sent_at', '>', 'c.last_read_at');
+                    });
             });
-        }
 
-        return (int) $query->count();
+        $this->applyVisibility($markedOnly, $companyId, $user, 'c');
+
+        return $messageUnread + (int) $markedOnly->count();
     }
 
     public function markConversationRead(MessengerConversation $conversation): void
     {
-        $conversation->update(['last_read_at' => now()]);
+        $conversation->update([
+            'last_read_at' => now(),
+            'is_marked_unread' => false,
+        ]);
+    }
+
+    public function markConversationUnread(MessengerConversation $conversation): int
+    {
+        $latestInboundAt = $conversation->messages()
+            ->where('direction', 'inbound')
+            ->max('sent_at');
+
+        $updates = ['is_marked_unread' => true];
+
+        if ($latestInboundAt) {
+            $updates['last_read_at'] = Carbon::parse($latestInboundAt)->subSecond();
+        }
+
+        $conversation->update($updates);
+
+        return $this->unreadCountForConversation($conversation->fresh());
     }
 
     /**
@@ -64,12 +99,35 @@ class MessengerUnreadService
             ->where('company_id', $companyId)
             ->whereNotNull('external_id')
             ->where(function ($query) {
-                $query->whereNull('last_read_at')
-                    ->orWhereColumn('last_message_at', '>', 'last_read_at');
+                $query->where('is_marked_unread', true)
+                    ->orWhere(function ($inner) {
+                        $inner->whereNull('last_read_at')
+                            ->orWhereColumn('last_message_at', '>', 'last_read_at');
+                    });
             })
             ->pluck('external_id')
             ->map(fn ($id) => (string) $id)
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder  $query
+     */
+    protected function applyVisibility($query, int $companyId, ?User $user, string $alias): void
+    {
+        if ($user === null || $user->is_platform_admin || $user->company_role === 'owner') {
+            return;
+        }
+
+        $mode = $this->chatDistribution->modeForCompany($companyId);
+
+        $query->where(function ($inner) use ($user, $mode, $alias) {
+            $inner->where("{$alias}.assigned_user_id", $user->id);
+
+            if ($mode === ChatDistributionService::MODE_FIRST_RESPONDER) {
+                $inner->orWhereNull("{$alias}.assigned_user_id");
+            }
+        });
     }
 }

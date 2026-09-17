@@ -689,6 +689,9 @@ class WappiMessengerService
             $participantId = $chatId;
         }
 
+        $ownPhone = $this->ownProfilePhone($integration);
+        $participantPhone = $this->participantPhoneFromMessage($message, $ownPhone);
+
         $conversation = MessengerConversation::query()->firstOrCreate(
             [
                 'company_id' => $integration->company_id,
@@ -698,13 +701,13 @@ class WappiMessengerService
             [
                 'external_id' => $chatId,
                 'participant_name' => $this->participantNameFromMessage($message),
-                'participant_username' => $this->participantPhoneFromMessage($message),
+                'participant_username' => $participantPhone,
             ],
         );
 
         $this->chatDistribution->assignIfNew($conversation);
 
-        $this->updateConversationMeta($conversation, $message, $chatId);
+        $this->updateConversationMeta($conversation, $message, $chatId, $ownPhone);
 
         $existing = MessengerMessage::query()
             ->where('messenger_conversation_id', $conversation->id)
@@ -778,11 +781,12 @@ class WappiMessengerService
             [
                 'external_id' => $chatId,
                 'participant_name' => $this->chatDisplayName($chat),
-                'participant_username' => $this->chatPhone($chat),
+                'participant_username' => $this->chatPhone($chat, $this->ownProfilePhone($integration)),
             ],
         );
 
         $this->chatDistribution->assignIfNew($conversation);
+        $this->repairStoredParticipantPhone($conversation, $this->ownProfilePhone($integration));
 
         foreach ($messages as $message) {
             if (! is_array($message)) {
@@ -918,24 +922,57 @@ class WappiMessengerService
     /**
      * @param  array<string, mixed>  $message
      */
-    protected function participantPhoneFromMessage(array $message): ?string
+    protected function participantPhoneFromMessage(array $message, ?string $ownPhone = null): ?string
     {
-        $phone = trim((string) ($message['phone'] ?? $message['contact_phone'] ?? ''));
+        $candidates = [];
 
-        if ($phone !== '') {
-            return $phone;
+        // chatId is the peer in a 1:1 dialog — prefer it over sender fields
+        $chatPhone = $this->phoneFromParticipantKey((string) ($message['chatId'] ?? $message['chat_id'] ?? ''));
+        if ($chatPhone) {
+            $candidates[] = $chatPhone;
         }
 
-        $from = (string) ($message['from'] ?? $message['chatId'] ?? '');
+        $contactPhone = $this->normalizePhoneDigits($message['contact_phone'] ?? null);
+        if ($contactPhone !== '') {
+            $candidates[] = $contactPhone;
+        }
 
-        return $this->phoneFromJid($from);
+        // `phone` / `from` often contain the connected WhatsApp number on outbound webhooks
+        $phoneField = $this->normalizePhoneDigits($message['phone'] ?? null);
+        if ($phoneField !== '') {
+            $candidates[] = $phoneField;
+        }
+
+        $fromPhone = $this->phoneFromParticipantKey((string) ($message['from'] ?? ''));
+        if ($fromPhone) {
+            $candidates[] = $fromPhone;
+        }
+
+        $toPhone = $this->phoneFromParticipantKey((string) ($message['to'] ?? ''));
+        if ($toPhone) {
+            $candidates[] = $toPhone;
+        }
+
+        foreach ($candidates as $candidate) {
+            if ($this->isSamePhone($candidate, $ownPhone)) {
+                continue;
+            }
+
+            return $candidate;
+        }
+
+        return null;
     }
 
     /**
      * @param  array<string, mixed>  $message
      */
-    protected function updateConversationMeta(MessengerConversation $conversation, array $message, string $chatId): void
-    {
+    protected function updateConversationMeta(
+        MessengerConversation $conversation,
+        array $message,
+        string $chatId,
+        ?string $ownPhone = null,
+    ): void {
         $updates = [];
 
         $name = $this->participantNameFromMessage($message);
@@ -943,8 +980,18 @@ class WappiMessengerService
             $updates['participant_name'] = $name;
         }
 
-        $phone = $this->participantPhoneFromMessage($message);
-        if ($phone && $conversation->participant_username !== $phone) {
+        $phone = $this->participantPhoneFromMessage($message, $ownPhone);
+        if (! $phone) {
+            $phone = $this->phoneFromParticipantKey($chatId);
+            if ($this->isSamePhone($phone, $ownPhone)) {
+                $phone = null;
+            }
+        }
+
+        $currentUsername = (string) ($conversation->participant_username ?? '');
+        $currentIsOwn = $this->isSamePhone($currentUsername, $ownPhone);
+
+        if ($phone && ($currentIsOwn || $currentUsername === '' || $currentUsername !== $phone)) {
             $updates['participant_username'] = $phone;
         }
 
@@ -955,6 +1002,96 @@ class WappiMessengerService
         if ($updates !== []) {
             $conversation->update($updates);
         }
+    }
+
+    public function ownProfilePhone(?CompanyIntegration $integration): ?string
+    {
+        if (! $integration) {
+            return null;
+        }
+
+        $phone = $this->normalizePhoneDigits($integration->metadata['profile_phone'] ?? null);
+
+        return $phone !== '' ? $phone : null;
+    }
+
+    /**
+     * Fix display/storage when outbound webhooks wrote the connected WhatsApp number as the client phone.
+     */
+    public function correctedParticipantUsername(
+        MessengerConversation $conversation,
+        ?string $ownProfilePhone = null,
+    ): ?string {
+        $username = $conversation->participant_username;
+        if ($conversation->channel !== IntegrationProvider::Wappi->value) {
+            return $username;
+        }
+
+        $fromId = $this->phoneFromParticipantKey((string) $conversation->participant_id);
+        $usernameDigits = $this->normalizePhoneDigits($username);
+
+        if ($usernameDigits !== '' && ! $this->isSamePhone($usernameDigits, $ownProfilePhone)) {
+            return $usernameDigits;
+        }
+
+        if ($fromId && ! $this->isSamePhone($fromId, $ownProfilePhone)) {
+            return $fromId;
+        }
+
+        return $username;
+    }
+
+    public function repairStoredParticipantPhone(
+        MessengerConversation $conversation,
+        ?string $ownProfilePhone = null,
+    ): void {
+        if ($conversation->channel !== IntegrationProvider::Wappi->value) {
+            return;
+        }
+
+        $corrected = $this->correctedParticipantUsername($conversation, $ownProfilePhone);
+        if (! $corrected || $corrected === $conversation->participant_username) {
+            return;
+        }
+
+        $conversation->update(['participant_username' => $corrected]);
+    }
+
+    protected function normalizePhoneDigits(mixed $phone): string
+    {
+        return preg_replace('/\D+/', '', (string) $phone) ?: '';
+    }
+
+    protected function isSamePhone(?string $a, ?string $b): bool
+    {
+        $left = $this->normalizePhoneDigits($a);
+        $right = $this->normalizePhoneDigits($b);
+
+        if ($left === '' || $right === '') {
+            return false;
+        }
+
+        if ($left === $right) {
+            return true;
+        }
+
+        return str_ends_with($left, $right) || str_ends_with($right, $left);
+    }
+
+    protected function phoneFromParticipantKey(string $id): ?string
+    {
+        $id = trim($id);
+        if ($id === '') {
+            return null;
+        }
+
+        if (str_contains($id, '@')) {
+            return $this->phoneFromJid($id);
+        }
+
+        $digits = $this->normalizePhoneDigits($id);
+
+        return $digits !== '' ? $digits : null;
     }
 
     /**
@@ -1068,15 +1205,23 @@ class WappiMessengerService
     /**
      * @param  array<string, mixed>  $chat
      */
-    protected function chatPhone(array $chat): ?string
+    protected function chatPhone(array $chat, ?string $ownPhone = null): ?string
     {
-        $phone = trim((string) ($chat['phone'] ?? $chat['contact_phone'] ?? ''));
+        $candidates = [
+            $this->normalizePhoneDigits($chat['contact_phone'] ?? null),
+            $this->normalizePhoneDigits($chat['phone'] ?? null),
+            $this->phoneFromParticipantKey($this->chatExternalId($chat)),
+        ];
 
-        if ($phone !== '') {
-            return $phone;
+        foreach ($candidates as $candidate) {
+            if (! $candidate || $this->isSamePhone($candidate, $ownPhone)) {
+                continue;
+            }
+
+            return $candidate;
         }
 
-        return $this->phoneFromJid($this->chatExternalId($chat));
+        return null;
     }
 
     protected function recipientFromParticipantId(string $participantId): string

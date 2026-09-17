@@ -58,7 +58,9 @@ APK: `mobile\android\app\build\outputs\apk\debug\app-debug.apk`
 - Capacitor открывает `https://…/app` → редирект на `/messenger?mini=1&app=android`
 - UI как в Telegram Mini App (без бокового меню CRM)
 - FCM-токен регистрируется на `POST /device-tokens`
-- Входящее сообщение → push + badge/count (где поддерживает лаунчер)
+- Входящее сообщение → push с реальным числом непрочитанных
+- Бейдж на иконке синхронизируется с непрочитанными: при открытии приложения **не сбрасывается**, пока чаты не прочитаны; при прочтении обновляется/очищается
+- Нужен плагин `@capawesome/capacitor-badge` (уже в `mobile/`) — после обновления кода пересоберите APK (`npx cap sync android` + `gradlew assembleDebug`)
 
 ## Через месяц — Play Market
 

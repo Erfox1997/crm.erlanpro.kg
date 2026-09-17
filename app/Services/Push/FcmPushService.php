@@ -7,6 +7,7 @@ use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Models\User;
 use App\Services\Messenger\ChatDistributionService;
+use App\Services\Messenger\MessengerUnreadService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -16,6 +17,7 @@ class FcmPushService
 {
     public function __construct(
         private ChatDistributionService $chatDistribution,
+        private MessengerUnreadService $unread,
     ) {}
 
     public function isConfigured(): bool
@@ -50,7 +52,8 @@ class FcmPushService
         }
 
         foreach ($recipients as $user) {
-            $unread = max(1, (int) ($user->messenger_unread_hint ?? 1));
+            $unread = max(1, $this->unread->totalUnreadForCompany((int) $user->company_id, $user));
+
             $this->sendToUser(
                 $user,
                 'Новое сообщение',

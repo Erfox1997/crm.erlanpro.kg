@@ -94,9 +94,10 @@ class MessengerController extends Controller
             ->get();
 
         $messengerField = $this->clientFields->messengerFieldDefinition($companyId);
+        $wappiOwnPhone = $this->wappi->ownProfilePhone($wappiIntegration);
 
         $conversations = $conversations->map(
-            fn (MessengerConversation $c) => $this->serializeConversation($c, $messengerField),
+            fn (MessengerConversation $c) => $this->serializeConversation($c, $messengerField, $wappiOwnPhone),
         );
 
         $filterPipelines = Pipeline::query()
@@ -163,13 +164,21 @@ class MessengerController extends Controller
 
             if ($conversation) {
                 $this->unread->markConversationRead($conversation);
+                $this->wappi->repairStoredParticipantPhone(
+                    $conversation,
+                    $this->wappi->ownProfilePhone($wappiIntegration),
+                );
+                $conversation->refresh();
 
                 $selectedConversation = [
                     'id' => $conversation->id,
                     'channel' => $conversation->channel,
                     'channel_label' => IntegrationProvider::tryFrom($conversation->channel)?->label() ?? $conversation->channel,
                     'participant_name' => $conversation->participant_name,
-                    'participant_username' => $conversation->participant_username,
+                    'participant_username' => $this->wappi->correctedParticipantUsername(
+                        $conversation,
+                        $this->wappi->ownProfilePhone($wappiIntegration),
+                    ),
                     'participant_id' => $conversation->participant_id,
                     'client_id' => $conversation->client_id,
                     'display_name' => $this->clientFields->resolveMessengerDisplayName(
@@ -241,6 +250,15 @@ class MessengerController extends Controller
         ]);
     }
 
+    public function unreadCount(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        return response()->json([
+            'unread_count' => $this->unread->totalUnreadForCompany((int) $user->company_id, $user),
+        ]);
+    }
+
     public function updates(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -260,6 +278,7 @@ class MessengerController extends Controller
         $facebookIntegration = $this->facebook->integrationForCompany($companyId);
         $wappiIntegration = $this->wappi->integrationForCompany($companyId);
         $telegramIntegration = $this->telegram->integrationForCompany($companyId);
+        $wappiOwnPhone = $this->wappi->ownProfilePhone($wappiIntegration);
 
         $channels = array_values(array_filter([
             $instagramIntegration ? IntegrationProvider::Instagram->value : null,
@@ -287,7 +306,7 @@ class MessengerController extends Controller
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
             ->get()
-            ->map(fn (MessengerConversation $c) => $this->serializeConversation($c, $messengerField))
+            ->map(fn (MessengerConversation $c) => $this->serializeConversation($c, $messengerField, $wappiOwnPhone))
             ->values();
 
         $messages = [];
@@ -330,6 +349,7 @@ class MessengerController extends Controller
             'server_time' => $serverTime,
             'conversations' => $conversationRows,
             'messages' => $messages,
+            'unread_count' => $this->unread->totalUnreadForCompany($companyId, $user),
         ]);
     }
 
@@ -548,6 +568,27 @@ class MessengerController extends Controller
         return redirect()
             ->route('messenger.index', ['conversation' => $conversation->id])
             ->with('success', __('Данные клиента сохранены.'));
+    }
+
+    public function markUnread(Request $request, MessengerConversation $conversation): JsonResponse|RedirectResponse
+    {
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
+        abort_unless($conversation->company_id === $companyId, 403);
+        abort_unless($this->chatDistribution->userCanViewConversation($user, $conversation), 403);
+
+        $unreadCount = $this->unread->markConversationUnread($conversation);
+
+        if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'conversation_id' => $conversation->id,
+                'unread_count' => $unreadCount,
+            ]);
+        }
+
+        return redirect()
+            ->route('messenger.index')
+            ->with('success', __('Чат отмечен как непрочитанный.'));
     }
 
     public function updateDealStage(Request $request, MessengerConversation $conversation): RedirectResponse
@@ -769,8 +810,11 @@ class MessengerController extends Controller
     /**
      * @return array<string, mixed>
      */
-    protected function serializeConversation(MessengerConversation $conversation, mixed $messengerField = null): array
-    {
+    protected function serializeConversation(
+        MessengerConversation $conversation,
+        mixed $messengerField = null,
+        ?string $wappiOwnPhone = null,
+    ): array {
         $deal = $conversation->client?->deals?->first();
 
         return [
@@ -779,7 +823,7 @@ class MessengerController extends Controller
             'channel_label' => IntegrationProvider::tryFrom($conversation->channel)?->label() ?? $conversation->channel,
             'participant_id' => $conversation->participant_id,
             'participant_name' => $conversation->participant_name,
-            'participant_username' => $conversation->participant_username,
+            'participant_username' => $this->wappi->correctedParticipantUsername($conversation, $wappiOwnPhone),
             'display_name' => $this->clientFields->resolveMessengerDisplayName(
                 $conversation,
                 $conversation->client,

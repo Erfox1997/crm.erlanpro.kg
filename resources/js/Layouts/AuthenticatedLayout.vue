@@ -4,6 +4,7 @@ import CrmSidebarLink from '@/Components/CrmSidebarLink.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import LanguageSwitcher from '@/Components/LanguageSwitcher.vue';
+import { bindNativeAppBadgeLifecycle, syncAppBadge } from '@/utils/syncAppBadge';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -88,6 +89,20 @@ onMounted(() => {
 
 watch(navMode, (v) => {
     localStorage.setItem(NAV_MODE_KEY, v);
+});
+
+const messengerUnreadTotal = computed(() => Number(page.props.messengerUnread) || 0);
+
+watch(messengerUnreadTotal, (count) => {
+    syncAppBadge(count);
+}, { immediate: true });
+
+let unbindNativeBadge = null;
+onMounted(() => {
+    unbindNativeBadge = bindNativeAppBadgeLifecycle(() => messengerUnreadTotal.value);
+});
+onUnmounted(() => {
+    unbindNativeBadge?.();
 });
 
 const collapseLabels = computed(

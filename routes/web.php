@@ -154,6 +154,7 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
 
     Route::get('/messenger', [MessengerController::class, 'index'])->name('messenger.index');
     Route::get('/messenger/updates', [MessengerController::class, 'updates'])->name('messenger.updates');
+    Route::get('/messenger/unread-count', [MessengerController::class, 'unreadCount'])->name('messenger.unread-count');
     Route::post('/messenger/sync', [MessengerController::class, 'sync'])->name('messenger.sync');
     Route::delete('/messenger/conversations', [MessengerController::class, 'clearAll'])->name('messenger.clear');
     Route::post('/messenger/ai-improve', [MessengerController::class, 'improveWithAi'])->name('messenger.ai-improve');
@@ -180,6 +181,7 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::delete('/messenger/quick-replies/{quickReply}', [MessengerQuickReplyController::class, 'destroy'])->name('messenger.quick-replies.destroy');
     Route::post('/messenger/conversations/{conversation}/messages', [MessengerController::class, 'send'])->name('messenger.send');
     Route::post('/messenger/conversations/{conversation}/client', [MessengerController::class, 'saveClient'])->name('messenger.save-client');
+    Route::post('/messenger/conversations/{conversation}/mark-unread', [MessengerController::class, 'markUnread'])->name('messenger.mark-unread');
     Route::patch('/messenger/conversations/{conversation}/deal-stage', [MessengerController::class, 'updateDealStage'])->name('messenger.update-deal-stage');
     Route::post('/messenger/conversations/{conversation}/quick-replies/{quickReply}', [MessengerController::class, 'sendQuickReply'])->name('messenger.send-quick-reply');
     Route::post('/messenger/conversations/{conversation}/tasks', [MessengerTaskController::class, 'store'])
