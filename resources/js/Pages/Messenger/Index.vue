@@ -115,7 +115,8 @@ const slashActiveIndex = ref(0);
 const messageInput = ref(null);
 const imageInput = ref(null);
 const sendError = ref('');
-const quickReplyTargetId = ref(null);
+const messageMenuId = ref(null);
+const replyToMessage = ref(null);
 const chatToast = ref(null);
 
 let pollSince = new Date(Date.now() - 15_000).toISOString();
@@ -792,6 +793,10 @@ watch(
 
         if (conversationChanged || localMessages.value.length === 0) {
             localMessages.value = serverMessages.map((message) => withStableIdentity(message, message.id));
+            if (conversationChanged) {
+                messageMenuId.value = null;
+                replyToMessage.value = null;
+            }
             shouldStickToBottom = true;
             scrollToBottom(false);
             return;
@@ -873,6 +878,7 @@ watch(
 
 onMounted(() => {
     document.addEventListener('visibilitychange', onVisibilityChange);
+    document.addEventListener('click', closeMessageMenu);
     startPolling();
 
     if (isMiniApp.value) {
@@ -977,6 +983,7 @@ async function registerNativePushToken() {
 
 onUnmounted(() => {
     document.removeEventListener('visibilitychange', onVisibilityChange);
+    document.removeEventListener('click', closeMessageMenu);
     stopPolling();
     clearImagePreview();
     if (chatToastTimer) {
@@ -1073,7 +1080,8 @@ function messengerVisitParams(extra = {}) {
 }
 
 function openConversation(id) {
-    quickReplyTargetId.value = null;
+    messageMenuId.value = null;
+    replyToMessage.value = null;
     router.get(
         route('messenger.index'),
         messengerVisitParams({ conversation: id }),
@@ -1089,14 +1097,123 @@ function backToConversationList() {
     );
 }
 
-function toggleQuickReplyTarget(messageId) {
-    const message = localMessages.value.find((item) => item.id === messageId);
-    if (!message || !canSaveAsQuickReply(message)) {
-        quickReplyTargetId.value = null;
+function messagePlainText(message) {
+    const body = (message?.body || '').trim();
+    if (body) {
+        return body;
+    }
+
+    const first = Array.isArray(message?.attachments) ? message.attachments[0] : null;
+    if (!first) {
+        return '';
+    }
+
+    return attachmentLabel(first.type);
+}
+
+function messagePreviewShort(message, max = 80) {
+    const text = messagePlainText(message);
+    if (text.length <= max) {
+        return text;
+    }
+
+    return `${text.slice(0, max - 1)}…`;
+}
+
+function openMessageMenu(message) {
+    if (!message || String(message.id).startsWith('tmp-') || message.status === 'pending') {
+        messageMenuId.value = null;
         return;
     }
 
-    quickReplyTargetId.value = quickReplyTargetId.value === messageId ? null : messageId;
+    messageMenuId.value = messageMenuId.value === message.id ? null : message.id;
+}
+
+function closeMessageMenu() {
+    messageMenuId.value = null;
+}
+
+async function copyMessage(message) {
+    const text = messagePlainText(message);
+    if (!text) {
+        closeMessageMenu();
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(text);
+        showChatToast(t('messenger.copiedToast'), 'success', 1400);
+    } catch {
+        // Fallback for older WebViews
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.left = '-9999px';
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand('copy');
+        document.body.removeChild(area);
+        showChatToast(t('messenger.copiedToast'), 'success', 1400);
+    }
+
+    closeMessageMenu();
+}
+
+function editMessage(message) {
+    const text = (message?.body || '').trim();
+    if (!text) {
+        closeMessageMenu();
+        return;
+    }
+
+    sendForm.body = text;
+    closeMessageMenu();
+    nextTick(() => messageInput.value?.focus());
+}
+
+function replyToChatMessage(message) {
+    if (!message) {
+        return;
+    }
+
+    replyToMessage.value = {
+        id: message.id,
+        body: messagePlainText(message),
+        direction: message.direction,
+    };
+    closeMessageMenu();
+    nextTick(() => messageInput.value?.focus());
+}
+
+function clearReplyToMessage() {
+    replyToMessage.value = null;
+}
+
+function canEditMessage(message) {
+    return Boolean((message?.body || '').trim());
+}
+
+function canCopyMessage(message) {
+    return Boolean(messagePlainText(message));
+}
+
+function saveMessageAsQuickReply(message) {
+    closeMessageMenu();
+    openSaveQuickReplyModal(message);
+}
+
+function buildSendBodyWithReply(body) {
+    if (!replyToMessage.value) {
+        return body;
+    }
+
+    const quote = messagePreviewShort(replyToMessage.value, 120);
+    if (!quote) {
+        return body;
+    }
+
+    return body ? `«${quote}»\n\n${body}` : `«${quote}»`;
 }
 
 function onSalePending({ clientId, total, currency: saleCurrency }) {
@@ -1325,7 +1442,8 @@ async function sendMessage() {
         return;
     }
 
-    const body = sendForm.body.trim();
+    const typedBody = sendForm.body.trim();
+    const body = buildSendBodyWithReply(typedBody);
     const imageFile = sendForm.image;
 
     if (!body && !imageFile) {
@@ -1366,6 +1484,8 @@ async function sendMessage() {
     }
 
     sendForm.reset('body', 'audio', 'image');
+    replyToMessage.value = null;
+    messageMenuId.value = null;
     imagePreviewUrl.value = null;
     if (imageInput.value) {
         imageInput.value.value = '';
@@ -1404,8 +1524,8 @@ async function sendMessage() {
             || error?.response?.data?.errors?.body?.[0]
             || t('messenger.err.message'),
         );
-        if (!sendForm.body && body) {
-            sendForm.body = body;
+        if (!sendForm.body && typedBody) {
+            sendForm.body = typedBody;
         }
     }
 }
@@ -2530,38 +2650,70 @@ function scrollToBottom(smooth = false) {
                                 :class="item.message.direction === 'outbound' ? 'justify-end' : 'justify-start'"
                             >
                             <div
-                                class="group relative max-w-[82%] rounded-lg px-2 py-1.5 text-[13px] leading-snug shadow-sm sm:max-w-[min(100%,28rem)] sm:px-3 sm:py-2 sm:text-sm"
+                                class="group relative max-w-[82%] cursor-pointer rounded-lg px-2 py-1.5 text-[13px] leading-snug shadow-sm sm:max-w-[min(100%,28rem)] sm:px-3 sm:py-2 sm:text-sm"
                                 :class="[
                                     item.message.direction === 'outbound'
                                         ? 'rounded-tr-none bg-[#d9fdd3]'
                                         : 'rounded-tl-none bg-white',
                                     item.message.status === 'failed' ? 'ring-1 ring-red-300 opacity-80' : '',
+                                    messageMenuId === item.message.id ? 'ring-1 ring-[#00a884]/60' : '',
                                 ]"
-                                @click="toggleQuickReplyTarget(item.message.id)"
+                                @click.stop="openMessageMenu(item.message)"
                             >
-                                <button
-                                    v-if="canSaveAsQuickReply(item.message)"
-                                    type="button"
-                                    class="absolute -top-2 right-1 z-10 rounded-full bg-white p-1 text-[#54656f] opacity-0 shadow-sm ring-1 ring-[#d1d7db] transition hover:bg-[#f0f2f5] hover:text-[#008069] sm:group-hover:opacity-100"
-                                    :class="{ 'opacity-100': quickReplyTargetId === item.message.id }"
-:title="t('messenger.toQuickReplies')"
-                                    @click.stop="openSaveQuickReplyModal(item.message)"
+                                <div
+                                    v-if="messageMenuId === item.message.id"
+                                    class="absolute z-30 min-w-[12rem] overflow-hidden rounded-lg bg-white py-1 text-sm text-[#111b21] shadow-lg ring-1 ring-black/10"
+                                    :class="item.message.direction === 'outbound'
+                                        ? 'right-0 top-full mt-1'
+                                        : 'left-0 top-full mt-1'"
+                                    @click.stop
                                 >
-                                    <svg
-                                        class="h-3.5 w-3.5"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        aria-hidden="true"
+                                    <button
+                                        v-if="canCopyMessage(item.message)"
+                                        type="button"
+                                        class="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-[#f0f2f5]"
+                                        @click="copyMessage(item.message)"
                                     >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                                        />
-                                    </svg>
-                                </button>
+                                        <svg class="h-4 w-4 shrink-0 text-[#54656f]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                            <rect x="9" y="9" width="13" height="13" rx="2" />
+                                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                                        </svg>
+                                        <span>{{ t('messenger.copy') }}</span>
+                                    </button>
+                                    <button
+                                        v-if="canEditMessage(item.message)"
+                                        type="button"
+                                        class="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-[#f0f2f5]"
+                                        @click="editMessage(item.message)"
+                                    >
+                                        <svg class="h-4 w-4 shrink-0 text-[#54656f]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                        </svg>
+                                        <span>{{ t('messenger.edit') }}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-[#f0f2f5]"
+                                        @click="replyToChatMessage(item.message)"
+                                    >
+                                        <svg class="h-4 w-4 shrink-0 text-[#54656f]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4" />
+                                        </svg>
+                                        <span>{{ t('messenger.replyTo') }}</span>
+                                    </button>
+                                    <button
+                                        v-if="canSaveAsQuickReply(item.message)"
+                                        type="button"
+                                        class="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-[#f0f2f5]"
+                                        @click="saveMessageAsQuickReply(item.message)"
+                                    >
+                                        <svg class="h-4 w-4 shrink-0 text-[#54656f]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                                        </svg>
+                                        <span>{{ t('messenger.toQuickReplies') }}</span>
+                                    </button>
+                                </div>
 
                                 <p
                                     v-if="item.message.body?.trim()"
@@ -2683,6 +2835,28 @@ function scrollToBottom(smooth = false) {
                         class="shrink-0 bg-[#f0f2f5] px-2 py-2 sm:px-4 sm:py-3"
                         @submit.prevent="sendMessage"
                     >
+                        <div
+                            v-if="replyToMessage"
+                            class="mb-2 flex items-start gap-2 rounded-lg border-l-4 border-[#00a884] bg-white px-3 py-2 shadow-sm"
+                        >
+                            <div class="min-w-0 flex-1">
+                                <p class="text-xs font-medium text-[#008069]">
+                                    {{ t('messenger.replyingTo') }}
+                                </p>
+                                <p class="mt-0.5 truncate text-sm text-[#54656f]">
+                                    {{ replyToMessage.body }}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                class="rounded-full p-1.5 text-[#667781] hover:bg-[#f0f2f5]"
+                                :title="t('messenger.cancelReply')"
+                                @click="clearReplyToMessage"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
                         <div
                             v-if="isRecording"
                             class="mb-2 flex items-center justify-between rounded-lg bg-white px-4 py-2 text-sm text-[#111b21] shadow-sm"
