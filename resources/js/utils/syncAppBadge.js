@@ -97,13 +97,26 @@ export function bindNativeAppBadgeLifecycle(getCount) {
     refresh();
 
     if (App?.addListener) {
-        App.addListener('appStateChange', ({ isActive }) => {
-            if (isActive) {
-                refresh();
-            }
-        }).then((handle) => {
-            removeAppListener = () => handle?.remove?.();
-        }).catch(() => {});
+        try {
+            const listenerResult = App.addListener('appStateChange', ({ isActive }) => {
+                if (isActive) {
+                    refresh();
+                }
+            });
+
+            // Capacitor 3+ returns a Promise; older/bridged Plugins API may return the handle directly.
+            Promise.resolve(listenerResult).then((handle) => {
+                removeAppListener = () => {
+                    try {
+                        handle?.remove?.();
+                    } catch {
+                        // ignore
+                    }
+                };
+            }).catch(() => {});
+        } catch {
+            // App plugin optional
+        }
     }
 
     const onVisible = () => {
