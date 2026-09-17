@@ -208,6 +208,11 @@ const dealStageForm = useForm({
     stage_id: '',
 });
 
+const dealPipelineForm = useForm({
+    pipeline_id: '',
+    stage_id: '',
+});
+
 const isRecording = ref(false);
 const recordingSeconds = ref(0);
 let mediaRecorder = null;
@@ -1103,6 +1108,14 @@ function stageBadgeStyle(color) {
     };
 }
 
+function pipelineNameStyle(color) {
+    if (!color) {
+        return undefined;
+    }
+
+    return { color };
+}
+
 function messengerVisitParams(extra = {}) {
     return {
         ...(isMiniApp.value ? { mini: 1 } : {}),
@@ -1893,11 +1906,44 @@ function updateDealStage() {
     );
 }
 
+function updateDealPipeline() {
+    if (!props.selectedConversation || !dealPipelineForm.pipeline_id) {
+        return;
+    }
+
+    if (Number(dealPipelineForm.pipeline_id) === props.funnelDeal?.pipeline_id) {
+        return;
+    }
+
+    const pipeline = (props.filterPipelines || []).find(
+        (item) => Number(item.id) === Number(dealPipelineForm.pipeline_id),
+    );
+    const firstStage = pipeline?.stages?.[0];
+    if (!firstStage) {
+        return;
+    }
+
+    dealPipelineForm.stage_id = String(firstStage.id);
+    dealPipelineForm.patch(
+        route('messenger.update-deal-pipeline', props.selectedConversation.id),
+        { preserveScroll: true },
+    );
+}
+
 watch(
     () => props.funnelDeal?.stage_id,
     (stageId) => {
         dealStageForm.stage_id = stageId ? String(stageId) : '';
         dealStageForm.clearErrors();
+    },
+    { immediate: true },
+);
+
+watch(
+    () => props.funnelDeal?.pipeline_id,
+    (pipelineId) => {
+        dealPipelineForm.pipeline_id = pipelineId ? String(pipelineId) : '';
+        dealPipelineForm.clearErrors();
     },
     { immediate: true },
 );
@@ -2734,9 +2780,13 @@ function scrollToBottom(smooth = false) {
                                     />
                                     <p
                                         v-if="conversation.pipeline_name"
-                                        class="flex min-w-0 items-center gap-1 truncate text-sm leading-tight"
-                                        :class="conversation.unread_count > 0 ? 'font-medium text-[#111b21]' : 'text-[#667781]'"
+                                        class="flex min-w-0 items-center gap-1 truncate text-sm leading-tight font-medium"
+                                        :style="pipelineNameStyle(conversation.pipeline_color) || (conversation.unread_count > 0 ? undefined : { color: '#667781' })"
                                     >
+                                        <span
+                                            v-if="conversation.pipeline_icon"
+                                            class="shrink-0 text-[13px] leading-none"
+                                        >{{ conversation.pipeline_icon }}</span>
                                         <span class="truncate">
                                             {{ conversation.pipeline_name }}
                                         </span>
@@ -2890,14 +2940,27 @@ function scrollToBottom(smooth = false) {
                         v-if="funnelDeal"
                         class="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#d1d7db] bg-[#f7f8fa] px-2.5 py-2 sm:px-4"
                     >
-                        <span class="text-xs font-medium text-[#111b21]">
-                            {{ funnelDeal.pipeline_name }}
-                        </span>
+                        <select
+                            v-model="dealPipelineForm.pipeline_id"
+                            class="min-w-0 max-w-[11rem] rounded-md border-[#d1d7db] bg-white py-1 pl-2 pr-7 text-xs font-medium shadow-sm focus:border-[#00a884] focus:ring-[#00a884]"
+                            :style="pipelineNameStyle(funnelDeal.pipeline_color) || { color: '#111b21' }"
+                            :disabled="dealPipelineForm.processing || dealStageForm.processing"
+                            :title="t('messenger.changePipeline')"
+                            @change="updateDealPipeline"
+                        >
+                            <option
+                                v-for="pipeline in filterPipelines"
+                                :key="pipeline.id"
+                                :value="String(pipeline.id)"
+                            >
+                                {{ pipeline.icon ? `${pipeline.icon} ` : '' }}{{ pipeline.name }}
+                            </option>
+                        </select>
                         <span class="text-xs text-[#667781]">·</span>
                         <select
                             v-model="dealStageForm.stage_id"
                             class="min-w-0 max-w-[12rem] rounded-md border-[#d1d7db] bg-white py-1 pl-2 pr-7 text-xs text-[#111b21] shadow-sm focus:border-[#00a884] focus:ring-[#00a884]"
-                            :disabled="dealStageForm.processing"
+                            :disabled="dealStageForm.processing || dealPipelineForm.processing"
                             @change="updateDealStage"
                         >
                             <option

@@ -28,12 +28,15 @@ const showCreateModal = ref(false);
 const showEditModal = ref(false);
 const showFolderModal = ref(false);
 const showMoveModal = ref(false);
+const showItemModal = ref(false);
 const selectedItem = ref(null);
+const viewingItem = ref(null);
 const moveItem = ref(null);
 const editingFolder = ref(null);
 const importInput = ref(null);
 const searchQuery = ref('');
-const selectedFolderKey = ref('all');
+/** null = home (folders), 'root' = unfiled, otherwise folder id string */
+const currentFolderKey = ref(null);
 
 const createForm = useForm({
     type: 'text',
@@ -123,8 +126,43 @@ const folderCounts = computed(() => {
     return { ...counts, ...live };
 });
 
+const isHomeView = computed(() => currentFolderKey.value === null);
+
+const folderEntries = computed(() => {
+    const entries = [
+        {
+            key: 'root',
+            name: t('quickReplies.folders.root'),
+            count: rootCount.value,
+            kind: 'root',
+            folder: null,
+        },
+    ];
+
+    for (const folder of props.folders) {
+        entries.push({
+            key: String(folder.id),
+            name: folder.name,
+            count: folderCounts.value[folder.id] || 0,
+            kind: 'folder',
+            folder,
+        });
+    }
+
+    return entries;
+});
+
+const visibleFolderEntries = computed(() => {
+    const query = searchQuery.value.trim().toLowerCase();
+    if (!query || !isHomeView.value) {
+        return folderEntries.value;
+    }
+
+    return folderEntries.value.filter((entry) => entry.name.toLowerCase().includes(query));
+});
+
 const stats = computed(() => {
-    const list = filteredByFolder.value;
+    const list = isHomeView.value ? props.quickReplies : filteredByFolder.value;
     return {
         total: list.length,
         text: list.filter((item) => item.type === 'text').length,
@@ -134,10 +172,10 @@ const stats = computed(() => {
 });
 
 const filteredByFolder = computed(() => {
-    const key = selectedFolderKey.value;
+    const key = currentFolderKey.value;
 
-    if (key === 'all') {
-        return props.quickReplies;
+    if (key === null) {
+        return [];
     }
 
     if (key === 'root') {
@@ -161,7 +199,6 @@ const filteredQuickReplies = computed(() => {
             item.title,
             item.body,
             typeMeta.value[item.type]?.label,
-            folderNameFor(item.folder_id),
         ]
             .filter(Boolean)
             .join(' ')
@@ -196,25 +233,25 @@ const editAttachmentLabel = computed(() => {
 });
 
 const selectedFolderTitle = computed(() => {
-    if (selectedFolderKey.value === 'all') {
-        return t('quickReplies.folders.all');
+    if (currentFolderKey.value === null) {
+        return t('quickReplies.folders.title');
     }
-    if (selectedFolderKey.value === 'root') {
+    if (currentFolderKey.value === 'root') {
         return t('quickReplies.folders.root');
     }
-    const folder = props.folders.find((item) => String(item.id) === String(selectedFolderKey.value));
-    return folder?.name || t('quickReplies.folders.all');
+    const folder = props.folders.find((item) => String(item.id) === String(currentFolderKey.value));
+    return folder?.name || t('quickReplies.folders.title');
 });
 
 watch(
     () => props.folders,
     (folders) => {
         if (
-            selectedFolderKey.value !== 'all'
-            && selectedFolderKey.value !== 'root'
-            && !folders.some((folder) => String(folder.id) === String(selectedFolderKey.value))
+            currentFolderKey.value !== null
+            && currentFolderKey.value !== 'root'
+            && !folders.some((folder) => String(folder.id) === String(currentFolderKey.value))
         ) {
-            selectedFolderKey.value = 'all';
+            currentFolderKey.value = null;
         }
     },
 );
@@ -231,10 +268,30 @@ function folderNameFor(folderId) {
 }
 
 function defaultFolderIdForCreate() {
-    if (selectedFolderKey.value === 'root' || selectedFolderKey.value === 'all') {
+    if (currentFolderKey.value === null || currentFolderKey.value === 'root') {
         return '';
     }
-    return String(selectedFolderKey.value);
+    return String(currentFolderKey.value);
+}
+
+function openFolder(key) {
+    currentFolderKey.value = key;
+    searchQuery.value = '';
+}
+
+function goHome() {
+    currentFolderKey.value = null;
+    searchQuery.value = '';
+}
+
+function openItemModal(item) {
+    viewingItem.value = item;
+    showItemModal.value = true;
+}
+
+function closeItemModal() {
+    showItemModal.value = false;
+    viewingItem.value = null;
 }
 
 function openCreateModal() {
@@ -259,6 +316,7 @@ function openEditModal(item) {
     editForm.body = item.body || '';
     editForm.attachment = null;
     editForm.folder_id = item.folder_id ? String(item.folder_id) : '';
+    showItemModal.value = false;
     showEditModal.value = true;
 }
 
@@ -313,8 +371,8 @@ function deleteFolder(folder) {
     useForm({}).delete(route('messenger.quick-replies.folders.destroy', folder.id), {
         preserveScroll: true,
         onSuccess: () => {
-            if (String(selectedFolderKey.value) === String(folder.id)) {
-                selectedFolderKey.value = 'all';
+            if (String(currentFolderKey.value) === String(folder.id)) {
+                currentFolderKey.value = null;
             }
         },
     });
@@ -324,6 +382,7 @@ function openMoveModal(item) {
     moveItem.value = item;
     moveForm.clearErrors();
     moveForm.folder_id = item.folder_id ? String(item.folder_id) : '';
+    showItemModal.value = false;
     showMoveModal.value = true;
 }
 
@@ -434,13 +493,8 @@ function deleteItem(item) {
 
     useForm({}).delete(route('messenger.quick-replies.destroy', item.id), {
         preserveScroll: true,
+        onSuccess: () => closeItemModal(),
     });
-}
-
-function folderButtonClass(active) {
-    return active
-        ? 'bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200'
-        : 'text-slate-700 hover:bg-slate-50';
 }
 </script>
 
@@ -508,7 +562,7 @@ function folderButtonClass(active) {
                                 <input
                                     v-model="searchQuery"
                                     type="search"
-                                    :placeholder="t('quickReplies.searchPh')"
+                                    :placeholder="isHomeView ? t('quickReplies.folders.searchFoldersPh') : t('quickReplies.searchPh')"
                                     class="w-full rounded-xl border-slate-200 bg-white py-2 pl-9 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-violet-400 focus:ring-violet-400"
                                 >
                             </div>
@@ -551,84 +605,104 @@ function folderButtonClass(active) {
                         <InputError class="mt-2" :message="importForm.errors.file" />
                     </div>
 
-                    <div class="flex min-h-[28rem] flex-col lg:flex-row">
-                        <aside class="w-full shrink-0 border-b border-slate-100 bg-slate-50/70 lg:w-64 lg:border-b-0 lg:border-r">
-                            <div class="flex items-center justify-between gap-2 px-4 py-3">
-                                <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <div class="min-h-[28rem]">
+                        <!-- Home: folders like a file manager -->
+                        <div v-if="isHomeView">
+                            <div class="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
+                                <h3 class="text-sm font-semibold text-slate-900">
                                     {{ t('quickReplies.folders.title') }}
                                 </h3>
                                 <button
                                     type="button"
-                                    class="rounded-lg px-2 py-1 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
+                                    class="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-50"
                                     @click="openCreateFolderModal"
                                 >
                                     + {{ t('quickReplies.folders.create') }}
                                 </button>
                             </div>
 
-                            <div class="space-y-1 px-2 pb-3">
-                                <button
-                                    type="button"
-                                    class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-medium transition"
-                                    :class="folderButtonClass(selectedFolderKey === 'all')"
-                                    @click="selectedFolderKey = 'all'"
-                                >
-                                    <span>{{ t('quickReplies.folders.all') }}</span>
-                                    <span class="text-xs text-slate-400">{{ quickReplies.length }}</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-medium transition"
-                                    :class="folderButtonClass(selectedFolderKey === 'root')"
-                                    @click="selectedFolderKey = 'root'"
-                                >
-                                    <span>{{ t('quickReplies.folders.root') }}</span>
-                                    <span class="text-xs text-slate-400">{{ rootCount }}</span>
-                                </button>
+                            <div
+                                v-if="visibleFolderEntries.length === 0"
+                                class="px-6 py-14 text-center text-sm text-slate-500"
+                            >
+                                {{ searchQuery
+                                    ? t('quickReplies.noneForQuery', { q: searchQuery })
+                                    : t('quickReplies.folders.emptyHome') }}
+                            </div>
 
+                            <div
+                                v-else
+                                class="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 sm:p-5 md:grid-cols-4"
+                            >
                                 <div
-                                    v-for="folder in folders"
-                                    :key="folder.id"
-                                    class="group flex items-center gap-1"
+                                    v-for="entry in visibleFolderEntries"
+                                    :key="entry.key"
+                                    class="group relative"
                                 >
                                     <button
                                         type="button"
-                                        class="flex min-w-0 flex-1 items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-medium transition"
-                                        :class="folderButtonClass(String(selectedFolderKey) === String(folder.id))"
-                                        @click="selectedFolderKey = String(folder.id)"
+                                        class="flex w-full flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-5 text-center transition hover:border-violet-300 hover:bg-violet-50/40 hover:shadow-sm"
+                                        @click="openFolder(entry.key)"
                                     >
-                                        <span class="truncate">{{ folder.name }}</span>
-                                        <span class="ml-2 shrink-0 text-xs text-slate-400">{{ folderCounts[folder.id] || 0 }}</span>
+                                        <span class="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-3xl shadow-sm ring-1 ring-amber-200/80">
+                                            📁
+                                        </span>
+                                        <span class="w-full truncate text-sm font-semibold text-slate-800">
+                                            {{ entry.name }}
+                                        </span>
+                                        <span class="text-xs text-slate-400">
+                                            {{ t('quickReplies.folders.itemsCount', { count: entry.count }) }}
+                                        </span>
                                     </button>
-                                    <button
-                                        type="button"
-                                        class="rounded-lg p-1.5 text-slate-400 opacity-100 transition hover:bg-white hover:text-slate-700 lg:opacity-0 lg:group-hover:opacity-100"
-                                        :title="t('common.edit')"
-                                        @click="openRenameFolderModal(folder)"
+
+                                    <div
+                                        v-if="entry.kind === 'folder'"
+                                        class="absolute right-1.5 top-1.5 flex gap-0.5 opacity-100 transition lg:opacity-0 lg:group-hover:opacity-100"
                                     >
-                                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
-                                        </svg>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="rounded-lg p-1.5 text-slate-400 opacity-100 transition hover:bg-red-50 hover:text-red-600 lg:opacity-0 lg:group-hover:opacity-100"
-                                        :title="t('common.delete')"
-                                        @click="deleteFolder(folder)"
-                                    >
-                                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                                        </svg>
-                                    </button>
+                                        <button
+                                            type="button"
+                                            class="rounded-lg bg-white/90 p-1.5 text-slate-500 shadow-sm ring-1 ring-slate-200 hover:text-slate-800"
+                                            :title="t('common.edit')"
+                                            @click.stop="openRenameFolderModal(entry.folder)"
+                                        >
+                                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="rounded-lg bg-white/90 p-1.5 text-slate-500 shadow-sm ring-1 ring-slate-200 hover:text-red-600"
+                                            :title="t('common.delete')"
+                                            @click.stop="deleteFolder(entry.folder)"
+                                        >
+                                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </aside>
+                        </div>
 
-                        <div class="min-w-0 flex-1">
+                        <!-- Inside a folder -->
+                        <div v-else>
                             <div class="border-b border-slate-100 px-4 py-3 sm:px-5">
-                                <h3 class="text-sm font-semibold text-slate-900">
-                                    {{ selectedFolderTitle }}
-                                </h3>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-violet-700 transition hover:bg-violet-50"
+                                        @click="goHome"
+                                    >
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                        </svg>
+                                        {{ t('quickReplies.folders.back') }}
+                                    </button>
+                                    <span class="text-slate-300">/</span>
+                                    <h3 class="text-sm font-semibold text-slate-900">
+                                        {{ selectedFolderTitle }}
+                                    </h3>
+                                </div>
                             </div>
 
                             <div
@@ -674,96 +748,190 @@ function folderButtonClass(active) {
                                 v-else
                                 class="divide-y divide-slate-100"
                             >
-                                <div
+                                <button
                                     v-for="item in filteredQuickReplies"
                                     :key="item.id"
-                                    class="flex flex-col gap-3 px-4 py-3.5 transition hover:bg-slate-50/80 sm:flex-row sm:items-center sm:gap-4 sm:px-5"
+                                    type="button"
+                                    class="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-slate-50/80 sm:gap-4 sm:px-5"
+                                    @click="openItemModal(item)"
                                 >
-                                    <div class="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
-                                        <span
-                                            class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset"
-                                            :class="metaFor(item.type).badge"
-                                        >
-                                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                                <path stroke-linecap="round" stroke-linejoin="round" :d="metaFor(item.type).icon" />
-                                            </svg>
-                                            {{ metaFor(item.type).label }}
-                                        </span>
+                                    <span
+                                        class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset"
+                                        :class="metaFor(item.type).badge"
+                                    >
+                                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                            <path stroke-linecap="round" stroke-linejoin="round" :d="metaFor(item.type).icon" />
+                                        </svg>
+                                        {{ metaFor(item.type).label }}
+                                    </span>
 
-                                        <div class="min-w-0">
-                                            <p class="font-mono text-sm font-bold text-slate-900">
-                                                /{{ item.title }}
-                                            </p>
-                                            <p
-                                                v-if="selectedFolderKey === 'all'"
-                                                class="truncate text-xs text-slate-400"
-                                            >
-                                                {{ folderNameFor(item.folder_id) }}
-                                            </p>
+                                    <div class="min-w-0 shrink-0">
+                                        <p class="font-mono text-sm font-bold text-slate-900">
+                                            /{{ item.title }}
+                                        </p>
+                                    </div>
+
+                                    <div class="min-w-0 flex-1">
+                                        <p
+                                            v-if="item.type === 'text'"
+                                            class="truncate text-sm text-slate-500"
+                                        >
+                                            {{ previewText(item) }}
+                                        </p>
+
+                                        <div
+                                            v-else-if="item.type === 'audio'"
+                                            class="flex items-center gap-2"
+                                        >
+                                            <span class="truncate text-sm text-slate-400">{{ previewText(item) }}</span>
                                         </div>
 
-                                        <div class="min-w-0 flex-1">
-                                            <p
-                                                v-if="item.type === 'text'"
-                                                class="truncate text-sm text-slate-500"
+                                        <div
+                                            v-else
+                                            class="flex items-center gap-2"
+                                        >
+                                            <img
+                                                v-if="item.attachment_url"
+                                                :src="item.attachment_url"
+                                                alt=""
+                                                class="h-8 w-8 shrink-0 rounded-lg border border-slate-200 object-cover"
                                             >
+                                            <p class="truncate text-sm text-slate-500">
                                                 {{ previewText(item) }}
                                             </p>
-
-                                            <div
-                                                v-else-if="item.type === 'audio'"
-                                                class="flex items-center gap-2"
-                                            >
-                                                <span class="truncate text-sm text-slate-400">{{ previewText(item) }}</span>
-                                            </div>
-
-                                            <div
-                                                v-else
-                                                class="flex items-center gap-2"
-                                            >
-                                                <img
-                                                    v-if="item.attachment_url"
-                                                    :src="item.attachment_url"
-                                                    alt=""
-                                                    class="h-8 w-8 shrink-0 rounded-lg border border-slate-200 object-cover"
-                                                >
-                                                <p class="truncate text-sm text-slate-500">
-                                                    {{ previewText(item) }}
-                                                </p>
-                                            </div>
                                         </div>
                                     </div>
 
-                                    <div class="flex shrink-0 flex-wrap items-center gap-2 sm:ml-auto">
-                                        <button
-                                            type="button"
-                                            class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                            @click="openMoveModal(item)"
-                                        >
-                                            {{ t('quickReplies.folders.move') }}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                            @click="openEditModal(item)"
-                                        >
-                                            {{ t('common.edit') }}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-red-600 transition hover:border-red-200 hover:bg-red-50"
-                                            @click="deleteItem(item)"
-                                        >
-                                            {{ t('common.delete') }}
-                                        </button>
-                                    </div>
-                                </div>
+                                    <svg class="h-4 w-4 shrink-0 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                    </svg>
+                                </button>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <Modal
+            :show="showItemModal"
+            max-width="lg"
+            @close="closeItemModal"
+        >
+            <div
+                v-if="viewingItem"
+                class="border-b border-slate-100 bg-slate-50/80 px-6 py-5"
+            >
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span
+                                class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset"
+                                :class="metaFor(viewingItem.type).badge"
+                            >
+                                {{ metaFor(viewingItem.type).label }}
+                            </span>
+                            <h3 class="truncate font-mono text-lg font-semibold text-slate-900">
+                                /{{ viewingItem.title }}
+                            </h3>
+                        </div>
+                        <p class="mt-1 text-xs text-slate-500">
+                            {{ folderNameFor(viewingItem.folder_id) }}
+                        </p>
+                    </div>
+
+                    <div class="flex shrink-0 items-center gap-1">
+                        <button
+                            type="button"
+                            class="rounded-xl p-2.5 text-slate-600 transition hover:bg-white hover:text-violet-700 hover:shadow-sm"
+                            :title="t('common.edit')"
+                            @click="openEditModal(viewingItem)"
+                        >
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded-xl p-2.5 text-slate-600 transition hover:bg-white hover:text-sky-700 hover:shadow-sm"
+                            :title="t('quickReplies.folders.move')"
+                            @click="openMoveModal(viewingItem)"
+                        >
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded-xl p-2.5 text-slate-600 transition hover:bg-red-50 hover:text-red-600"
+                            :title="t('common.delete')"
+                            @click="deleteItem(viewingItem)"
+                        >
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                v-if="viewingItem"
+                class="space-y-4 p-6"
+            >
+                <div
+                    v-if="viewingItem.type === 'text'"
+                    class="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
+                >
+                    {{ viewingItem.body }}
+                </div>
+
+                <div
+                    v-else-if="viewingItem.type === 'audio'"
+                    class="space-y-3"
+                >
+                    <audio
+                        v-if="viewingItem.attachment_url"
+                        controls
+                        class="w-full"
+                        :src="viewingItem.attachment_url"
+                    />
+                    <p
+                        v-if="viewingItem.body"
+                        class="text-sm text-slate-600"
+                    >
+                        {{ viewingItem.body }}
+                    </p>
+                </div>
+
+                <div
+                    v-else
+                    class="space-y-3"
+                >
+                    <img
+                        v-if="viewingItem.attachment_url"
+                        :src="viewingItem.attachment_url"
+                        alt=""
+                        class="max-h-72 w-full rounded-xl border border-slate-200 object-contain"
+                    >
+                    <p
+                        v-if="viewingItem.body"
+                        class="text-sm text-slate-600"
+                    >
+                        {{ viewingItem.body }}
+                    </p>
+                </div>
+
+                <div class="flex justify-end border-t border-slate-100 pt-4">
+                    <SecondaryButton
+                        type="button"
+                        @click="closeItemModal"
+                    >
+                        {{ t('common.close') }}
+                    </SecondaryButton>
+                </div>
+            </div>
+        </Modal>
 
         <Modal
             :show="showCreateModal"

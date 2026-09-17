@@ -415,6 +415,7 @@
     "filterHint": "Show only clients from the selected funnel. Stage is optional.",
     "pipeline": "Funnel",
     "selectPipeline": "— select funnel —",
+    "changePipeline": "Change funnel",
     "stageOptional": "Stage (optional)",
     "allStages": "All stages",
     "receipt": "Receipt",
@@ -521,6 +522,10 @@
       "move": "Move",
       "moveTitle": "Move template",
       "emptyFolder": "No templates in this folder yet.",
+      "emptyHome": "Create your first folder for templates.",
+      "back": "Back",
+      "itemsCount": "{count} items",
+      "searchFoldersPh": "Search folders...",
       "confirmDelete": "Delete folder “{name}”? Templates will stay in “No folder”."
     }
   },
@@ -531,6 +536,9 @@
     "primary": "Primary funnel",
     "new": "New funnel",
     "rename": "Rename funnel",
+    "editPipeline": "Funnel settings",
+    "icon": "Icon",
+    "noIcon": "No icon",
     "reorder": "Reorder",
     "select": "Select a funnel above.",
     "reorderHint": "Move stages with the arrows to change order.",

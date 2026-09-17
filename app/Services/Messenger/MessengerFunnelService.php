@@ -72,6 +72,8 @@ class MessengerFunnelService
             'title' => $deal->title,
             'pipeline_id' => $deal->pipeline_id,
             'pipeline_name' => $deal->pipeline?->name,
+            'pipeline_color' => $deal->pipeline?->color,
+            'pipeline_icon' => $deal->pipeline?->icon,
             'stage_id' => $deal->stage_id,
             'stage_name' => $deal->stage?->name,
             'stage_color' => $deal->stage?->color,

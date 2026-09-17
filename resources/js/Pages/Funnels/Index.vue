@@ -44,8 +44,8 @@ const props = defineProps({
     },
 });
 
-const pipelineForm = useForm({ name: '' });
-const editPipelineForm = useForm({ name: '' });
+const pipelineForm = useForm({ name: '', color: '#3b82f6', icon: '💼' });
+const editPipelineForm = useForm({ name: '', color: '#94a3b8', icon: '' });
 const editStageForm = useForm({ name: '' });
 const tunnelForm = useForm({
     from_stage_id: '',
@@ -69,6 +69,8 @@ const reorderForm = useForm({
 });
 
 const defaultStageRow = () => ({ name: '', color: '#94a3b8' });
+
+const pipelineIconPresets = ['💼', '🛒', '💻', '🎓', '🏠', '🚗', '📱', '⚙️', '📦', '⭐', '🛠️', '🎯'];
 
 const reorderMode = ref(false);
 const orderedStages = ref([]);
@@ -117,6 +119,8 @@ const submitPipeline = () => {
         preserveScroll: true,
         onSuccess: () => {
             pipelineForm.reset('name');
+            pipelineForm.color = '#3b82f6';
+            pipelineForm.icon = '💼';
             showCreateModal.value = false;
         },
     });
@@ -127,6 +131,8 @@ function openEditPipeline() {
         return;
     }
     editPipelineForm.name = props.pipeline.name;
+    editPipelineForm.color = props.pipeline.color || '#94a3b8';
+    editPipelineForm.icon = props.pipeline.icon || '';
     editPipelineForm.clearErrors();
     showEditPipelineModal.value = true;
 }
@@ -423,7 +429,14 @@ function onDropStage(e, stageId) {
                                     class="text-amber-300"
                                     :title="t('funnels.primary')"
                                 >★</span>
-                                <span class="max-w-[12rem] truncate">{{
+                                <span
+                                    v-if="p.icon"
+                                    class="text-sm leading-none"
+                                >{{ p.icon }}</span>
+                                <span
+                                    class="max-w-[12rem] truncate"
+                                    :style="p.color ? { color: p.color } : undefined"
+                                >{{
                                     p.name
                                 }}</span>
                             </button>
@@ -442,8 +455,13 @@ function onDropStage(e, stageId) {
                                 class="flex flex-wrap items-center justify-between gap-3"
                             >
                                 <div class="flex items-center gap-2">
+                                    <span
+                                        v-if="pipeline.icon"
+                                        class="text-lg leading-none"
+                                    >{{ pipeline.icon }}</span>
                                     <h3
-                                        class="text-base font-semibold text-slate-900"
+                                        class="text-base font-semibold"
+                                        :style="{ color: pipeline.color || '#0f172a' }"
                                     >
                                         {{ pipeline.name }}
                                     </h3>
@@ -451,7 +469,7 @@ function onDropStage(e, stageId) {
                                         v-if="!reorderMode"
                                         type="button"
                                         class="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600"
-                                        :title="t('funnels.rename')"
+                                        :title="t('funnels.editPipeline')"
                                         @click="openEditPipeline"
                                     >
                                         <svg
@@ -770,6 +788,45 @@ function onDropStage(e, stageId) {
                             :message="pipelineForm.errors.name"
                         />
                     </div>
+                    <div>
+                        <InputLabel :value="t('funnels.color')" />
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <button
+                                v-for="preset in stageColorPresets"
+                                :key="`create-${preset.value}`"
+                                type="button"
+                                class="h-8 w-8 rounded-full ring-2 ring-offset-1 transition"
+                                :class="pipelineForm.color === preset.value ? 'ring-slate-700' : 'ring-transparent'"
+                                :style="{ backgroundColor: preset.value }"
+                                :title="preset.label"
+                                @click="pipelineForm.color = preset.value"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <InputLabel :value="t('funnels.icon')" />
+                        <div class="mt-2 flex flex-wrap gap-1.5">
+                            <button
+                                v-for="icon in pipelineIconPresets"
+                                :key="`create-icon-${icon}`"
+                                type="button"
+                                class="flex h-9 w-9 items-center justify-center rounded-lg border text-lg transition"
+                                :class="pipelineForm.icon === icon
+                                    ? 'border-indigo-500 bg-indigo-50'
+                                    : 'border-slate-200 hover:border-slate-300'"
+                                @click="pipelineForm.icon = icon"
+                            >
+                                {{ icon }}
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-slate-200 px-2 text-xs text-slate-500 hover:bg-slate-50"
+                                @click="pipelineForm.icon = ''"
+                            >
+                                {{ t('funnels.noIcon') }}
+                            </button>
+                        </div>
+                    </div>
                     <div
                         class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"
                     >
@@ -797,7 +854,7 @@ function onDropStage(e, stageId) {
         >
             <div class="p-6">
                 <h2 class="text-lg font-semibold text-gray-900">
-                    {{ t('funnels.rename') }}
+                    {{ t('funnels.editPipeline') }}
                 </h2>
                 <form
                     class="mt-6 space-y-4"
@@ -820,6 +877,45 @@ function onDropStage(e, stageId) {
                             class="mt-2"
                             :message="editPipelineForm.errors.name"
                         />
+                    </div>
+                    <div>
+                        <InputLabel :value="t('funnels.color')" />
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <button
+                                v-for="preset in stageColorPresets"
+                                :key="`edit-${preset.value}`"
+                                type="button"
+                                class="h-8 w-8 rounded-full ring-2 ring-offset-1 transition"
+                                :class="editPipelineForm.color === preset.value ? 'ring-slate-700' : 'ring-transparent'"
+                                :style="{ backgroundColor: preset.value }"
+                                :title="preset.label"
+                                @click="editPipelineForm.color = preset.value"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <InputLabel :value="t('funnels.icon')" />
+                        <div class="mt-2 flex flex-wrap gap-1.5">
+                            <button
+                                v-for="icon in pipelineIconPresets"
+                                :key="`edit-icon-${icon}`"
+                                type="button"
+                                class="flex h-9 w-9 items-center justify-center rounded-lg border text-lg transition"
+                                :class="editPipelineForm.icon === icon
+                                    ? 'border-indigo-500 bg-indigo-50'
+                                    : 'border-slate-200 hover:border-slate-300'"
+                                @click="editPipelineForm.icon = icon"
+                            >
+                                {{ icon }}
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-slate-200 px-2 text-xs text-slate-500 hover:bg-slate-50"
+                                @click="editPipelineForm.icon = ''"
+                            >
+                                {{ t('funnels.noIcon') }}
+                            </button>
+                        </div>
                     </div>
                     <div
                         class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"

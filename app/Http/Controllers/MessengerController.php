@@ -109,6 +109,8 @@ class MessengerController extends Controller
             ->map(fn (Pipeline $pipeline) => [
                 'id' => $pipeline->id,
                 'name' => $pipeline->name,
+                'color' => $pipeline->color,
+                'icon' => $pipeline->icon,
                 'is_default' => $pipeline->is_default,
                 'stages' => $pipeline->stages->map(fn (Stage $stage) => [
                     'id' => $stage->id,
@@ -622,6 +624,44 @@ class MessengerController extends Controller
             ->with('success', __('Этап воронки обновлён.'));
     }
 
+    public function updateDealPipeline(Request $request, MessengerConversation $conversation): RedirectResponse
+    {
+        $companyId = (int) $request->user()->company_id;
+        abort_unless($conversation->company_id === $companyId, 403);
+
+        $validated = $request->validate([
+            'pipeline_id' => 'required|exists:pipelines,id',
+            'stage_id' => 'nullable|exists:stages,id',
+        ]);
+
+        $deal = $this->messengerFunnel->resolveDeal($conversation)
+            ?? $this->messengerFunnel->ensureClientAndDeal($conversation);
+
+        if (! $deal) {
+            return back()->withErrors([
+                'pipeline' => __('Не удалось найти сделку для этого чата.'),
+            ]);
+        }
+
+        abort_unless($deal->company_id === $companyId, 403);
+
+        $pipeline = Pipeline::query()->findOrFail($validated['pipeline_id']);
+        abort_unless($pipeline->company_id === $companyId, 403);
+
+        $stage = null;
+        if (! empty($validated['stage_id'])) {
+            $stage = Stage::query()->findOrFail($validated['stage_id']);
+            abort_unless($stage->company_id === $companyId, 403);
+            abort_unless((int) $stage->pipeline_id === (int) $pipeline->id, 422);
+        }
+
+        $this->dealStages->moveToPipeline($deal, $pipeline, $stage);
+
+        return redirect()
+            ->route('messenger.index', ['conversation' => $conversation->id])
+            ->with('success', __('Воронка обновлена.'));
+    }
+
     public function send(Request $request, MessengerConversation $conversation): RedirectResponse|JsonResponse
     {
         $user = $request->user();
@@ -832,6 +872,8 @@ class MessengerController extends Controller
             'last_message_at' => $conversation->last_message_at?->toIso8601String(),
             'pipeline_name' => $deal?->pipeline?->name,
             'pipeline_id' => $deal?->pipeline_id,
+            'pipeline_color' => $deal?->pipeline?->color,
+            'pipeline_icon' => $deal?->pipeline?->icon,
             'stage_name' => $deal?->stage?->name,
             'stage_id' => $deal?->stage_id,
             'stage_color' => $deal?->stage?->color,

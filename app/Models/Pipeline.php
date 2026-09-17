@@ -11,6 +11,8 @@ class Pipeline extends Model
     protected $fillable = [
         'company_id',
         'name',
+        'color',
+        'icon',
         'is_default',
         'sort_order',
     ];

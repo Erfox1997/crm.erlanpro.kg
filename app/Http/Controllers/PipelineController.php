@@ -16,6 +16,8 @@ class PipelineController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'color' => 'nullable|string|max:32',
+            'icon' => 'nullable|string|max:16',
         ]);
 
         $maxOrder = (int) Pipeline::query()->where('company_id', $companyId)->max('sort_order');
@@ -23,6 +25,8 @@ class PipelineController extends Controller
         $pipeline = Pipeline::query()->create([
             'company_id' => $companyId,
             'name' => $validated['name'],
+            'color' => $validated['color'] ?? null,
+            'icon' => $validated['icon'] ?? null,
             'is_default' => false,
             'sort_order' => $maxOrder + 1,
         ]);
@@ -41,11 +45,17 @@ class PipelineController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'color' => 'nullable|string|max:32',
+            'icon' => 'nullable|string|max:16',
         ]);
 
-        $pipeline->update(['name' => $validated['name']]);
+        $pipeline->update([
+            'name' => $validated['name'],
+            'color' => $validated['color'] ?? null,
+            'icon' => $validated['icon'] ?? null,
+        ]);
 
-        return back()->with('success', __('Название воронки обновлено.'));
+        return back()->with('success', __('Воронка обновлена.'));
     }
 
     public function setDefault(Request $request, Pipeline $pipeline): RedirectResponse

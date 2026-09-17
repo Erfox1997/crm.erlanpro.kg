@@ -29,6 +29,8 @@ class FunnelController extends Controller
             ->map(fn (Pipeline $p) => [
                 'id' => $p->id,
                 'name' => $p->name,
+                'color' => $p->color,
+                'icon' => $p->icon,
                 'is_default' => $p->is_default,
                 'stages_count' => $p->stages_count,
                 'deals_count' => $p->deals_count,
@@ -121,6 +123,8 @@ class FunnelController extends Controller
             'pipeline' => [
                 'id' => $selectedPipeline->id,
                 'name' => $selectedPipeline->name,
+                'color' => $selectedPipeline->color,
+                'icon' => $selectedPipeline->icon,
             ],
             'stages' => $mappedStages,
             'clients' => $clients,
