@@ -2641,6 +2641,28 @@ function outboundTicksClass(message) {
 }
 
 function participantLabel(conversation) {
+    if (
+        selectedConversation.value?.id
+        && conversation?.id === selectedConversation.value.id
+        && linkedClient.value
+    ) {
+        const savedName = String(linkedClient.value.name || '').trim();
+        const savedCustomName = String(
+            linkedClient.value.custom_fields?.name
+            || linkedClient.value.custom_fields?.imya
+            || linkedClient.value.custom_fields?.fio
+            || '',
+        ).trim();
+
+        if (savedCustomName) {
+            return savedCustomName;
+        }
+
+        if (savedName && savedName !== 'Клиент') {
+            return savedName;
+        }
+    }
+
     return (
         conversation.display_name
         || conversation.participant_name

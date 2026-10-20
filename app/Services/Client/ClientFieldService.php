@@ -459,6 +459,23 @@ class ClientFieldService
             }
         }
 
+        // Prefer CRM-saved client name over raw WhatsApp/Telegram profile name.
+        if ($client) {
+            $custom = is_array($client->custom_fields) ? $client->custom_fields : [];
+
+            foreach (['name', 'imya', 'fio', 'full_name', 'fullname', 'username', 'nick', 'login'] as $key) {
+                $value = trim((string) ($custom[$key] ?? ''));
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+
+            $name = trim((string) ($client->name ?? ''));
+            if ($name !== '' && $name !== 'Клиент') {
+                return $name;
+            }
+        }
+
         $profile = $this->profileFromConversation($conversation);
 
         return (string) (

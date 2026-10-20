@@ -564,28 +564,31 @@ class MessengerController extends Controller
         $client = $this->clientFields->upsertClientFromConversation($conversation, $normalized);
         $this->messengerFunnel->ensureClientAndDeal($conversation->fresh());
 
-        $googleSync = $this->googleContacts->syncClientWithResult($client->fresh());
+        $freshClient = $client->fresh();
+        $googleSync = $this->googleContacts->syncClientWithResult($freshClient);
 
         $message = __('Данные клиента сохранены.');
         if ($googleSync['ok']) {
-            $message .= ' '.__('Google Contacts: готово.');
-        } elseif (! $googleSync['skipped']) {
+            $message .= ' '.__('Google Contacts: готово (:name, :phone).', [
+                'name' => $freshClient->name,
+                'phone' => $freshClient->phone,
+            ]);
+
             return redirect()
                 ->route('messenger.index', ['conversation' => $conversation->id])
-                ->with('success', $message)
-                ->with('warning', __('CRM сохранил, но Google Contacts ошибка: :msg', [
-                    'msg' => $googleSync['message'],
-                ]));
-        } elseif ($googleSync['message'] !== '') {
-            return redirect()
-                ->route('messenger.index', ['conversation' => $conversation->id])
-                ->with('success', $message)
-                ->with('warning', $googleSync['message']);
+                ->with('success', $message);
         }
+
+        $googleMessage = $googleSync['skipped']
+            ? $googleSync['message']
+            : __('CRM сохранил, но Google Contacts ошибка: :msg', [
+                'msg' => $googleSync['message'],
+            ]);
 
         return redirect()
             ->route('messenger.index', ['conversation' => $conversation->id])
-            ->with('success', $message);
+            ->with('success', $message)
+            ->with('warning', $googleMessage);
     }
 
     public function markUnread(Request $request, MessengerConversation $conversation): JsonResponse|RedirectResponse

@@ -103,6 +103,9 @@ class GoogleContactsService
             }
         }
 
+        // Make sure the contact is visible in contacts.google.com (My Contacts).
+        $this->ensureMyContactsMembership($accessToken, $resourceName);
+
         $client->forceFill([
             'google_resource_name' => $resourceName,
             // Keep CRM phone normalized so later syncs keep working.
@@ -169,6 +172,15 @@ class GoogleContactsService
                 'phoneNumbers' => [
                     ['value' => $phone, 'type' => 'mobile'],
                 ],
+                // Without myContacts membership the person exists via API but often
+                // does not show up in contacts.google.com UI.
+                'memberships' => [
+                    [
+                        'contactGroupMembership' => [
+                            'contactGroupResourceName' => 'contactGroups/myContacts',
+                        ],
+                    ],
+                ],
             ]);
 
         if (! $response->successful()) {
@@ -185,7 +197,35 @@ class GoogleContactsService
             throw new RuntimeException(__('Google не вернул resourceName контакта.'));
         }
 
+        $this->ensureMyContactsMembership($accessToken, $resourceName);
+
         return $resourceName;
+    }
+
+    protected function ensureMyContactsMembership(string $accessToken, string $resourceName): void
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->timeout((int) config('services.google.timeout', 20))
+                ->acceptJson()
+                ->asJson()
+                ->post('https://people.googleapis.com/v1/contactGroups/myContacts/members:modify', [
+                    'resourceNamesToAdd' => [$resourceName],
+                ]);
+
+            if (! $response->successful()) {
+                Log::warning('Google myContacts membership failed', [
+                    'resource' => $resourceName,
+                    'status' => $response->status(),
+                    'body' => $response->json() ?? $response->body(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Google myContacts membership exception', [
+                'resource' => $resourceName,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function updateContact(string $accessToken, string $resourceName, string $name, string $phone): void
