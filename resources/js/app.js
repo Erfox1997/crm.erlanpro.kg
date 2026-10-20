@@ -46,11 +46,23 @@ createInertiaApp({
             .use(i18n);
 
         vueApp.config.errorHandler = (err) => {
+            // Don't blanket the whole UI in red for expected media / permission failures.
+            const name = String(err?.name || '');
+            if (['NotAllowedError', 'NotFoundError', 'NotReadableError', 'AbortError'].includes(name)) {
+                console.warn(err);
+                return;
+            }
             showClientError(err);
         };
 
         window.addEventListener('unhandledrejection', (event) => {
-            showClientError(event.reason);
+            const reason = event.reason;
+            const name = String(reason?.name || '');
+            if (['NotAllowedError', 'NotFoundError', 'NotReadableError', 'AbortError'].includes(name)) {
+                console.warn(reason);
+                return;
+            }
+            showClientError(reason);
         });
 
         return vueApp.mount(el);

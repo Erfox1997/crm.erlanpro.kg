@@ -630,7 +630,7 @@ class MessengerController extends Controller
             ->with('success', __('Все чаты отмечены как прочитанные.'));
     }
 
-    public function updateDealStage(Request $request, MessengerConversation $conversation): RedirectResponse
+    public function updateDealStage(Request $request, MessengerConversation $conversation): RedirectResponse|JsonResponse
     {
         $companyId = (int) $request->user()->company_id;
         abort_unless($conversation->company_id === $companyId, 403);
@@ -643,6 +643,12 @@ class MessengerController extends Controller
             ?? $this->messengerFunnel->ensureClientAndDeal($conversation);
 
         if (! $deal) {
+            if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'message' => __('Не удалось найти сделку для этого чата.'),
+                ], 422);
+            }
+
             return back()->withErrors([
                 'stage' => __('Не удалось найти сделку для этого чата.'),
             ]);
@@ -655,13 +661,22 @@ class MessengerController extends Controller
         abort_unless($stage->pipeline_id === $deal->pipeline_id, 422);
 
         $this->dealStages->moveToStage($deal, $stage);
+        $funnelDeal = $this->messengerFunnel->dealPayloadForConversation($conversation->fresh());
+
+        if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'ok' => true,
+                'funnelDeal' => $funnelDeal,
+                'conversation' => $this->conversationFunnelFields($conversation->id, $funnelDeal),
+            ]);
+        }
 
         return redirect()
             ->route('messenger.index', ['conversation' => $conversation->id])
             ->with('success', __('Этап воронки обновлён.'));
     }
 
-    public function updateDealPipeline(Request $request, MessengerConversation $conversation): RedirectResponse
+    public function updateDealPipeline(Request $request, MessengerConversation $conversation): RedirectResponse|JsonResponse
     {
         $companyId = (int) $request->user()->company_id;
         abort_unless($conversation->company_id === $companyId, 403);
@@ -675,6 +690,12 @@ class MessengerController extends Controller
             ?? $this->messengerFunnel->ensureClientAndDeal($conversation);
 
         if (! $deal) {
+            if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'message' => __('Не удалось найти сделку для этого чата.'),
+                ], 422);
+            }
+
             return back()->withErrors([
                 'pipeline' => __('Не удалось найти сделку для этого чата.'),
             ]);
@@ -693,10 +714,37 @@ class MessengerController extends Controller
         }
 
         $this->dealStages->moveToPipeline($deal, $pipeline, $stage);
+        $funnelDeal = $this->messengerFunnel->dealPayloadForConversation($conversation->fresh());
+
+        if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'ok' => true,
+                'funnelDeal' => $funnelDeal,
+                'conversation' => $this->conversationFunnelFields($conversation->id, $funnelDeal),
+            ]);
+        }
 
         return redirect()
             ->route('messenger.index', ['conversation' => $conversation->id])
             ->with('success', __('Воронка обновлена.'));
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $funnelDeal
+     * @return array<string, mixed>
+     */
+    protected function conversationFunnelFields(int $conversationId, ?array $funnelDeal): array
+    {
+        return [
+            'id' => $conversationId,
+            'pipeline_id' => $funnelDeal['pipeline_id'] ?? null,
+            'pipeline_name' => $funnelDeal['pipeline_name'] ?? null,
+            'pipeline_color' => $funnelDeal['pipeline_color'] ?? null,
+            'pipeline_icon' => $funnelDeal['pipeline_icon'] ?? null,
+            'stage_id' => $funnelDeal['stage_id'] ?? null,
+            'stage_name' => $funnelDeal['stage_name'] ?? null,
+            'stage_color' => $funnelDeal['stage_color'] ?? null,
+        ];
     }
 
     public function send(Request $request, MessengerConversation $conversation): RedirectResponse|JsonResponse

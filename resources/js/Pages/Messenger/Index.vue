@@ -2358,8 +2358,24 @@ function saveClientData() {
     });
 }
 
-function updateDealStage() {
-    if (!selectedConversation.value || !funnelDeal.value || !dealStageForm.stage_id) {
+const dealUpdating = ref(false);
+
+function applyFunnelDealUpdate(payload) {
+    if (!payload?.funnelDeal && !payload?.conversation) {
+        return;
+    }
+
+    if (payload.funnelDeal) {
+        funnelDeal.value = { ...payload.funnelDeal };
+    }
+
+    if (payload.conversation?.id) {
+        mergeConversations([payload.conversation]);
+    }
+}
+
+async function updateDealStage() {
+    if (!selectedConversation.value || !funnelDeal.value || !dealStageForm.stage_id || dealUpdating.value) {
         return;
     }
 
@@ -2367,16 +2383,49 @@ function updateDealStage() {
         return;
     }
 
-    dealStageForm.patch(
-        route('messenger.update-deal-stage', selectedConversation.value.id),
-        {
-            preserveScroll: true,
-        },
-    );
+    const conversationId = selectedConversation.value.id;
+    const stageId = Number(dealStageForm.stage_id);
+    const stage = (funnelDeal.value.stages || []).find((item) => Number(item.id) === stageId);
+    const previous = { ...funnelDeal.value };
+
+    dealUpdating.value = true;
+    funnelDeal.value = {
+        ...funnelDeal.value,
+        stage_id: stageId,
+        stage_name: stage?.name || funnelDeal.value.stage_name,
+        stage_color: stage?.color || funnelDeal.value.stage_color,
+    };
+    mergeConversations([{
+        id: conversationId,
+        stage_id: stageId,
+        stage_name: stage?.name,
+        stage_color: stage?.color,
+    }]);
+
+    try {
+        const { data } = await window.axios.patch(
+            route('messenger.update-deal-stage', conversationId),
+            { stage_id: stageId },
+            { headers: jsonRequestHeaders },
+        );
+        applyFunnelDealUpdate(data);
+    } catch (error) {
+        funnelDeal.value = previous;
+        dealStageForm.stage_id = previous.stage_id ? String(previous.stage_id) : '';
+        showChatToast(
+            error?.response?.data?.message
+            || error?.response?.data?.errors?.stage?.[0]
+            || t('messenger.err.message'),
+            'error',
+            2800,
+        );
+    } finally {
+        dealUpdating.value = false;
+    }
 }
 
-function updateDealPipeline() {
-    if (!selectedConversation.value || !dealPipelineForm.pipeline_id) {
+async function updateDealPipeline() {
+    if (!selectedConversation.value || !dealPipelineForm.pipeline_id || dealUpdating.value) {
         return;
     }
 
@@ -2388,15 +2437,63 @@ function updateDealPipeline() {
         (item) => Number(item.id) === Number(dealPipelineForm.pipeline_id),
     );
     const firstStage = pipeline?.stages?.[0];
-    if (!firstStage) {
+    if (!firstStage || !pipeline) {
         return;
     }
 
+    const conversationId = selectedConversation.value.id;
+    const previous = funnelDeal.value ? { ...funnelDeal.value } : null;
+
     dealPipelineForm.stage_id = String(firstStage.id);
-    dealPipelineForm.patch(
-        route('messenger.update-deal-pipeline', selectedConversation.value.id),
-        { preserveScroll: true },
-    );
+    dealUpdating.value = true;
+
+    funnelDeal.value = {
+        ...(funnelDeal.value || {}),
+        pipeline_id: Number(pipeline.id),
+        pipeline_name: pipeline.name,
+        pipeline_color: pipeline.color,
+        pipeline_icon: pipeline.icon,
+        stage_id: Number(firstStage.id),
+        stage_name: firstStage.name,
+        stage_color: firstStage.color,
+        stages: (pipeline.stages || []).map((item) => ({ ...item })),
+    };
+    mergeConversations([{
+        id: conversationId,
+        pipeline_id: Number(pipeline.id),
+        pipeline_name: pipeline.name,
+        pipeline_color: pipeline.color,
+        pipeline_icon: pipeline.icon,
+        stage_id: Number(firstStage.id),
+        stage_name: firstStage.name,
+        stage_color: firstStage.color,
+    }]);
+
+    try {
+        const { data } = await window.axios.patch(
+            route('messenger.update-deal-pipeline', conversationId),
+            {
+                pipeline_id: Number(pipeline.id),
+                stage_id: Number(firstStage.id),
+            },
+            { headers: jsonRequestHeaders },
+        );
+        applyFunnelDealUpdate(data);
+    } catch (error) {
+        if (previous) {
+            funnelDeal.value = previous;
+            dealPipelineForm.pipeline_id = previous.pipeline_id ? String(previous.pipeline_id) : '';
+        }
+        showChatToast(
+            error?.response?.data?.message
+            || error?.response?.data?.errors?.pipeline?.[0]
+            || t('messenger.err.message'),
+            'error',
+            2800,
+        );
+    } finally {
+        dealUpdating.value = false;
+    }
 }
 
 watch(
@@ -2427,11 +2524,25 @@ watch(
     { deep: true },
 );
 
+function isRecorderMimeSupported(type) {
+    try {
+        return typeof MediaRecorder !== 'undefined'
+            && typeof MediaRecorder.isTypeSupported === 'function'
+            && MediaRecorder.isTypeSupported(type);
+    } catch {
+        return false;
+    }
+}
+
 function pickRecorderMimeType(channel) {
-    const mobileFriendlyTypes = ['audio/mp4', 'audio/aac'];
+    if (typeof MediaRecorder === 'undefined') {
+        return null;
+    }
+
+    const mobileFriendlyTypes = ['audio/mp4', 'audio/aac', 'audio/webm'];
 
     if (channel === 'instagram' || channel === 'facebook') {
-        const supported = mobileFriendlyTypes.find((type) => MediaRecorder.isTypeSupported(type));
+        const supported = mobileFriendlyTypes.find((type) => isRecorderMimeSupported(type));
 
         if (supported) {
             return supported;
@@ -2448,15 +2559,17 @@ function pickRecorderMimeType(channel) {
             'audio/webm;codecs=opus',
             'audio/webm',
             'audio/mp4',
+            'audio/aac',
         ]
         : [
             'audio/mp4',
+            'audio/aac',
             'audio/webm;codecs=opus',
             'audio/webm',
             'audio/ogg;codecs=opus',
         ];
 
-    return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? '';
+    return candidates.find((type) => isRecorderMimeSupported(type)) ?? '';
 }
 
 async function startRecording() {
@@ -2464,8 +2577,8 @@ async function startRecording() {
         return;
     }
 
-    if (!navigator.mediaDevices?.getUserMedia) {
-        window.alert(t('messenger.err.voiceUnsupported'));
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        showChatToast(t('messenger.err.voiceUnsupported'), 'error', 2800);
         return;
     }
 
@@ -2481,30 +2594,46 @@ async function startRecording() {
 
         if (selectedConversation.value.channel === 'instagram' && ! mimeType) {
             stopRecordingTracks();
-            window.alert(
-                t('messenger.igFormatLong'),
-            );
+            showChatToast(t('messenger.igFormatLong'), 'error', 3200);
 
             return;
         }
 
         audioChunks = [];
-        mediaRecorder = mimeType
-            ? new MediaRecorder(recordingStream, { mimeType })
-            : new MediaRecorder(recordingStream);
+        try {
+            mediaRecorder = mimeType
+                ? new MediaRecorder(recordingStream, { mimeType })
+                : new MediaRecorder(recordingStream);
+        } catch {
+            mediaRecorder = new MediaRecorder(recordingStream);
+        }
 
         mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
+            if (event.data?.size > 0) {
                 audioChunks.push(event.data);
             }
         };
 
-        mediaRecorder.onstop = () => {
+        mediaRecorder.onerror = () => {
             stopRecordingTracks();
-            sendVoiceMessage();
+            isRecording.value = false;
+            window.clearInterval(recordingTimer);
+            recordingTimer = null;
+            mediaRecorder = null;
+            showChatToast(t('messenger.err.voiceSend'), 'error', 2800);
         };
 
-        mediaRecorder.start();
+        mediaRecorder.onstop = () => {
+            stopRecordingTracks();
+            void sendVoiceMessage();
+        };
+
+        // timeslice helps some Android WebViews flush chunks reliably
+        try {
+            mediaRecorder.start(250);
+        } catch {
+            mediaRecorder.start();
+        }
         isRecording.value = true;
         recordingSeconds.value = 0;
         recordingTimer = window.setInterval(() => {
@@ -2512,12 +2641,18 @@ async function startRecording() {
         }, 1000);
     } catch (error) {
         stopRecordingTracks();
+        mediaRecorder = null;
+        isRecording.value = false;
         const name = String(error?.name || '');
         if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-            window.alert(t('messenger.err.mic'));
+            showChatToast(t('messenger.err.mic'), 'error', 2800);
             return;
         }
-        window.alert(t('messenger.err.mic'));
+        showChatToast(
+            error?.message ? `${t('messenger.err.mic')} (${error.message})` : t('messenger.err.mic'),
+            'error',
+            3200,
+        );
     }
 }
 
@@ -2541,88 +2676,123 @@ function stopRecording() {
 }
 
 async function sendVoiceMessage() {
-    if (!selectedConversation.value || audioChunks.length === 0) {
+    const conversationId = selectedConversation.value?.id;
+    if (!conversationId) {
         return;
     }
 
-    const mimeType = mediaRecorder?.mimeType || audioChunks[0]?.type || 'audio/webm';
-    const channel = selectedConversation.value.channel;
-    const extension = channel === 'instagram'
-        ? (mimeType.includes('wav') ? 'wav' : 'm4a')
-        : channel === 'wappi'
-            ? (mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'm4a' : 'webm')
-            : (mimeType.includes('mp4') ? 'm4a' : 'webm');
-    const blob = new Blob(audioChunks, { type: mimeType });
-    const file = new File([blob], `voice.${extension}`, { type: mimeType });
-    const clientId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const localUrl = URL.createObjectURL(blob);
-
+    const chunks = Array.isArray(audioChunks) ? [...audioChunks] : [];
+    const recorderMime = mediaRecorder?.mimeType || '';
     audioChunks = [];
     mediaRecorder = null;
 
-    localMessages.value = [
-        ...localMessages.value,
-        {
-            id: clientId,
-            client_id: clientId,
-            stable_key: clientId,
-            direction: 'outbound',
-            body: '',
-            attachments: [{
-                type: 'audio',
-                url: localUrl,
-                name: file.name,
-                mime_type: mimeType,
-            }],
-            status: 'pending',
-            sent_at: new Date().toISOString(),
-        },
-    ];
-    inFlightClientIds.add(clientId);
-    sendError.value = '';
-    shouldStickToBottom = true;
-    scrollToBottom(true);
-    touchConversationAfterSend(
-        { id: selectedConversation.value.id, last_message_at: new Date().toISOString() },
-        t('messenger.voiceLabel'),
-    );
-
-    const formData = new FormData();
-    formData.append('body', '');
-    formData.append('audio', file);
+    if (chunks.length === 0) {
+        showChatToast(t('messenger.err.voiceSend'), 'error', 2200);
+        return;
+    }
 
     try {
-        const { data } = await window.axios.post(
-            route('messenger.send', selectedConversation.value.id),
-            formData,
-            { headers: jsonRequestHeaders },
+        const mimeType = recorderMime || chunks[0]?.type || 'audio/webm';
+        const channel = selectedConversation.value?.channel || '';
+        const extension = channel === 'instagram'
+            ? (mimeType.includes('wav') ? 'wav' : 'm4a')
+            : channel === 'wappi'
+                ? (mimeType.includes('ogg') ? 'ogg' : (mimeType.includes('mp4') || mimeType.includes('aac') ? 'm4a' : 'webm'))
+                : ((mimeType.includes('mp4') || mimeType.includes('aac')) ? 'm4a' : 'webm');
+        const blob = new Blob(chunks, { type: mimeType || 'application/octet-stream' });
+        if (blob.size < 1) {
+            showChatToast(t('messenger.err.voiceSend'), 'error', 2200);
+            return;
+        }
+
+        const fileName = `voice.${extension}`;
+        // Prefer Blob+filename for Android WebViews where `new File()` can throw.
+        let uploadPart = blob;
+        try {
+            if (typeof File !== 'undefined') {
+                uploadPart = new File([blob], fileName, { type: mimeType || blob.type });
+            }
+        } catch {
+            uploadPart = blob;
+        }
+
+        const clientId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const localUrl = URL.createObjectURL(blob);
+
+        localMessages.value = [
+            ...localMessages.value,
+            {
+                id: clientId,
+                client_id: clientId,
+                stable_key: clientId,
+                direction: 'outbound',
+                body: '',
+                attachments: [{
+                    type: 'audio',
+                    url: localUrl,
+                    name: fileName,
+                    mime_type: mimeType,
+                }],
+                status: 'pending',
+                sent_at: new Date().toISOString(),
+            },
+        ];
+        inFlightClientIds.add(clientId);
+        sendError.value = '';
+        shouldStickToBottom = true;
+        scrollToBottom(true);
+        touchConversationAfterSend(
+            { id: conversationId, last_message_at: new Date().toISOString() },
+            t('messenger.voiceLabel'),
         );
 
-        confirmOptimisticMessage(clientId, data?.message);
-        if (data?.message) {
-            URL.revokeObjectURL(localUrl);
-        }
-        if (data?.conversation) {
-            touchConversationAfterSend(data.conversation, t('messenger.voiceLabel'));
+        const formData = new FormData();
+        formData.append('body', '');
+        formData.append('audio', uploadPart, fileName);
+
+        try {
+            const { data } = await window.axios.post(
+                route('messenger.send', conversationId),
+                formData,
+                { headers: jsonRequestHeaders },
+            );
+
+            confirmOptimisticMessage(clientId, data?.message);
+            if (data?.message) {
+                URL.revokeObjectURL(localUrl);
+            }
+            if (data?.conversation) {
+                touchConversationAfterSend(data.conversation, t('messenger.voiceLabel'));
+            }
+        } catch (error) {
+            inFlightClientIds.delete(clientId);
+            localMessages.value = localMessages.value.map((message) => (
+                message.id === clientId
+                    ? { ...message, status: 'failed' }
+                    : message
+            ));
+            setSendError(
+                error?.response?.data?.message
+                || error?.response?.data?.errors?.audio?.[0]
+                || error?.response?.data?.errors?.body?.[0]
+                || error?.message
+                || t('messenger.err.voiceSend'),
+            );
         }
     } catch (error) {
-        inFlightClientIds.delete(clientId);
-        localMessages.value = localMessages.value.map((message) => (
-            message.id === clientId
-                ? { ...message, status: 'failed' }
-                : message
-        ));
-        setSendError(
-            error?.response?.data?.message
-            || error?.response?.data?.errors?.body?.[0]
-            || t('messenger.err.voiceSend'),
+        showChatToast(
+            error?.message || t('messenger.err.voiceSend'),
+            'error',
+            2800,
         );
     }
 }
 
 function formatRecordingTime(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    const value = Number(seconds?.value ?? seconds);
+    const total = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
 
     return `${mins}:${String(secs).padStart(2, '0')}`;
 }
@@ -3459,7 +3629,7 @@ function scrollToBottom(smooth = false) {
                             v-model="dealPipelineForm.pipeline_id"
                             class="min-w-0 max-w-[11rem] rounded-md border-[#d1d7db] bg-white py-1 pl-2 pr-7 text-xs font-medium shadow-sm focus:border-[#00a884] focus:ring-[#00a884]"
                             :style="pipelineNameStyle(funnelDeal.pipeline_color) || { color: '#111b21' }"
-                            :disabled="dealPipelineForm.processing || dealStageForm.processing"
+                            :disabled="dealUpdating || dealPipelineForm.processing || dealStageForm.processing"
                             :title="t('messenger.changePipeline')"
                             @change="updateDealPipeline"
                         >
@@ -3475,7 +3645,7 @@ function scrollToBottom(smooth = false) {
                         <select
                             v-model="dealStageForm.stage_id"
                             class="min-w-0 max-w-[12rem] rounded-md border-[#d1d7db] bg-white py-1 pl-2 pr-7 text-xs text-[#111b21] shadow-sm focus:border-[#00a884] focus:ring-[#00a884]"
-                            :disabled="dealStageForm.processing || dealPipelineForm.processing"
+                            :disabled="dealUpdating || dealStageForm.processing || dealPipelineForm.processing"
                             @change="updateDealStage"
                         >
                             <option

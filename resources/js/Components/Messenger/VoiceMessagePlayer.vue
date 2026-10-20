@@ -44,7 +44,9 @@ function togglePlayback() {
         return;
     }
 
-    audio.play();
+    Promise.resolve(audio.play()).catch(() => {
+        playing.value = false;
+    });
 }
 
 function onTimeUpdate() {
