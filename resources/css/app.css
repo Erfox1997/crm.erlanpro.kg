@@ -13,10 +13,19 @@ body.tma-app {
     padding-left: env(safe-area-inset-left, 0px);
     box-sizing: border-box;
     background: #f0f2f5;
+    /* Closer to WhatsApp readability on phone screens */
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
 }
 
 body.tma-app #app,
 body.tma-app > div {
     min-height: 0;
     height: 100%;
+}
+
+/* Messenger UI: slightly larger type like WhatsApp (browser + Android + Mini App) */
+.messenger-ui {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
 }

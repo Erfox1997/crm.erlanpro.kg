@@ -2131,6 +2131,18 @@ function apiValueForField(key) {
     return '';
 }
 
+function isNameLikeFieldKey(key) {
+    return ['name', 'imya', 'fio', 'full_name', 'fullname', 'username', 'login', 'nick'].includes(
+        String(key || '').toLowerCase(),
+    );
+}
+
+function isPhoneLikeFieldKey(key) {
+    return ['phone', 'telefon', 'nomer', 'number', 'tel'].includes(
+        String(key || '').toLowerCase(),
+    );
+}
+
 function applyMessengerNameToField(key) {
     if (messengerApiName.value) {
         clientForm.fields[key] = messengerApiName.value;
@@ -2138,8 +2150,42 @@ function applyMessengerNameToField(key) {
 }
 
 function applyMessengerContactToField(key) {
-    if (messengerApiContact.value) {
-        clientForm.fields[key] = messengerApiContact.value;
+    if (!messengerApiContact.value) {
+        return;
+    }
+
+    const value = isPhoneLikeFieldKey(key)
+        ? messengerApiContact.value.replace(/^@/, '')
+        : messengerApiContact.value;
+
+    clientForm.fields[key] = value;
+}
+
+function applyMessengerNameToForm() {
+    if (!messengerApiName.value) {
+        return;
+    }
+
+    for (const definition of props.clientFieldDefinitions) {
+        if (isNameLikeFieldKey(definition.key)) {
+            clientForm.fields[definition.key] = messengerApiName.value;
+        }
+    }
+}
+
+function applyMessengerContactToForm() {
+    if (!messengerApiContact.value) {
+        return;
+    }
+
+    const phone = messengerApiContact.value.replace(/^@/, '');
+
+    for (const definition of props.clientFieldDefinitions) {
+        if (isPhoneLikeFieldKey(definition.key)) {
+            clientForm.fields[definition.key] = phone;
+        } else if (['username', 'login', 'nick'].includes(String(definition.key || '').toLowerCase())) {
+            clientForm.fields[definition.key] = messengerApiContact.value;
+        }
     }
 }
 
@@ -2816,7 +2862,7 @@ function scrollToBottom(smooth = false) {
             :class="isMiniApp ? 'p-0' : 'p-0 sm:p-3'"
         >
         <div
-            class="relative flex min-h-0 flex-1 overflow-hidden bg-white"
+            class="messenger-ui relative flex min-h-0 flex-1 overflow-hidden bg-white"
             :class="isMiniApp ? '' : 'rounded-xl border border-[#d1d7db] shadow-sm'"
         >
             <div
@@ -2886,7 +2932,7 @@ function scrollToBottom(smooth = false) {
                 <div
                     class="flex items-center justify-between gap-3 bg-[#f0f2f5] px-4 py-3"
                 >
-                    <h2 class="text-lg font-semibold text-[#111b21]">
+                    <h2 class="text-[20px] font-semibold leading-tight text-[#111b21]">
                         {{ t('messenger.chats') }}
                     </h2>
                     <div class="relative flex items-center gap-1">
@@ -2984,7 +3030,7 @@ function scrollToBottom(smooth = false) {
                             v-model="searchQuery"
                             type="search"
 :placeholder="t('messenger.searchPh')"
-                            class="w-full rounded-lg border-0 bg-[#f0f2f5] py-2 pl-10 pr-3 text-sm text-[#111b21] placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30"
+                            class="w-full rounded-lg border-0 bg-[#f0f2f5] py-2.5 pl-10 pr-3 text-[15px] text-[#111b21] placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30"
                         />
                     </div>
                 </div>
@@ -3049,13 +3095,13 @@ function scrollToBottom(smooth = false) {
                             <div class="min-w-0 flex-1 border-b border-[#f0f2f5] pb-3">
                                 <div class="flex items-start justify-between gap-2">
                                     <p
-                                        class="truncate text-[16px]"
+                                        class="truncate text-[17px] leading-snug"
                                         :class="conversation.unread_count > 0 ? 'font-semibold text-[#111b21]' : 'text-[#111b21]'"
                                     >
                                         {{ participantLabel(conversation) }}
                                     </p>
                                     <span
-                                        class="shrink-0 text-xs"
+                                        class="shrink-0 text-[13px]"
                                         :class="conversation.unread_count > 0 ? 'font-semibold text-[#00a884]' : 'text-[#667781]'"
                                     >
                                         {{ formatListTime(conversation.last_message_at) }}
@@ -3072,13 +3118,13 @@ function scrollToBottom(smooth = false) {
                                     >
                                         <span
                                             v-if="conversation.pipeline_name"
-                                            class="inline-flex min-w-0 max-w-[75%] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[11px] font-semibold leading-none"
+                                            class="inline-flex min-w-0 max-w-[75%] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[12px] font-semibold leading-none"
                                             :style="stageBadgeStyle(conversation.pipeline_color)"
                                             :title="conversation.pipeline_name"
                                         >
                                             <span
                                                 v-if="conversation.pipeline_icon"
-                                                class="shrink-0 text-[12px] leading-none"
+                                                class="shrink-0 text-[13px] leading-none"
                                             >{{ conversation.pipeline_icon }}</span>
                                             <span class="truncate">
                                                 {{ conversation.pipeline_name }}
@@ -3086,7 +3132,7 @@ function scrollToBottom(smooth = false) {
                                         </span>
                                         <span
                                             v-if="conversation.stage_name"
-                                            class="min-w-0 truncate text-[12px] leading-tight text-[#667781]"
+                                            class="min-w-0 truncate text-[13px] leading-tight text-[#667781]"
                                             :title="conversation.stage_name"
                                         >
                                             {{ conversation.stage_name }}
@@ -3186,12 +3232,12 @@ function scrollToBottom(smooth = false) {
                             :title="linkedClient ? t('messenger.clientData') : t('messenger.saveContact')"
                             @click="openClientModal"
                         >
-                            <p class="truncate text-sm font-medium text-[#111b21] sm:text-base">
+                            <p class="truncate text-[16px] font-medium leading-snug text-[#111b21] sm:text-[17px]">
                                 {{ participantLabel(selectedConversation) }}
                             </p>
                             <p
                                 v-if="selectedConversation.participant_username"
-                                class="truncate text-xs text-[#667781]"
+                                class="truncate text-[13px] text-[#667781]"
                             >
                                 @{{ selectedConversation.participant_username }}
                             </p>
@@ -3288,7 +3334,7 @@ function scrollToBottom(smooth = false) {
                                 v-if="item.type === 'date'"
                                 class="flex justify-center py-2"
                             >
-                                <span class="rounded-lg bg-[#ffffffd9] px-2.5 py-0.5 text-[11px] font-medium text-[#54656f] shadow-sm sm:px-3 sm:text-xs">
+                                <span class="rounded-lg bg-[#ffffffd9] px-2.5 py-0.5 text-[12px] font-medium text-[#54656f] shadow-sm sm:px-3 sm:text-[13px]">
                                     {{ item.label }}
                                 </span>
                             </div>
@@ -3299,7 +3345,7 @@ function scrollToBottom(smooth = false) {
                                 :class="item.message.direction === 'outbound' ? 'justify-end' : 'justify-start'"
                             >
                             <div
-                                class="group relative max-w-[82%] cursor-pointer rounded-lg px-2 py-1.5 text-[13px] leading-snug shadow-sm sm:max-w-[min(100%,28rem)] sm:px-3 sm:py-2 sm:text-sm"
+                                class="group relative max-w-[82%] cursor-pointer rounded-lg px-2.5 py-1.5 text-[15px] leading-relaxed shadow-sm sm:max-w-[min(100%,28rem)] sm:px-3 sm:py-2"
                                 :class="[
                                     item.message.direction === 'outbound'
                                         ? 'rounded-tr-none bg-[#d9fdd3]'
@@ -3477,7 +3523,7 @@ function scrollToBottom(smooth = false) {
                                 </p>
 
                                 <div
-                                    class="mt-0.5 flex items-end justify-end gap-1 text-[10px] text-[#667781] sm:mt-1 sm:text-[11px]"
+                                    class="mt-0.5 flex items-end justify-end gap-1 text-[11px] text-[#667781] sm:mt-1 sm:text-[12px]"
                                 >
                                     <span>{{ formatMessageTime(item.message.sent_at) }}</span>
                                     <span
@@ -3712,7 +3758,7 @@ function scrollToBottom(smooth = false) {
                                     v-model="sendForm.body"
                                     rows="1"
 :placeholder="t('messenger.messagePh')"
-                                    class="max-h-[7.5rem] min-h-[2.25rem] w-full resize-none overflow-y-auto rounded-lg border-0 bg-white px-3 py-2 text-[13px] leading-snug text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30 sm:min-h-[2.5rem] sm:px-4 sm:py-2.5 sm:text-sm"
+                                    class="max-h-[7.5rem] min-h-[2.5rem] w-full resize-none overflow-y-auto rounded-lg border-0 bg-white px-3 py-2.5 text-[15px] leading-snug text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30 sm:min-h-[2.75rem] sm:px-4 sm:py-2.5"
                                     :disabled="isRecording"
                                     @keydown="onMessageInputKeydown"
                                     @input="resizeMessageInput"
@@ -3972,126 +4018,175 @@ function scrollToBottom(smooth = false) {
             </div>
         </Modal>
 
-        <Modal :show="showClientModal" @close="showClientModal = false">
-            <div class="p-6">
-                <h3 class="text-lg font-semibold text-slate-900">
-{{ linkedClient ? t('messenger.clientData') : t('messenger.saveContact') }}
-                </h3>
-
-                <div
-                    v-if="clientFieldDefinitions.length === 0"
-                    class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-                >
-                    {{ t('messenger.fieldsPrefix') }}
-                    <Link
-                        :href="route('client-fields.index')"
-                        class="font-medium underline"
-                    >
-{{ t('messenger.clientData') }}
-                    </Link>.
+        <Modal
+            :show="showClientModal"
+            max-width="md"
+            @close="showClientModal = false"
+        >
+            <div class="overflow-hidden">
+                <div class="border-b border-[#e9edef] bg-[#f0f2f5] px-5 py-4">
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+                            :class="selectedConversation ? avatarClass(selectedConversation.channel) : 'bg-[#00a884]'"
+                        >
+                            {{ selectedConversation ? avatarInitials(selectedConversation) : '?' }}
+                        </div>
+                        <div class="min-w-0">
+                            <h3 class="truncate text-[17px] font-semibold text-[#111b21]">
+                                {{ linkedClient ? t('messenger.clientData') : t('messenger.saveContact') }}
+                            </h3>
+                            <p
+                                v-if="selectedConversation"
+                                class="truncate text-[13px] text-[#667781]"
+                            >
+                                {{ participantLabel(selectedConversation) }}
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
-                <form
-                    v-else
-                    class="mt-5 space-y-4"
-                    @submit.prevent="saveClientData"
-                >
+                <div class="px-5 py-4">
                     <div
-                        v-for="definition in clientFieldDefinitions"
-                        :key="definition.id"
+                        v-if="clientFieldDefinitions.length === 0"
+                        class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
                     >
-                        <InputLabel
-                            :for="`client_field_${definition.key}`"
-                            :value="definition.label + (definition.is_required ? ' *' : '')"
-                        />
+                        {{ t('messenger.fieldsPrefix') }}
+                        <Link
+                            :href="route('client-fields.index')"
+                            class="font-medium text-[#008069] underline"
+                        >
+                            {{ t('messenger.clientData') }}
+                        </Link>.
+                    </div>
 
-                        <div class="mt-1 flex items-start gap-1.5">
-                            <textarea
-                                v-if="definition.type === 'textarea'"
-                                :id="`client_field_${definition.key}`"
-                                v-model="clientForm.fields[definition.key]"
-                                rows="3"
-                                class="block min-w-0 flex-1 rounded-md border-slate-300 shadow-sm"
-                            />
-
-                            <select
-                                v-else-if="definition.type === 'select'"
-                                :id="`client_field_${definition.key}`"
-                                v-model="clientForm.fields[definition.key]"
-                                class="block min-w-0 flex-1 rounded-md border-slate-300 shadow-sm"
-                            >
-                                <option value="">
-                                    {{ t('messenger.selectEllipsis') }}
-                                </option>
-                                <option
-                                    v-for="option in definition.options"
-                                    :key="option"
-                                    :value="option"
-                                >
-                                    {{ option }}
-                                </option>
-                            </select>
-
-                            <TextInput
-                                v-else
-                                :id="`client_field_${definition.key}`"
-                                v-model="clientForm.fields[definition.key]"
-                                class="block min-w-0 flex-1"
-                                :type="definition.type === 'number' ? 'number' : definition.type === 'email' ? 'email' : definition.type === 'date' ? 'date' : definition.type === 'phone' ? 'tel' : 'text'"
-                            />
-
-                            <div class="flex shrink-0 flex-col gap-1.5">
+                    <form
+                        v-else
+                        class="space-y-4"
+                        @submit.prevent="saveClientData"
+                    >
+                        <div
+                            v-if="messengerApiName || messengerApiContact"
+                            class="rounded-xl border border-[#d1f4e4] bg-[#f0faf6] px-3.5 py-3"
+                        >
+                            <p class="text-[12px] font-semibold uppercase tracking-wide text-[#008069]">
+                                {{ t('messenger.fromChat') }}
+                            </p>
+                            <p class="mt-1 truncate text-[15px] font-medium text-[#111b21]">
+                                <span v-if="messengerApiName">{{ messengerApiName }}</span>
+                                <span
+                                    v-if="messengerApiName && messengerApiContact"
+                                    class="text-[#8696a0]"
+                                > · </span>
+                                <span
+                                    v-if="messengerApiContact"
+                                    class="text-[#54656f]"
+                                >{{ messengerApiContact.replace(/^@/, '') }}</span>
+                            </p>
+                            <div class="mt-2.5 flex flex-wrap gap-2">
                                 <button
                                     v-if="messengerApiName"
                                     type="button"
-                                    class="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
-                                    :title="t('messenger.nameTitle', { name: messengerApiName })"
-                                    @click="applyMessengerNameToField(definition.key)"
+                                    class="inline-flex items-center rounded-full bg-white px-3 py-1.5 text-[13px] font-medium text-[#008069] shadow-sm ring-1 ring-[#cceee0] transition hover:bg-[#e7f8f2]"
+                                    @click="applyMessengerNameToForm"
                                 >
-                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                                    </svg>
+                                    {{ t('messenger.fillName') }}
                                 </button>
                                 <button
                                     v-if="messengerApiContact"
                                     type="button"
-                                    class="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
-                                    :title="t('messenger.contactTitle', { contact: messengerApiContact })"
-                                    @click="applyMessengerContactToField(definition.key)"
+                                    class="inline-flex items-center rounded-full bg-white px-3 py-1.5 text-[13px] font-medium text-[#008069] shadow-sm ring-1 ring-[#cceee0] transition hover:bg-[#e7f8f2]"
+                                    @click="applyMessengerContactToForm"
                                 >
-                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
-                                    </svg>
+                                    {{ t('messenger.fillPhone') }}
                                 </button>
                             </div>
                         </div>
 
+                        <p class="text-[13px] leading-relaxed text-[#667781]">
+                            {{ t('messenger.clientFormHint') }}
+                        </p>
+
+                        <div class="space-y-3.5">
+                            <div
+                                v-for="definition in clientFieldDefinitions"
+                                :key="definition.id"
+                            >
+                                <label
+                                    :for="`client_field_${definition.key}`"
+                                    class="mb-1.5 block text-[13px] font-medium text-[#54656f]"
+                                >
+                                    {{ definition.label }}
+                                    <span
+                                        v-if="definition.is_required"
+                                        class="text-red-500"
+                                    >*</span>
+                                </label>
+
+                                <textarea
+                                    v-if="definition.type === 'textarea'"
+                                    :id="`client_field_${definition.key}`"
+                                    v-model="clientForm.fields[definition.key]"
+                                    rows="3"
+                                    class="block w-full rounded-xl border-[#d1d7db] bg-white px-3.5 py-2.5 text-[15px] text-[#111b21] shadow-sm focus:border-[#00a884] focus:ring-[#00a884]"
+                                />
+
+                                <select
+                                    v-else-if="definition.type === 'select'"
+                                    :id="`client_field_${definition.key}`"
+                                    v-model="clientForm.fields[definition.key]"
+                                    class="block w-full rounded-xl border-[#d1d7db] bg-white px-3.5 py-2.5 text-[15px] text-[#111b21] shadow-sm focus:border-[#00a884] focus:ring-[#00a884]"
+                                >
+                                    <option value="">
+                                        {{ t('messenger.selectEllipsis') }}
+                                    </option>
+                                    <option
+                                        v-for="option in definition.options"
+                                        :key="option"
+                                        :value="option"
+                                    >
+                                        {{ option }}
+                                    </option>
+                                </select>
+
+                                <input
+                                    v-else
+                                    :id="`client_field_${definition.key}`"
+                                    v-model="clientForm.fields[definition.key]"
+                                    class="block w-full rounded-xl border-[#d1d7db] bg-white px-3.5 py-2.5 text-[15px] text-[#111b21] shadow-sm focus:border-[#00a884] focus:ring-[#00a884]"
+                                    :type="definition.type === 'number' ? 'number' : definition.type === 'email' ? 'email' : definition.type === 'date' ? 'date' : definition.type === 'phone' ? 'tel' : 'text'"
+                                >
+
+                                <InputError
+                                    class="mt-1.5"
+                                    :message="clientForm.errors[`fields.${definition.key}`]"
+                                />
+                            </div>
+                        </div>
+
                         <InputError
-                            class="mt-2"
-                            :message="clientForm.errors[`fields.${definition.key}`]"
+                            class="mt-1"
+                            :message="clientForm.errors.client || page.props.errors?.client"
                         />
-                    </div>
 
-                    <InputError
-                        class="mt-2"
-                        :message="clientForm.errors.client || page.props.errors?.client"
-                    />
-
-                    <div class="flex justify-end gap-2">
-                        <SecondaryButton
-                            type="button"
-                            @click="showClientModal = false"
-                        >
-                            {{ t('common.cancel') }}
-                        </SecondaryButton>
-                        <PrimaryButton
-                            type="submit"
-                            :disabled="clientForm.processing"
-                        >
-                            {{ t('common.save') }}
-                        </PrimaryButton>
-                    </div>
-                </form>
+                        <div class="flex gap-2 border-t border-[#e9edef] pt-4">
+                            <button
+                                type="button"
+                                class="flex-1 rounded-xl border border-[#d1d7db] bg-white px-4 py-2.5 text-[14px] font-semibold text-[#54656f] transition hover:bg-[#f0f2f5]"
+                                @click="showClientModal = false"
+                            >
+                                {{ t('common.cancel') }}
+                            </button>
+                            <button
+                                type="submit"
+                                class="flex-1 rounded-xl bg-[#00a884] px-4 py-2.5 text-[14px] font-semibold text-white transition hover:bg-[#008f6f] disabled:opacity-50"
+                                :disabled="clientForm.processing"
+                            >
+                                {{ t('common.save') }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </Modal>
 
