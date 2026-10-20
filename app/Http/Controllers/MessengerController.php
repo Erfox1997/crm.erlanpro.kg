@@ -564,12 +564,28 @@ class MessengerController extends Controller
         $client = $this->clientFields->upsertClientFromConversation($conversation, $normalized);
         $this->messengerFunnel->ensureClientAndDeal($conversation->fresh());
 
-        // Ensure Google Contacts push even if name/phone did not change on re-save.
-        $this->googleContacts->syncClientQuietly($client->fresh());
+        $googleSync = $this->googleContacts->syncClientWithResult($client->fresh());
+
+        $message = __('Данные клиента сохранены.');
+        if ($googleSync['ok']) {
+            $message .= ' '.__('Google Contacts: готово.');
+        } elseif (! $googleSync['skipped']) {
+            return redirect()
+                ->route('messenger.index', ['conversation' => $conversation->id])
+                ->with('success', $message)
+                ->with('warning', __('CRM сохранил, но Google Contacts ошибка: :msg', [
+                    'msg' => $googleSync['message'],
+                ]));
+        } elseif ($googleSync['message'] !== '') {
+            return redirect()
+                ->route('messenger.index', ['conversation' => $conversation->id])
+                ->with('success', $message)
+                ->with('warning', $googleSync['message']);
+        }
 
         return redirect()
             ->route('messenger.index', ['conversation' => $conversation->id])
-            ->with('success', __('Данные клиента сохранены.'));
+            ->with('success', $message);
     }
 
     public function markUnread(Request $request, MessengerConversation $conversation): JsonResponse|RedirectResponse

@@ -214,3 +214,10 @@ npm run build
 
 # В CRM → Интеграции → Google Contacts → «Войти через Google»
 # Подключайте Google-аккаунт телефона менеджера (тот, где нужна книга контактов / WhatsApp).
+#
+# Важно (новый Google Auth Platform):
+# Google Auth Platform → Data Access → добавить scopes:
+#   https://www.googleapis.com/auth/contacts
+#   https://www.googleapis.com/auth/userinfo.email
+# Audience → Test users: добавить Gmail тех, кто подключает интеграцию (пока Testing).
+# После сохранения клиента в чате toast покажет «Google Contacts: готово» или текст ошибки.

@@ -55,6 +55,8 @@ class HandleInertiaRequests extends Middleware
             'commentsUnread' => fn () => $this->sharedCommentsUnread($request),
             'flash' => [
                 'success' => $request->session()->get('success'),
+                'warning' => $request->session()->get('warning'),
+                'error' => $request->session()->get('error'),
             ],
             'telegramMiniApp' => (bool) (
                 $request->session()->get('telegram_mini_app')

@@ -18,51 +18,139 @@ class GoogleContactsService
      */
     public function syncClientQuietly(Client $client): void
     {
+        $this->syncClientWithResult($client);
+    }
+
+    /**
+     * @return array{ok: bool, skipped: bool, message: string}
+     */
+    public function syncClientWithResult(Client $client): array
+    {
         try {
-            $this->syncClient($client);
+            return $this->syncClient($client);
         } catch (\Throwable $e) {
             Log::warning('Google Contacts sync failed', [
                 'client_id' => $client->id,
                 'company_id' => $client->company_id,
                 'message' => $e->getMessage(),
             ]);
+
+            return [
+                'ok' => false,
+                'skipped' => false,
+                'message' => $e->getMessage(),
+            ];
         }
     }
 
-    public function syncClient(Client $client): void
+    /**
+     * @return array{ok: bool, skipped: bool, message: string}
+     */
+    public function syncClient(Client $client): array
     {
-        $phone = $this->normalizePhone($client->phone);
-        $name = trim((string) $client->name);
+        $name = $this->resolveName($client);
+        $phone = $this->normalizePhone($this->resolvePhone($client));
 
-        if ($phone === null || $name === '' || $name === 'Клиент') {
-            return;
+        if ($name === '' || $name === 'Клиент') {
+            return [
+                'ok' => false,
+                'skipped' => true,
+                'message' => __('Нет имени для Google Contacts.'),
+            ];
+        }
+
+        if ($phone === null) {
+            return [
+                'ok' => false,
+                'skipped' => true,
+                'message' => __('Нет телефона для Google Contacts. Укажите номер и сохраните снова.'),
+            ];
         }
 
         $integration = $this->oauth->integrationForCompany((int) $client->company_id);
         if (! $integration) {
-            return;
+            return [
+                'ok' => false,
+                'skipped' => true,
+                'message' => __('Google Contacts не подключён в Интеграциях.'),
+            ];
         }
 
         $accessToken = $this->oauth->validAccessToken($integration);
         $resourceName = trim((string) ($client->google_resource_name ?? ''));
 
         if ($resourceName !== '') {
-            $this->updateContact($accessToken, $resourceName, $name, $phone);
-            $client->forceFill(['google_resource_name' => $resourceName])->saveQuietly();
-
-            return;
+            try {
+                $this->updateContact($accessToken, $resourceName, $name, $phone);
+            } catch (\Throwable $e) {
+                // Stale resource — create a new contact instead.
+                Log::info('Google contact update failed, recreating', [
+                    'client_id' => $client->id,
+                    'resource' => $resourceName,
+                    'message' => $e->getMessage(),
+                ]);
+                $resourceName = '';
+            }
         }
 
-        $existing = $this->findContactResourceByPhone($accessToken, $phone);
-        if ($existing !== null) {
-            $this->updateContact($accessToken, $existing, $name, $phone);
-            $client->forceFill(['google_resource_name' => $existing])->saveQuietly();
-
-            return;
+        if ($resourceName === '') {
+            $existing = $this->findContactResourceByPhone($accessToken, $phone);
+            if ($existing !== null) {
+                $this->updateContact($accessToken, $existing, $name, $phone);
+                $resourceName = $existing;
+            } else {
+                $resourceName = $this->createContact($accessToken, $name, $phone);
+            }
         }
 
-        $created = $this->createContact($accessToken, $name, $phone);
-        $client->forceFill(['google_resource_name' => $created])->saveQuietly();
+        $client->forceFill([
+            'google_resource_name' => $resourceName,
+            // Keep CRM phone normalized so later syncs keep working.
+            'phone' => $phone,
+            'name' => $name,
+        ])->saveQuietly();
+
+        return [
+            'ok' => true,
+            'skipped' => false,
+            'message' => __('Сохранено в Google Contacts.'),
+        ];
+    }
+
+    protected function resolveName(Client $client): string
+    {
+        $name = trim((string) $client->name);
+        if ($name !== '' && $name !== 'Клиент') {
+            return $name;
+        }
+
+        $custom = is_array($client->custom_fields) ? $client->custom_fields : [];
+        foreach (['name', 'imya', 'fio', 'full_name', 'fullname', 'username', 'nick'] as $key) {
+            $value = trim((string) ($custom[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return $name;
+    }
+
+    protected function resolvePhone(Client $client): ?string
+    {
+        $phone = trim((string) ($client->phone ?? ''));
+        if ($phone !== '') {
+            return $phone;
+        }
+
+        $custom = is_array($client->custom_fields) ? $client->custom_fields : [];
+        foreach (['phone', 'telefon', 'nomer', 'number', 'tel'] as $key) {
+            $value = trim((string) ($custom[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     protected function createContact(string $accessToken, string $name, string $phone): string
@@ -70,9 +158,13 @@ class GoogleContactsService
         $response = Http::withToken($accessToken)
             ->timeout((int) config('services.google.timeout', 20))
             ->acceptJson()
+            ->asJson()
             ->post('https://people.googleapis.com/v1/people:createContact', [
                 'names' => [
-                    ['givenName' => $name],
+                    [
+                        'givenName' => $name,
+                        'unstructuredName' => $name,
+                    ],
                 ],
                 'phoneNumbers' => [
                     ['value' => $phone, 'type' => 'mobile'],
@@ -80,6 +172,11 @@ class GoogleContactsService
             ]);
 
         if (! $response->successful()) {
+            Log::warning('Google createContact failed', [
+                'status' => $response->status(),
+                'body' => $response->json() ?? $response->body(),
+            ]);
+
             throw new RuntimeException($this->apiError($response->json(), __('Не удалось создать контакт в Google.')));
         }
 
@@ -103,13 +200,17 @@ class GoogleContactsService
         $response = Http::withToken($accessToken)
             ->timeout((int) config('services.google.timeout', 20))
             ->acceptJson()
+            ->asJson()
             ->withQueryParameters(['updatePersonFields' => 'names,phoneNumbers'])
             ->patch(
                 'https://people.googleapis.com/v1/'.ltrim($resourceName, '/').':updateContact',
                 [
                     'etag' => $etag,
                     'names' => [
-                        ['givenName' => $name],
+                        [
+                            'givenName' => $name,
+                            'unstructuredName' => $name,
+                        ],
                     ],
                     'phoneNumbers' => [
                         ['value' => $phone, 'type' => 'mobile'],
@@ -118,6 +219,12 @@ class GoogleContactsService
             );
 
         if (! $response->successful()) {
+            Log::warning('Google updateContact failed', [
+                'status' => $response->status(),
+                'resource' => $resourceName,
+                'body' => $response->json() ?? $response->body(),
+            ]);
+
             throw new RuntimeException($this->apiError($response->json(), __('Не удалось обновить контакт в Google.')));
         }
     }
@@ -145,14 +252,18 @@ class GoogleContactsService
     {
         $digits = preg_replace('/\D+/', '', $phone) ?: $phone;
 
-        $response = Http::withToken($accessToken)
-            ->timeout((int) config('services.google.timeout', 20))
-            ->acceptJson()
-            ->get('https://people.googleapis.com/v1/people:searchContacts', [
-                'query' => $digits,
-                'readMask' => 'names,phoneNumbers',
-                'pageSize' => 10,
-            ]);
+        try {
+            $response = Http::withToken($accessToken)
+                ->timeout((int) config('services.google.timeout', 20))
+                ->acceptJson()
+                ->get('https://people.googleapis.com/v1/people:searchContacts', [
+                    'query' => $digits,
+                    'readMask' => 'names,phoneNumbers',
+                    'pageSize' => 10,
+                ]);
+        } catch (\Throwable) {
+            return null;
+        }
 
         if (! $response->successful()) {
             return null;
@@ -174,14 +285,6 @@ class GoogleContactsService
 
             foreach ($phones as $entry) {
                 $value = (string) ($entry['value'] ?? '');
-                $entryDigits = preg_replace('/\D+/', '', $value) ?: '';
-
-                if ($entryDigits !== '' && (
-                    str_ends_with($digits, $entryDigits) || str_ends_with($entryDigits, $digits)
-                )) {
-                    return $resourceName !== '' ? $resourceName : null;
-                }
-
                 if ($this->phonesMatch($phone, $value)) {
                     return $resourceName !== '' ? $resourceName : null;
                 }
@@ -237,6 +340,15 @@ class GoogleContactsService
     {
         $message = $payload['error']['message'] ?? $payload['error_description'] ?? null;
 
-        return is_string($message) && trim($message) !== '' ? trim($message) : $fallback;
+        if (is_string($message) && trim($message) !== '') {
+            $status = $payload['error']['status'] ?? null;
+            if (is_string($status) && $status !== '') {
+                return trim($message).' ('.$status.')';
+            }
+
+            return trim($message);
+        }
+
+        return $fallback;
     }
 }

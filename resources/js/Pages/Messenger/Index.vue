@@ -123,6 +123,7 @@ const headerMenuOpen = ref(false);
 const markingAllRead = ref(false);
 const replyToMessage = ref(null);
 const emojiPickerOpen = ref(false);
+const composerAttachOpen = ref(false);
 const chatToast = ref(null);
 
 const composerEmojis = [
@@ -377,6 +378,14 @@ function showNoticesFromPageProps(pageProps) {
 
     if (pageProps.flash?.success) {
         showChatToast(pageProps.flash.success, 'success');
+    }
+
+    if (pageProps.flash?.warning) {
+        showChatToast(pageProps.flash.warning, 'error', 4200);
+    }
+
+    if (pageProps.flash?.error) {
+        showChatToast(pageProps.flash.error, 'error', 4200);
     }
 
     const errorMessage = firstErrorMessage(pageProps.errors, ['sync', 'client', 'stage', 'body']);
@@ -977,6 +986,7 @@ onMounted(() => {
     document.addEventListener('visibilitychange', onVisibilityChange);
     document.addEventListener('click', closeMessageMenu);
     document.addEventListener('click', closeEmojiPicker);
+    document.addEventListener('click', closeComposerAttachMenu);
     document.addEventListener('click', closeConversationMenu);
     document.addEventListener('click', closeHeaderMenu);
     startPolling();
@@ -1085,6 +1095,7 @@ onUnmounted(() => {
     document.removeEventListener('visibilitychange', onVisibilityChange);
     document.removeEventListener('click', closeMessageMenu);
     document.removeEventListener('click', closeEmojiPicker);
+    document.removeEventListener('click', closeComposerAttachMenu);
     document.removeEventListener('click', closeConversationMenu);
     document.removeEventListener('click', closeHeaderMenu);
     stopPolling();
@@ -1320,6 +1331,7 @@ function openConversation(id) {
     conversationMenuId.value = null;
     replyToMessage.value = null;
     emojiPickerOpen.value = false;
+    composerAttachOpen.value = false;
     sendError.value = '';
 
     if (selectedConversation.value?.id && selectedConversation.value.id !== conversationId) {
@@ -1481,6 +1493,7 @@ function backToConversationList() {
     conversationMenuId.value = null;
     replyToMessage.value = null;
     emojiPickerOpen.value = false;
+    composerAttachOpen.value = false;
     messagesLoading.value = false;
     selectedConversation.value = null;
     linkedClient.value = null;
@@ -1871,11 +1884,22 @@ function resizeMessageInput() {
 }
 
 function toggleEmojiPicker() {
+    composerAttachOpen.value = false;
     emojiPickerOpen.value = !emojiPickerOpen.value;
 }
 
 function closeEmojiPicker() {
     emojiPickerOpen.value = false;
+}
+
+function toggleComposerAttachMenu(event) {
+    event?.stopPropagation?.();
+    emojiPickerOpen.value = false;
+    composerAttachOpen.value = !composerAttachOpen.value;
+}
+
+function closeComposerAttachMenu() {
+    composerAttachOpen.value = false;
 }
 
 function insertEmoji(emoji) {
@@ -1901,6 +1925,7 @@ function insertEmoji(emoji) {
 
 async function sendMessage() {
     emojiPickerOpen.value = false;
+    composerAttachOpen.value = false;
     if (!selectedConversation.value || slashQuickRepliesOpen.value) {
         return;
     }
@@ -3610,7 +3635,7 @@ function scrollToBottom(smooth = false) {
                             </button>
                         </div>
 
-                        <div class="relative flex items-end gap-1.5 sm:gap-2">
+                        <div class="relative flex items-end gap-2">
                             <input
                                 ref="imageInput"
                                 type="file"
@@ -3618,116 +3643,6 @@ function scrollToBottom(smooth = false) {
                                 class="hidden"
                                 @change="onImageSelected"
                             >
-
-                            <button
-                                type="button"
-                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f0f2f5] text-[#54656f] transition hover:bg-[#e9edef] disabled:opacity-40 sm:h-10 sm:w-10"
-                                :disabled="isRecording"
-:title="t('messenger.attachImage')"
-                                @click="imageInput?.click()"
-                            >
-                                <svg
-                                    class="h-5 w-5"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M21.44 11.05l-8.49 8.49a5 5 0 01-7.07-7.07l9.19-9.19a3 3 0 014.24 4.24l-9.19 9.19a1.5 1.5 0 01-2.12-2.12l8.49-8.49"
-                                    />
-                                </svg>
-                            </button>
-
-                            <div class="relative shrink-0" @click.stop>
-                                <button
-                                    type="button"
-                                    class="flex h-9 w-9 items-center justify-center rounded-full transition disabled:opacity-40 sm:h-10 sm:w-10"
-                                    :class="emojiPickerOpen
-                                        ? 'bg-[#e7f8f2] text-[#008069]'
-                                        : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'"
-                                    :disabled="isRecording"
-                                    :title="t('messenger.emoji')"
-                                    @click="toggleEmojiPicker"
-                                >
-                                    <svg
-                                        class="h-5 w-5"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        aria-hidden="true"
-                                    >
-                                        <circle cx="12" cy="12" r="9" />
-                                        <path stroke-linecap="round" d="M8.5 10.5h.01M15.5 10.5h.01" />
-                                        <path stroke-linecap="round" d="M8.5 14.5s1.5 2 3.5 2 3.5-2 3.5-2" />
-                                    </svg>
-                                </button>
-
-                                <div
-                                    v-if="emojiPickerOpen"
-                                    class="absolute bottom-full left-0 z-40 mb-2 w-[17.5rem] rounded-xl bg-white p-2 shadow-lg ring-1 ring-black/10 sm:w-[19rem]"
-                                >
-                                    <div class="grid max-h-44 grid-cols-8 gap-0.5 overflow-y-auto">
-                                        <button
-                                            v-for="emoji in composerEmojis"
-                                            :key="emoji"
-                                            type="button"
-                                            class="flex h-9 w-9 items-center justify-center rounded-lg text-xl leading-none transition hover:bg-[#f0f2f5] active:bg-[#e9edef]"
-                                            @click="insertEmoji(emoji)"
-                                        >
-                                            {{ emoji }}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button
-                                v-if="chatGptConnected"
-                                type="button"
-                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40 sm:h-10 sm:w-10"
-                                :class="aiImproving
-                                    ? 'bg-[#10a37f] text-white'
-                                    : 'bg-[#f0f2f5] text-[#10a37f] hover:bg-[#e6f6f1]'"
-                                :disabled="isRecording || aiImproving || !sendForm.body.trim()"
-:title="t('messenger.improveAi')"
-                                @click="improveWithAi"
-                            >
-                                <svg
-                                    v-if="!aiImproving"
-                                    class="h-5 w-5"
-                                    viewBox="0 0 24 24"
-                                    fill="currentColor"
-                                    aria-hidden="true"
-                                >
-                                    <path
-                                        d="M22.282 9.821a5.985 5.985 0 00-.516-4.91 6.046 6.046 0 00-6.51-2.9A6.065 6.065 0 004.981 4.18a5.985 5.985 0 00-3.998 2.9 6.046 6.046 0 00.743 7.097 5.98 5.98 0 00.51 4.911 6.051 6.051 0 006.515 2.9A5.985 5.985 0 0013.26 24a6.056 6.056 0 005.772-4.206 5.99 5.99 0 003.997-2.9 6.056 6.056 0 00-.747-7.073zM13.26 22.43a4.476 4.476 0 01-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 00.392-.681v-6.737l2.02 1.168a.071.071 0 01.038.052v5.583a4.504 4.504 0 01-4.494 4.494zM3.6 18.304a4.47 4.47 0 01-.535-3.014l.142.085 4.783 2.759a.771.771 0 00.78 0l5.843-3.369v2.332a.08.08 0 01-.033.062L9.74 19.95a4.5 4.5 0 01-6.14-1.646zM2.34 7.896a4.485 4.485 0 012.366-1.973V11.6a.766.766 0 00.388.676l5.815 3.355-2.02 1.168a.076.076 0 01-.071 0l-4.83-2.786A4.504 4.504 0 012.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 01.071 0l4.83 2.791a4.494 4.494 0 01-.676 8.105v-5.678a.79.79 0 00-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 00-.785 0L9.409 9.23V6.897a.066.066 0 01.028-.061l4.83-2.787a4.5 4.5 0 016.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 01-.038-.057V6.075a4.5 4.5 0 017.375-3.453l-.141.08L8.704 5.46a.795.795 0 00-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"
-                                    />
-                                </svg>
-                                <svg
-                                    v-else
-                                    class="h-5 w-5 animate-spin"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    aria-hidden="true"
-                                >
-                                    <circle
-                                        class="opacity-25"
-                                        cx="12"
-                                        cy="12"
-                                        r="10"
-                                        stroke="currentColor"
-                                        stroke-width="4"
-                                    />
-                                    <path
-                                        class="opacity-75"
-                                        fill="currentColor"
-                                        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                                    />
-                                </svg>
-                            </button>
 
                             <div class="relative min-w-0 flex-1">
                                 <div
@@ -3753,24 +3668,143 @@ function scrollToBottom(smooth = false) {
                                     </button>
                                 </div>
 
-                                <textarea
-                                    ref="messageInput"
-                                    v-model="sendForm.body"
-                                    rows="1"
-:placeholder="t('messenger.messagePh')"
-                                    class="max-h-[7.5rem] min-h-[2.5rem] w-full resize-none overflow-y-auto rounded-lg border-0 bg-white px-3 py-2.5 text-[15px] leading-snug text-[#111b21] shadow-sm placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30 sm:min-h-[2.75rem] sm:px-4 sm:py-2.5"
-                                    :disabled="isRecording"
-                                    @keydown="onMessageInputKeydown"
-                                    @input="resizeMessageInput"
-                                />
+                                <div
+                                    class="flex items-end rounded-[1.5rem] bg-white shadow-sm ring-1 ring-black/5"
+                                >
+                                    <div class="relative shrink-0 self-end" @click.stop>
+                                        <button
+                                            type="button"
+                                            class="flex h-11 w-11 items-center justify-center rounded-full text-[#8696a0] transition hover:text-[#54656f] disabled:opacity-40"
+                                            :class="{ 'text-[#008069]': emojiPickerOpen }"
+                                            :disabled="isRecording"
+                                            :title="t('messenger.emoji')"
+                                            @click="toggleEmojiPicker"
+                                        >
+                                            <svg
+                                                class="h-[22px] w-[22px]"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="1.8"
+                                                aria-hidden="true"
+                                            >
+                                                <circle cx="12" cy="12" r="9" />
+                                                <path stroke-linecap="round" d="M8.5 10.5h.01M15.5 10.5h.01" />
+                                                <path stroke-linecap="round" d="M8.5 14.5s1.5 2 3.5 2 3.5-2 3.5-2" />
+                                            </svg>
+                                        </button>
+
+                                        <div
+                                            v-if="emojiPickerOpen"
+                                            class="absolute bottom-full left-0 z-40 mb-2 w-[17.5rem] rounded-xl bg-white p-2 shadow-lg ring-1 ring-black/10 sm:w-[19rem]"
+                                        >
+                                            <div class="grid max-h-44 grid-cols-8 gap-0.5 overflow-y-auto">
+                                                <button
+                                                    v-for="emoji in composerEmojis"
+                                                    :key="emoji"
+                                                    type="button"
+                                                    class="flex h-9 w-9 items-center justify-center rounded-lg text-xl leading-none transition hover:bg-[#f0f2f5] active:bg-[#e9edef]"
+                                                    @click="insertEmoji(emoji)"
+                                                >
+                                                    {{ emoji }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <textarea
+                                        ref="messageInput"
+                                        v-model="sendForm.body"
+                                        rows="1"
+                                        :placeholder="t('messenger.messagePh')"
+                                        class="max-h-[7.5rem] min-h-[2.75rem] w-full flex-1 resize-none overflow-y-auto border-0 bg-transparent py-2.5 pr-1 text-[15px] leading-snug text-[#111b21] placeholder:text-[#8696a0] focus:ring-0"
+                                        :disabled="isRecording"
+                                        @keydown="onMessageInputKeydown"
+                                        @input="resizeMessageInput"
+                                    />
+
+                                    <div class="relative shrink-0 self-end" @click.stop>
+                                        <button
+                                            type="button"
+                                            class="flex h-11 w-11 items-center justify-center rounded-full text-[#8696a0] transition hover:text-[#54656f] disabled:opacity-40"
+                                            :class="{ 'text-[#008069]': composerAttachOpen }"
+                                            :disabled="isRecording"
+                                            :title="t('messenger.attachMenu')"
+                                            @click="toggleComposerAttachMenu"
+                                        >
+                                            <svg
+                                                class="h-[22px] w-[22px]"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="1.8"
+                                                aria-hidden="true"
+                                            >
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    d="M21.44 11.05l-8.49 8.49a5 5 0 01-7.07-7.07l9.19-9.19a3 3 0 014.24 4.24l-9.19 9.19a1.5 1.5 0 01-2.12-2.12l8.49-8.49"
+                                                />
+                                            </svg>
+                                        </button>
+
+                                        <div
+                                            v-if="composerAttachOpen"
+                                            class="absolute bottom-full right-0 z-40 mb-2 min-w-[13.5rem] overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10"
+                                        >
+                                            <button
+                                                type="button"
+                                                class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-[14px] text-[#111b21] transition hover:bg-[#f0f2f5]"
+                                                @click="closeComposerAttachMenu(); imageInput?.click()"
+                                            >
+                                                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#bf59cf] text-white">
+                                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+                                                    </svg>
+                                                </span>
+                                                <span>{{ t('messenger.attachImage') }}</span>
+                                            </button>
+                                            <button
+                                                v-if="chatGptConnected"
+                                                type="button"
+                                                class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-[14px] text-[#111b21] transition hover:bg-[#f0f2f5] disabled:opacity-40"
+                                                :disabled="aiImproving || !sendForm.body.trim()"
+                                                @click="closeComposerAttachMenu(); improveWithAi()"
+                                            >
+                                                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#10a37f] text-white">
+                                                    <svg
+                                                        v-if="!aiImproving"
+                                                        class="h-4 w-4"
+                                                        viewBox="0 0 24 24"
+                                                        fill="currentColor"
+                                                        aria-hidden="true"
+                                                    >
+                                                        <path d="M22.282 9.821a5.985 5.985 0 00-.516-4.91 6.046 6.046 0 00-6.51-2.9A6.065 6.065 0 004.981 4.18a5.985 5.985 0 00-3.998 2.9 6.046 6.046 0 00.743 7.097 5.98 5.98 0 00.51 4.911 6.051 6.051 0 006.515 2.9A5.985 5.985 0 0013.26 24a6.056 6.056 0 005.772-4.206 5.99 5.99 0 003.997-2.9 6.056 6.056 0 00-.747-7.073z" />
+                                                    </svg>
+                                                    <svg
+                                                        v-else
+                                                        class="h-4 w-4 animate-spin"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        aria-hidden="true"
+                                                    >
+                                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                                    </svg>
+                                                </span>
+                                                <span>{{ t('messenger.improveAi') }}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <button
                                 v-if="(sendForm.body.trim() || sendForm.image) && !slashQuickRepliesOpen"
                                 type="submit"
-                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#008f6f] disabled:opacity-40 sm:h-10 sm:w-10"
+                                class="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition hover:bg-[#008f6f] disabled:opacity-40"
                                 :disabled="isRecording"
-:title="t('messenger.send')"
+                                :title="t('messenger.send')"
                             >
                                 <svg
                                     class="h-5 w-5"
@@ -3786,11 +3820,11 @@ function scrollToBottom(smooth = false) {
                             <button
                                 v-else-if="!sendForm.image"
                                 type="button"
-                                class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40 sm:h-10 sm:w-10"
+                                class="relative mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40"
                                 :class="isRecording
                                     ? 'bg-[#00a884] text-white shadow-md'
-                                    : 'bg-[#f0f2f5] text-[#54656f] hover:bg-[#e9edef]'"
-:title="t('messenger.voice')"
+                                    : 'bg-[#00a884] text-white hover:bg-[#008f6f]'"
+                                :title="t('messenger.voice')"
                                 @click="isRecording ? stopRecording() : startRecording()"
                             >
                                 <span
