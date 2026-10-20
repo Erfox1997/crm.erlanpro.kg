@@ -215,14 +215,19 @@ class GoogleContactsService
             return null;
         }
 
-        $trimmed = trim($value);
-        if ($trimmed === '' || ! preg_match('/^\+?\d[\d\s()-]{6,}$/', $trimmed)) {
+        // UI may show @996..., strip it before validation.
+        $trimmed = ltrim(trim($value), '@');
+        if ($trimmed === '') {
             return null;
         }
 
-        $normalized = preg_replace('/[^\d+]/', '', $trimmed);
+        $digits = preg_replace('/\D+/', '', $trimmed) ?: '';
+        if (strlen($digits) < 8) {
+            return null;
+        }
 
-        return is_string($normalized) && $normalized !== '' ? $normalized : null;
+        // E.164-style helps Google Contacts + WhatsApp match the number.
+        return '+'.$digits;
     }
 
     /**

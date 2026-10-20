@@ -13,9 +13,13 @@ class ClientObserver
 
     public function saved(Client $client): void
     {
-        if (! $client->wasRecentlyCreated
-            && ! $client->wasChanged(['name', 'phone'])
-        ) {
+        // Sync when created, when name/phone change, or when never pushed to Google yet
+        // (e.g. Google was connected after the client was first saved).
+        $needsSync = $client->wasRecentlyCreated
+            || $client->wasChanged(['name', 'phone'])
+            || blank($client->google_resource_name);
+
+        if (! $needsSync) {
             return;
         }
 

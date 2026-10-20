@@ -17,6 +17,7 @@ use App\Services\ChatGpt\ChatGptService;
 use App\Services\Client\ClientFieldService;
 use App\Services\Deal\DealStageService;
 use App\Services\Facebook\FacebookMessengerService;
+use App\Services\Google\GoogleContactsService;
 use App\Services\Instagram\InstagramMessengerService;
 use App\Services\Messenger\ChatDistributionService;
 use App\Services\Messenger\MessengerFunnelService;
@@ -56,6 +57,7 @@ class MessengerController extends Controller
         private DealStageService $dealStages,
         private ChatDistributionService $chatDistribution,
         private ShopIntegrationService $shop,
+        private GoogleContactsService $googleContacts,
     ) {}
 
     public function index(Request $request): Response
@@ -559,8 +561,11 @@ class MessengerController extends Controller
             $validated['fields'] ?? [],
         );
 
-        $this->clientFields->upsertClientFromConversation($conversation, $normalized);
+        $client = $this->clientFields->upsertClientFromConversation($conversation, $normalized);
         $this->messengerFunnel->ensureClientAndDeal($conversation->fresh());
+
+        // Ensure Google Contacts push even if name/phone did not change on re-save.
+        $this->googleContacts->syncClientQuietly($client->fresh());
 
         return redirect()
             ->route('messenger.index', ['conversation' => $conversation->id])
