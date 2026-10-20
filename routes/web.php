@@ -22,6 +22,7 @@ use App\Http\Controllers\DevicePushTokenController;
 use App\Http\Controllers\MobileAppController;
 use App\Http\Controllers\MessengerController;
 use App\Http\Controllers\MessengerQuickReplyController;
+use App\Http\Controllers\GoogleOAuthController;
 use App\Http\Controllers\MetaOAuthController;
 use App\Http\Controllers\MetaWebhookController;
 use App\Http\Controllers\PipelineController;
@@ -236,6 +237,8 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::get('/integrations/instagram/oauth/callback', [MetaOAuthController::class, 'callback'])->defaults('provider', 'instagram')->name('integrations.instagram.callback');
     Route::get('/integrations/facebook/oauth', [MetaOAuthController::class, 'redirect'])->defaults('provider', 'facebook')->name('integrations.facebook.oauth');
     Route::get('/integrations/facebook/oauth/callback', [MetaOAuthController::class, 'callback'])->defaults('provider', 'facebook')->name('integrations.facebook.callback');
+    Route::get('/integrations/google/oauth', [GoogleOAuthController::class, 'redirect'])->name('integrations.google.oauth');
+    Route::get('/integrations/google/oauth/callback', [GoogleOAuthController::class, 'callback'])->name('integrations.google.callback');
     Route::get('/integrations/meta/oauth/{provider}/select-page', [MetaOAuthController::class, 'selectPage'])->name('integrations.meta.oauth.select-page');
     Route::post('/integrations/meta/oauth/{provider}/select-page', [MetaOAuthController::class, 'storeSelectedPage'])->name('integrations.meta.oauth.select-page.store');
     Route::put('/integrations/{provider}', [IntegrationController::class, 'update'])->name('integrations.update');

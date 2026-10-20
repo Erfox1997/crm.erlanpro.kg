@@ -10,6 +10,7 @@ enum IntegrationProvider: string
     case Facebook = 'facebook';
     case ChatGpt = 'chatgpt';
     case Shop = 'shop';
+    case Google = 'google';
 
     public function label(): string
     {
@@ -20,6 +21,7 @@ enum IntegrationProvider: string
             self::Facebook => 'Facebook',
             self::ChatGpt => 'ChatGPT',
             self::Shop => 'Магазин',
+            self::Google => 'Google Contacts',
         };
     }
 
@@ -32,13 +34,14 @@ enum IntegrationProvider: string
             self::Facebook => 'Messenger страницы Facebook.',
             self::ChatGpt => 'ИИ-помощник в мессенджере: поправляет текст и добавляет эмодзи.',
             self::Shop => 'Продажи из мессенджера: товары, склад и чек клиенту в чат.',
+            self::Google => 'Сохраняет имя и телефон клиентов в Google Contacts — на телефоне и в WhatsApp.',
         };
     }
 
     public function isMessagingChannel(): bool
     {
         return match ($this) {
-            self::ChatGpt, self::Shop => false,
+            self::ChatGpt, self::Shop, self::Google => false,
             default => true,
         };
     }

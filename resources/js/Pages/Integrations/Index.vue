@@ -117,6 +117,7 @@ const providerAccent = {
     instagram: 'border-pink-200 bg-pink-50/40',
     telegram: 'border-sky-200 bg-sky-50/40',
     facebook: 'border-blue-200 bg-blue-50/40',
+    google: 'border-red-200 bg-red-50/30',
     chatgpt: 'border-teal-200 bg-teal-50/40',
     shop: 'border-amber-200 bg-amber-50/40',
 };
@@ -186,6 +187,10 @@ function accountLabel(item) {
         return `@${item.account.username}`;
     }
 
+    if (item.account.email) {
+        return item.account.email;
+    }
+
     if (item.account.page_name) {
         return item.account.page_name;
     }
@@ -217,6 +222,10 @@ function isChatGptProvider(provider) {
 
 function isShopProvider(provider) {
     return provider === 'shop';
+}
+
+function isGoogleProvider(provider) {
+    return provider === 'google';
 }
 
 function saveShop() {
@@ -325,13 +334,37 @@ function wappiCanSave() {
                         </div>
 
                         <InputError
-                            v-if="isMetaProvider(item.provider)"
+                            v-if="isMetaProvider(item.provider) || isGoogleProvider(item.provider)"
                             class="mt-4"
                             :message="page.props.errors?.[item.provider]"
                         />
 
                         <div
-                            v-if="isMetaProvider(item.provider)"
+                            v-if="isGoogleProvider(item.provider)"
+                            class="mt-5 space-y-3"
+                        >
+                            <p class="text-xs leading-relaxed text-slate-500">
+                                {{ t('integrations.googleHint') }}
+                            </p>
+                            <div class="flex flex-wrap gap-2">
+                                <a
+                                    :href="item.oauth_url"
+                                    class="inline-flex items-center rounded-md border border-transparent bg-[#4285F4] px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-[#3367d6]"
+                                >
+                                    {{ item.has_token ? t('integrations.reconnect') : t('integrations.connectGoogle') }}
+                                </a>
+                                <SecondaryButton
+                                    v-if="item.has_token"
+                                    type="button"
+                                    @click="disconnect(item.provider)"
+                                >
+                                    {{ t('integrations.disconnect') }}
+                                </SecondaryButton>
+                            </div>
+                        </div>
+
+                        <div
+                            v-else-if="isMetaProvider(item.provider)"
                             class="mt-5 space-y-3"
                         >
                             <div class="flex flex-wrap gap-2">
@@ -710,7 +743,7 @@ function wappiCanSave() {
                         </form>
 
                         <form
-                            v-else-if="!isMetaProvider(item.provider)"
+                            v-else-if="!isMetaProvider(item.provider) && !isGoogleProvider(item.provider)"
                             class="mt-5 space-y-4"
                             @submit.prevent="saveToken(item.provider)"
                         >

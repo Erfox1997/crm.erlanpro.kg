@@ -106,4 +106,18 @@ return [
         'credentials' => env('FCM_CREDENTIALS', 'storage/app/firebase-credentials.json'),
     ],
 
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect_uri' => env('GOOGLE_REDIRECT_URI'),
+        // Google Cloud → APIs & Services → Credentials → OAuth 2.0 Client
+        // Enable "People API". Redirect URI example:
+        // https://crm.erlanpro.kg/integrations/google/oauth/callback
+        'scopes' => env(
+            'GOOGLE_OAUTH_SCOPES',
+            'https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/userinfo.email',
+        ),
+        'timeout' => (int) env('GOOGLE_TIMEOUT', 20),
+    ],
+
 ];

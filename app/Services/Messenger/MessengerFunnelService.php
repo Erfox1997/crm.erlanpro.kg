@@ -9,11 +9,18 @@ use App\Models\Deal;
 use App\Models\MessengerConversation;
 use App\Models\Pipeline;
 use App\Models\Stage;
+use App\Services\Client\ClientFieldService;
 
 class MessengerFunnelService
 {
-    public function ensureClientAndDeal(MessengerConversation $conversation): ?Deal
-    {
+    public function __construct(
+        private ClientFieldService $clientFields,
+    ) {}
+
+    public function ensureClientAndDeal(
+        MessengerConversation $conversation,
+        ?string $sharedPhone = null,
+    ): ?Deal {
         $companyId = (int) $conversation->company_id;
 
         $company = Company::query()->find($companyId);
@@ -23,7 +30,7 @@ class MessengerFunnelService
 
         CreateDefaultPipelineForCompany::ensure($company);
 
-        $client = $this->ensureClient($conversation);
+        $client = $this->clientFields->syncClientFromConversation($conversation, $sharedPhone);
         if (! $client) {
             return null;
         }
@@ -83,45 +90,6 @@ class MessengerFunnelService
                 'color' => $stage->color,
             ])->values()->all(),
         ];
-    }
-
-    private function ensureClient(MessengerConversation $conversation): ?Client
-    {
-        if ($conversation->client_id) {
-            return Client::query()
-                ->where('company_id', $conversation->company_id)
-                ->whereKey($conversation->client_id)
-                ->first();
-        }
-
-        $name = trim((string) (
-            $conversation->participant_name
-            ?? $conversation->participant_username
-            ?? ''
-        ));
-
-        if ($name === '') {
-            $name = 'Клиент';
-        }
-
-        $username = ltrim((string) ($conversation->participant_username ?? ''), '@');
-        $phone = null;
-
-        if ($username !== '' && preg_match('/^\+?\d[\d\s()-]{6,}$/', $username)) {
-            $phone = $username;
-        }
-
-        $client = Client::query()->create([
-            'company_id' => $conversation->company_id,
-            'name' => $name,
-            'phone' => $phone,
-            'email' => null,
-            'custom_fields' => $username !== '' ? ['messenger_contact' => $username] : [],
-        ]);
-
-        $conversation->update(['client_id' => $client->id]);
-
-        return $client;
     }
 
     private function ensureDeal(Client $client, int $companyId): ?Deal

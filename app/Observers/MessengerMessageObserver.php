@@ -3,6 +3,7 @@
 namespace App\Observers;
 
 use App\Models\MessengerMessage;
+use App\Services\Messenger\MessengerFunnelService;
 use App\Services\Push\FcmPushService;
 use App\Services\Telegram\ManagerTelegramBotService;
 
@@ -11,12 +12,22 @@ class MessengerMessageObserver
     public function __construct(
         private ManagerTelegramBotService $managerBot,
         private FcmPushService $fcm,
+        private MessengerFunnelService $messengerFunnel,
     ) {}
 
     public function created(MessengerMessage $message): void
     {
         if ($message->direction !== 'inbound') {
             return;
+        }
+
+        try {
+            $conversation = $message->conversation;
+            if ($conversation) {
+                $this->messengerFunnel->ensureClientAndDeal($conversation);
+            }
+        } catch (\Throwable) {
+            // Never break inbound webhook processing because of client sync.
         }
 
         try {

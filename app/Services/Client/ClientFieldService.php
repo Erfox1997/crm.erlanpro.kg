@@ -2,6 +2,7 @@
 
 namespace App\Services\Client;
 
+use App\Enums\IntegrationProvider;
 use App\Models\Client;
 use App\Models\ClientFieldDefinition;
 use App\Models\MessengerConversation;
@@ -10,11 +11,95 @@ use Illuminate\Support\Str;
 
 class ClientFieldService
 {
+    public const DEFAULT_NAME_KEY = 'name';
+
+    public const DEFAULT_PHONE_KEY = 'phone';
+
+    /**
+     * @return list<string>
+     */
+    public static function defaultFieldKeys(): array
+    {
+        return [self::DEFAULT_NAME_KEY, self::DEFAULT_PHONE_KEY];
+    }
+
+    public function isDefaultFieldKey(string $key): bool
+    {
+        return in_array($key, self::defaultFieldKeys(), true);
+    }
+
+    /**
+     * Ensure every company has "Имя / ник" and "Телефон" fields.
+     */
+    public function ensureDefaultFields(int $companyId): void
+    {
+        $existingKeys = ClientFieldDefinition::query()
+            ->where('company_id', $companyId)
+            ->pluck('key')
+            ->all();
+
+        $defaults = [
+            [
+                'key' => self::DEFAULT_NAME_KEY,
+                'label' => 'Имя / ник',
+                'type' => 'text',
+                'sort_order' => 0,
+                'show_in_messenger' => true,
+            ],
+            [
+                'key' => self::DEFAULT_PHONE_KEY,
+                'label' => 'Телефон',
+                'type' => 'phone',
+                'sort_order' => 1,
+                'show_in_messenger' => false,
+            ],
+        ];
+
+        $missing = array_values(array_filter(
+            $defaults,
+            fn (array $field) => ! in_array($field['key'], $existingKeys, true),
+        ));
+
+        if ($missing === []) {
+            return;
+        }
+
+        ClientFieldDefinition::query()
+            ->where('company_id', $companyId)
+            ->increment('sort_order', count($missing));
+
+        $hasMessengerField = ClientFieldDefinition::query()
+            ->where('company_id', $companyId)
+            ->where('show_in_messenger', true)
+            ->exists();
+
+        foreach ($missing as $index => $field) {
+            $showInMessenger = $field['show_in_messenger'] && ! $hasMessengerField;
+
+            if ($showInMessenger) {
+                $hasMessengerField = true;
+            }
+
+            ClientFieldDefinition::query()->create([
+                'company_id' => $companyId,
+                'key' => $field['key'],
+                'label' => $field['label'],
+                'type' => $field['type'],
+                'options' => null,
+                'is_required' => false,
+                'show_in_messenger' => $showInMessenger,
+                'sort_order' => $index,
+            ]);
+        }
+    }
+
     /**
      * @return Collection<int, ClientFieldDefinition>
      */
     public function definitionsForCompany(int $companyId): Collection
     {
+        $this->ensureDefaultFields($companyId);
+
         return ClientFieldDefinition::query()
             ->where('company_id', $companyId)
             ->orderBy('sort_order')
@@ -79,7 +164,7 @@ class ClientFieldService
 
         return [
             'custom_fields' => $customFields,
-            'name' => $this->resolveCoreValue($customFields, ['name', 'imya', 'fio', 'full_name'], 'Клиент'),
+            'name' => $this->resolveCoreValue($customFields, ['name', 'imya', 'fio', 'full_name', 'username', 'nick'], 'Клиент'),
             'phone' => $this->resolveCoreValue($customFields, ['phone', 'telefon', 'nomer', 'number']),
             'email' => $this->resolveCoreValue($customFields, ['email', 'pochta', 'mail']),
         ];
@@ -103,14 +188,188 @@ class ClientFieldService
     }
 
     /**
+     * Extract name/nick and phone from a messenger conversation by channel.
+     *
+     * @return array{name: string, phone: ?string, username: ?string}
+     */
+    public function profileFromConversation(MessengerConversation $conversation): array
+    {
+        $displayName = trim((string) ($conversation->participant_name ?? ''));
+        $rawUsername = trim((string) ($conversation->participant_username ?? ''));
+        $username = ltrim($rawUsername, '@');
+        $channel = (string) $conversation->channel;
+
+        $phone = null;
+        $nick = null;
+
+        if ($channel === IntegrationProvider::Wappi->value) {
+            $phoneCandidate = $username !== '' ? $username : trim((string) ($conversation->participant_id ?? ''));
+            $phone = $this->normalizePhone($phoneCandidate);
+        } elseif ($channel === IntegrationProvider::Telegram->value) {
+            if ($username !== '' && $this->looksLikePhone($username)) {
+                $phone = $this->normalizePhone($username);
+            } else {
+                $nick = $username !== '' ? $username : null;
+            }
+        } else {
+            // Instagram / Facebook — username is a handle, not a phone.
+            $nick = $username !== '' ? $username : null;
+        }
+
+        $name = $displayName;
+
+        if ($name === '' && $nick !== null) {
+            $name = $nick;
+        }
+
+        if ($name === '' && $phone !== null) {
+            $name = $phone;
+        }
+
+        return [
+            'name' => $name,
+            'phone' => $phone,
+            'username' => $nick,
+        ];
+    }
+
+    /**
+     * Create or update a client from conversation profile data.
+     * Fills empty fields only — does not overwrite values already set by the user.
+     */
+    public function syncClientFromConversation(
+        MessengerConversation $conversation,
+        ?string $sharedPhone = null,
+    ): ?Client {
+        $companyId = (int) $conversation->company_id;
+        $this->ensureDefaultFields($companyId);
+
+        $profile = $this->profileFromConversation($conversation);
+
+        if ($sharedPhone !== null) {
+            $normalizedShared = $this->normalizePhone($sharedPhone);
+            if ($normalizedShared !== null) {
+                $profile['phone'] = $normalizedShared;
+            }
+        }
+
+        if ($profile['name'] === '' && $profile['phone'] === null && $profile['username'] === null) {
+            return $conversation->client_id
+                ? Client::query()
+                    ->where('company_id', $companyId)
+                    ->whereKey($conversation->client_id)
+                    ->first()
+                : null;
+        }
+
+        $customFields = $this->customFieldsFromProfile($companyId, $profile);
+
+        if ($conversation->client_id) {
+            $client = Client::query()
+                ->where('company_id', $companyId)
+                ->whereKey($conversation->client_id)
+                ->first();
+
+            if (! $client) {
+                return null;
+            }
+
+            $updates = [];
+            $mergedCustom = is_array($client->custom_fields) ? $client->custom_fields : [];
+
+            foreach ($customFields as $key => $value) {
+                if ($this->isBlank($mergedCustom[$key] ?? null)) {
+                    $mergedCustom[$key] = $value;
+                }
+            }
+
+            if ($mergedCustom !== ($client->custom_fields ?? [])) {
+                $updates['custom_fields'] = $mergedCustom;
+            }
+
+            if ($this->isBlankName($client->name) && $profile['name'] !== '') {
+                $updates['name'] = $profile['name'];
+            }
+
+            if ($this->isBlank($client->phone) && $profile['phone'] !== null) {
+                $updates['phone'] = $profile['phone'];
+            }
+
+            if ($updates !== []) {
+                $client->update($updates);
+            }
+
+            return $client->refresh();
+        }
+
+        $name = $profile['name'] !== '' ? $profile['name'] : 'Клиент';
+
+        $client = Client::query()->create([
+            'company_id' => $companyId,
+            'name' => $name,
+            'phone' => $profile['phone'],
+            'email' => null,
+            'custom_fields' => $customFields,
+        ]);
+
+        $conversation->update(['client_id' => $client->id]);
+
+        return $client;
+    }
+
+    /**
+     * @param  array{name: string, phone: ?string, username: ?string}  $profile
+     * @return array<string, string>
+     */
+    public function customFieldsFromProfile(int $companyId, array $profile): array
+    {
+        $custom = [];
+
+        foreach ($this->definitionsForCompany($companyId) as $definition) {
+            $value = $this->profileValueForKey($definition->key, $profile);
+
+            if ($value !== '') {
+                $custom[$definition->key] = $value;
+            }
+        }
+
+        return $custom;
+    }
+
+    /**
+     * @param  array{name: string, phone: ?string, username: ?string}  $profile
+     */
+    public function profileValueForKey(string $key, array $profile): string
+    {
+        $normalizedKey = Str::lower($key);
+
+        if (in_array($normalizedKey, ['name', 'imya', 'fio', 'full_name', 'fullname'], true)) {
+            return (string) ($profile['name'] ?? '');
+        }
+
+        if (in_array($normalizedKey, ['phone', 'telefon', 'nomer', 'number', 'tel'], true)) {
+            return (string) ($profile['phone'] ?? '');
+        }
+
+        if (in_array($normalizedKey, ['username', 'login', 'nick'], true)) {
+            $username = (string) ($profile['username'] ?? '');
+
+            return $username !== '' ? $username : (string) ($profile['name'] ?? '');
+        }
+
+        return '';
+    }
+
+    /**
      * @return array<string, string>
      */
     public function prefillForConversation(MessengerConversation $conversation, Collection $definitions): array
     {
+        $profile = $this->profileFromConversation($conversation);
         $prefill = [];
 
         foreach ($definitions as $definition) {
-            $prefill[$definition->key] = $this->prefillValueForKey($definition->key, $conversation);
+            $prefill[$definition->key] = $this->profileValueForKey($definition->key, $profile);
         }
 
         return $prefill;
@@ -118,23 +377,7 @@ class ClientFieldService
 
     public function prefillValueForKey(string $key, MessengerConversation $conversation): string
     {
-        $normalizedKey = Str::lower($key);
-
-        if (in_array($normalizedKey, ['name', 'imya', 'fio', 'full_name', 'fullname'], true)) {
-            return (string) ($conversation->participant_name ?? '');
-        }
-
-        if (in_array($normalizedKey, ['phone', 'telefon', 'nomer', 'number', 'tel'], true)) {
-            $username = (string) ($conversation->participant_username ?? '');
-
-            return ltrim($username, '@');
-        }
-
-        if (in_array($normalizedKey, ['username', 'login', 'nick'], true)) {
-            return ltrim((string) ($conversation->participant_username ?? ''), '@');
-        }
-
-        return '';
+        return $this->profileValueForKey($key, $this->profileFromConversation($conversation));
     }
 
     public function upsertClientFromConversation(
@@ -187,6 +430,8 @@ class ClientFieldService
 
     public function messengerFieldDefinition(int $companyId): ?ClientFieldDefinition
     {
+        $this->ensureDefaultFields($companyId);
+
         return ClientFieldDefinition::query()
             ->where('company_id', $companyId)
             ->where('show_in_messenger', true)
@@ -214,11 +459,53 @@ class ClientFieldService
             }
         }
 
+        $profile = $this->profileFromConversation($conversation);
+
         return (string) (
-            $conversation->participant_name
-            ?? $conversation->participant_username
-            ?? $conversation->participant_id
-            ?? ''
+            $profile['name']
+            ?: $profile['username']
+            ?: $conversation->participant_id
+            ?: ''
         );
+    }
+
+    public function looksLikePhone(?string $value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+
+        $trimmed = trim($value);
+
+        return $trimmed !== '' && (bool) preg_match('/^\+?\d[\d\s()-]{6,}$/', $trimmed);
+    }
+
+    public function normalizePhone(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+
+        if ($trimmed === '' || ! $this->looksLikePhone($trimmed)) {
+            return null;
+        }
+
+        $digits = preg_replace('/[^\d+]/', '', $trimmed);
+
+        return is_string($digits) && $digits !== '' ? $digits : null;
+    }
+
+    protected function isBlank(mixed $value): bool
+    {
+        return ! is_string($value) || trim($value) === '';
+    }
+
+    protected function isBlankName(?string $name): bool
+    {
+        $trimmed = trim((string) $name);
+
+        return $trimmed === '' || $trimmed === 'Клиент';
     }
 }

@@ -15,6 +15,7 @@ class Client extends Model
         'email',
         'notes',
         'custom_fields',
+        'google_resource_name',
     ];
 
     protected function casts(): array

@@ -19,6 +19,8 @@ class ClientFieldDefinitionController extends Controller
     {
         $companyId = (int) $request->user()->company_id;
 
+        $this->clientFields->ensureDefaultFields($companyId);
+
         $fields = ClientFieldDefinition::query()
             ->where('company_id', $companyId)
             ->orderBy('sort_order')
@@ -33,6 +35,7 @@ class ClientFieldDefinitionController extends Controller
                 'is_required' => $field->is_required,
                 'show_in_messenger' => $field->show_in_messenger,
                 'sort_order' => $field->sort_order,
+                'is_default' => $this->clientFields->isDefaultFieldKey($field->key),
             ]);
 
         return Inertia::render('ClientFields/Index', [
@@ -54,6 +57,8 @@ class ClientFieldDefinitionController extends Controller
             'is_required' => 'boolean',
             'show_in_messenger' => 'boolean',
         ]);
+
+        $this->clientFields->ensureDefaultFields($companyId);
 
         $key = ClientFieldService::normalizeKey($validated['label'], $validated['key'] ?? null);
 
@@ -187,6 +192,10 @@ class ClientFieldDefinitionController extends Controller
 
         $key = ClientFieldService::normalizeKey($validated['label'], $validated['key']);
 
+        if ($this->clientFields->isDefaultFieldKey($clientFieldDefinition->key)) {
+            $key = $clientFieldDefinition->key;
+        }
+
         abort_if(
             ClientFieldDefinition::query()
                 ->where('company_id', $companyId)
@@ -203,11 +212,16 @@ class ClientFieldDefinitionController extends Controller
             $this->clientFields->ensureSingleMessengerField($companyId, $clientFieldDefinition->id);
         }
 
+        $type = $validated['type'];
+        if ($clientFieldDefinition->key === ClientFieldService::DEFAULT_PHONE_KEY) {
+            $type = 'phone';
+        }
+
         $clientFieldDefinition->update([
             'key' => $key,
             'label' => $validated['label'],
-            'type' => $validated['type'],
-            'options' => $validated['type'] === 'select' ? array_values(array_filter($validated['options'] ?? [])) : null,
+            'type' => $type,
+            'options' => $type === 'select' ? array_values(array_filter($validated['options'] ?? [])) : null,
             'is_required' => (bool) ($validated['is_required'] ?? false),
             'show_in_messenger' => $showInMessenger,
         ]);
@@ -219,6 +233,12 @@ class ClientFieldDefinitionController extends Controller
     {
         $companyId = (int) $request->user()->company_id;
         abort_unless($clientFieldDefinition->company_id === $companyId, 403);
+
+        if ($this->clientFields->isDefaultFieldKey($clientFieldDefinition->key)) {
+            return back()->withErrors([
+                'field' => __('Поля «Имя / ник» и «Телефон» нельзя удалить.'),
+            ]);
+        }
 
         $clientFieldDefinition->delete();
 

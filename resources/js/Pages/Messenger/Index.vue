@@ -2104,17 +2104,28 @@ function apiValueForField(key) {
     }
 
     const normalizedKey = key.toLowerCase();
+    const rawContact = messengerApiContact.value.replace(/^@/, '').trim();
+    const looksLikePhone = /^\+?\d[\d\s()-]{6,}$/.test(rawContact);
+    const isWhatsApp = conversation.channel === 'wappi';
 
     if (['name', 'imya', 'fio', 'full_name', 'fullname'].includes(normalizedKey)) {
-        return messengerApiName.value;
+        return messengerApiName.value || (!isWhatsApp && !looksLikePhone ? rawContact : '');
     }
 
     if (['phone', 'telefon', 'nomer', 'number', 'tel'].includes(normalizedKey)) {
-        return messengerApiContact.value.replace(/^@/, '');
+        if (isWhatsApp || looksLikePhone) {
+            return rawContact;
+        }
+
+        return linkedClient.value?.phone ? String(linkedClient.value.phone) : '';
     }
 
     if (['username', 'login', 'nick'].includes(normalizedKey)) {
-        return messengerApiContact.value;
+        if (!isWhatsApp && !looksLikePhone && rawContact) {
+            return messengerApiContact.value;
+        }
+
+        return messengerApiName.value;
     }
 
     return '';

@@ -8,6 +8,7 @@ use App\Models\MessengerConversation;
 use App\Models\MessengerMessage;
 use App\Services\Meta\MetaAttachmentService;
 use App\Services\Messenger\ChatDistributionService;
+use App\Services\Messenger\MessengerFunnelService;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
@@ -21,6 +22,7 @@ class TelegramMessengerService
         private TelegramApiClient $api,
         private MetaAttachmentService $metaAttachments,
         private ChatDistributionService $chatDistribution,
+        private MessengerFunnelService $messengerFunnel,
     ) {}
 
     public function integrationForCompany(int $companyId): ?CompanyIntegration
@@ -363,7 +365,12 @@ class TelegramMessengerService
         }
 
         [$body, $attachments] = $this->resolveBodyAndAttachments($integration, $message);
+        $sharedPhone = $this->sharedContactPhoneFromMessage($message);
         $sentAt = $this->resolveSentAt($message);
+
+        if ($body === '' && $sharedPhone !== null) {
+            $body = $sharedPhone;
+        }
 
         MessengerMessage::query()->create([
             'company_id' => $integration->company_id,
@@ -378,7 +385,41 @@ class TelegramMessengerService
 
         $conversation->update(['last_message_at' => $sentAt]);
 
+        if ($sharedPhone !== null) {
+            try {
+                $this->messengerFunnel->ensureClientAndDeal($conversation->fresh(), $sharedPhone);
+            } catch (\Throwable) {
+                // Client sync must not break inbound processing.
+            }
+        }
+
         return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $message
+     */
+    protected function sharedContactPhoneFromMessage(array $message): ?string
+    {
+        $contact = $message['contact'] ?? null;
+        if (! is_array($contact)) {
+            return null;
+        }
+
+        $phone = trim((string) ($contact['phone_number'] ?? ''));
+        if ($phone === '') {
+            return null;
+        }
+
+        $contactUserId = (string) ($contact['user_id'] ?? '');
+        $fromId = (string) ($message['from']['id'] ?? '');
+
+        // Only accept the sender's own contact card (or a card without user_id).
+        if ($contactUserId !== '' && $fromId !== '' && $contactUserId !== $fromId) {
+            return null;
+        }
+
+        return $phone;
     }
 
     /**

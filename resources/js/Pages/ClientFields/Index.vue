@@ -225,6 +225,12 @@ function submitEdit() {
 }
 
 function destroyField(field) {
+    if (field.is_default) {
+        alert(t('clientFields.cannotDeleteDefault'));
+
+        return;
+    }
+
     if (!confirm(t('clientFields.confirmDelete', { name: field.label }))) {
         return;
     }
@@ -248,7 +254,7 @@ function destroyField(field) {
                     {{ $page.props.flash.success }}
                 </div>
 
-                <div class="mb-6 flex justify-center">
+                <div class="mb-6 flex flex-col items-center gap-3">
                     <button
                         type="button"
                         class="rounded-lg bg-slate-800 px-8 py-2.5 text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-slate-700"
@@ -256,6 +262,9 @@ function destroyField(field) {
                     >
                         {{ t('clientFields.addFields') }}
                     </button>
+                    <p class="max-w-xl text-center text-xs leading-relaxed text-slate-500">
+                        {{ t('clientFields.defaultHint') }}
+                    </p>
                 </div>
 
                 <div class="overflow-hidden rounded-xl bg-white shadow-lg">
@@ -285,6 +294,12 @@ function destroyField(field) {
                                     <span class="text-sm text-slate-700">
                                         {{ field.label }}:
                                         <span
+                                            v-if="field.is_default"
+                                            class="ml-1 text-xs font-normal text-slate-400"
+                                        >
+                                            {{ t('clientFields.defaultBadge') }}
+                                        </span>
+                                        <span
                                             v-if="field.show_in_messenger"
                                             class="ml-1 text-xs font-normal text-emerald-600"
                                         >
@@ -304,6 +319,7 @@ function destroyField(field) {
                                             </svg>
                                         </button>
                                         <button
+                                            v-if="!field.is_default"
                                             type="button"
                                             class="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
                                             :title="t('clientFields.deleteTitleAttr')"
@@ -512,6 +528,7 @@ function destroyField(field) {
                             id="edit_key"
                             v-model="editForm.key"
                             class="mt-1 block w-full font-mono text-sm"
+                            :disabled="selectedField?.is_default"
                         />
                         <InputError class="mt-2" :message="editForm.errors.key" />
                     </div>
@@ -522,6 +539,7 @@ function destroyField(field) {
                             id="edit_type"
                             v-model="editForm.type"
                             class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"
+                            :disabled="selectedField?.is_default"
                         >
                             <option
                                 v-for="type in fieldTypes"

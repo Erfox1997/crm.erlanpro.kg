@@ -192,3 +192,25 @@ npm run build
 #   cd mobile && npm install && npx cap add android && npx cap sync android && npx cap open android
 # google-services.json → mobile/android/app/
 # Capacitor открывает https://crm.erlanpro.kg/app → логин → только мессенджер.
+
+10. Google Contacts (синк имени + телефона клиентов):
+
+# Google Cloud Console → APIs & Services:
+#   1) Enable "People API"
+#   2) OAuth consent screen (External или Internal) → scopes:
+#      .../auth/contacts , .../auth/userinfo.email
+#   3) Credentials → OAuth 2.0 Client ID (Web application)
+#      Authorized redirect URI:
+#      https://crm.erlanpro.kg/integrations/google/oauth/callback
+#
+# .env на проде:
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# GOOGLE_REDIRECT_URI=https://crm.erlanpro.kg/integrations/google/oauth/callback
+
+php artisan migrate --force
+php artisan config:clear
+npm run build
+
+# В CRM → Интеграции → Google Contacts → «Войти через Google»
+# Подключайте Google-аккаунт телефона менеджера (тот, где нужна книга контактов / WhatsApp).

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\Tariff;
 use App\Models\User;
+use App\Services\Client\ClientFieldService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,6 +57,7 @@ class RegisteredUserController extends Controller
             ]);
 
             CreateDefaultPipelineForCompany::run($company);
+            app(ClientFieldService::class)->ensureDefaultFields((int) $company->id);
 
             return User::query()->create([
                 'name' => $validated['name'],

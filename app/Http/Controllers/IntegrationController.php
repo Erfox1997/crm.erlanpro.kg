@@ -53,6 +53,7 @@ class IntegrationController extends Controller
             IntegrationProvider::Instagram,
             IntegrationProvider::Wappi,
             IntegrationProvider::Telegram,
+            IntegrationProvider::Google,
             IntegrationProvider::ChatGpt,
             IntegrationProvider::Shop,
         ];
@@ -73,6 +74,9 @@ class IntegrationController extends Controller
                 IntegrationProvider::Shop => $record !== null
                     && $record->hasUsableApiToken()
                     && filled($metadata['shop_url'] ?? null),
+                IntegrationProvider::Google => $record !== null
+                    && $record->hasUsableApiToken()
+                    && filled($metadata['refresh_token'] ?? null),
                 IntegrationProvider::Instagram, IntegrationProvider::Facebook => $records->contains(
                     fn (CompanyIntegration $item) => $item->hasUsableApiToken(),
                 ),
@@ -160,6 +164,17 @@ class IntegrationController extends Controller
                 }
             }
 
+            if ($provider === IntegrationProvider::Google) {
+                $item['oauth_url'] = route('integrations.google.oauth');
+
+                if ($hasToken) {
+                    $item['account'] = [
+                        'email' => $metadata['email'] ?? null,
+                        'name' => $metadata['name'] ?? ($metadata['email'] ?? null),
+                    ];
+                }
+            }
+
             return $item;
         })->values();
 
@@ -199,6 +214,11 @@ class IntegrationController extends Controller
                 'api_token' => 'required|string|max:2000',
                 'shop_url' => 'required|string|max:500',
             ];
+        }
+
+        if ($integrationProvider === IntegrationProvider::Google) {
+            return redirect()
+                ->route('integrations.google.oauth');
         }
 
         $validated = $request->validate($rules);

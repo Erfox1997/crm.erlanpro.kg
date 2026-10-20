@@ -44,6 +44,7 @@ class CompanyIntegration extends Model
                     ?? $metadata['page_id']
                     ?? ''
             ),
+            IntegrationProvider::Google->value => (string) ($metadata['google_user_id'] ?? ''),
             default => '',
         };
     }

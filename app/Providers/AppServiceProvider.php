@@ -9,6 +9,7 @@ use App\Models\Pipeline;
 use App\Models\PipelineTunnel;
 use App\Models\MessengerMessage;
 use App\Models\StageTunnel;
+use App\Observers\ClientObserver;
 use App\Observers\MessengerMessageObserver;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
@@ -32,6 +33,7 @@ class AppServiceProvider extends ServiceProvider
         Vite::prefetch(concurrency: 3);
 
         MessengerMessage::observe(MessengerMessageObserver::class);
+        Client::observe(ClientObserver::class);
 
         Route::bind('client', function (string $value) {
             return Client::query()
