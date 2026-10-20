@@ -390,6 +390,9 @@
       "needPayment": "Укажите оплату наличными или безналом."
     },
     "task": "Задача",
+    "callWhatsApp": "Позвонить в WhatsApp",
+    "callWhatsAppShort": "Звонок",
+    "noPhoneForCall": "Нет номера телефона для звонка в WhatsApp",
     "clientData": "Данные клиента",
     "saveContact": "Сохранить контакт",
     "fromChat": "Данные из чата",

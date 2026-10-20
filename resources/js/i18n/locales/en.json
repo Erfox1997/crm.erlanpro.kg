@@ -390,6 +390,9 @@
       "needPayment": "Enter cash or card payment."
     },
     "task": "Task",
+    "callWhatsApp": "Call via WhatsApp",
+    "callWhatsAppShort": "Call",
+    "noPhoneForCall": "No phone number to call in WhatsApp",
     "clientData": "Client data",
     "saveContact": "Save contact",
     "fromChat": "From chat",

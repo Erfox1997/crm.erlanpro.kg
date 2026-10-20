@@ -10,6 +10,11 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { localeTag } from '@/i18n';
+import {
+    loadCachedMessages,
+    saveCachedMessages,
+    warmMessageCache,
+} from '@/utils/messengerMessageStore';
 import { syncAppBadge } from '@/utils/syncAppBadge';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -106,6 +111,7 @@ const props = defineProps({
 
 const page = usePage();
 const isMiniApp = computed(() => Boolean(page.props.telegramMiniApp));
+const companyId = computed(() => Number(page.props.company?.id) || 0);
 
 const messagesEnd = ref(null);
 const messagesContainer = ref(null);
@@ -991,6 +997,18 @@ onMounted(() => {
     document.addEventListener('click', closeHeaderMenu);
     startPolling();
 
+    if (selectedConversation.value?.id && localMessages.value.length > 0 && companyId.value) {
+        void saveCachedMessages(
+            companyId.value,
+            selectedConversation.value.id,
+            localMessages.value,
+        );
+    }
+
+    if (companyId.value) {
+        void warmMessageCache(companyId.value, localConversations.value, messageCache);
+    }
+
     if (isMiniApp.value) {
         const tg = window.Telegram?.WebApp;
         if (tg) {
@@ -1249,10 +1267,89 @@ function rememberMessages(conversationId, messages) {
         return;
     }
 
-    messageCache.set(
-        conversationId,
-        (messages || []).map((message) => ({ ...message })),
-    );
+    const snapshot = (messages || []).map((message) => ({ ...message }));
+    messageCache.set(conversationId, snapshot);
+
+    if (companyId.value) {
+        void saveCachedMessages(companyId.value, conversationId, snapshot);
+    }
+}
+
+/**
+ * Digits-only phone for WhatsApp deep links (wa.me / whatsapp://).
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+function normalizeWhatsAppPhoneDigits(value) {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    let digits = String(value).replace(/\D+/g, '');
+    if (digits.length < 8 || digits.length > 15) {
+        return null;
+    }
+
+    // Local KG mobile: 0XXXXXXXXX → 996XXXXXXXXX
+    if (digits.startsWith('0') && digits.length === 10) {
+        digits = `996${digits.slice(1)}`;
+    }
+
+    return digits;
+}
+
+const whatsAppCallPhone = computed(() => {
+    const conversation = selectedConversation.value;
+    if (!conversation) {
+        return null;
+    }
+
+    const candidates = [
+        linkedClient.value?.phone,
+        linkedClient.value?.custom_fields?.phone,
+        linkedClient.value?.custom_fields?.telefon,
+        conversation.participant_username,
+        conversation.channel === 'wappi' ? conversation.participant_id : null,
+        conversation.participant_id,
+    ];
+
+    for (const candidate of candidates) {
+        const digits = normalizeWhatsAppPhoneDigits(candidate);
+        if (digits) {
+            return digits;
+        }
+    }
+
+    return null;
+});
+
+function openWhatsAppCall() {
+    const digits = whatsAppCallPhone.value;
+    if (!digits) {
+        showChatToast(t('messenger.noPhoneForCall'), 'error', 2200);
+        return;
+    }
+
+    const httpsUrl = `https://wa.me/${digits}`;
+    const appUrl = `whatsapp://send?phone=${digits}`;
+    const capacitor = typeof window !== 'undefined' ? window.Capacitor : null;
+
+    if (capacitor?.isNativePlatform?.()) {
+        try {
+            window.location.href = appUrl;
+            return;
+        } catch {
+            // fall through
+        }
+
+        const Browser = capacitor.Plugins?.Browser;
+        if (Browser?.open) {
+            void Browser.open({ url: httpsUrl });
+            return;
+        }
+    }
+
+    window.open(httpsUrl, '_blank', 'noopener,noreferrer');
 }
 
 async function loadConversationDetail(id) {
@@ -1353,6 +1450,24 @@ function openConversation(id) {
     } else {
         localMessages.value = [];
         watchedConversationId = conversationId;
+
+        // Instant open from disk while network refreshes in background.
+        if (companyId.value) {
+            void loadCachedMessages(companyId.value, conversationId).then((disk) => {
+                if (
+                    !disk?.length
+                    || selectedConversation.value?.id !== conversationId
+                    || localMessages.value.length > 0
+                ) {
+                    return;
+                }
+
+                messageCache.set(conversationId, disk.map((message) => ({ ...message })));
+                localMessages.value = disk.map((message) => ({ ...message }));
+                shouldStickToBottom = true;
+                scrollToBottom(false);
+            });
+        }
     }
 
     loadConversationDetail(conversationId);
@@ -3296,6 +3411,19 @@ function scrollToBottom(smooth = false) {
                         >
                             {{ selectedConversation.channel_label }}
                         </span>
+
+                        <button
+                            v-if="whatsAppCallPhone"
+                            type="button"
+                            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white shadow-sm transition hover:bg-[#1ebe57] sm:h-auto sm:w-auto sm:gap-1 sm:px-3 sm:py-1.5"
+                            :title="t('messenger.callWhatsApp')"
+                            @click="openWhatsAppCall"
+                        >
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1C10.07 21 3 13.93 3 5a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.24 1.01l-2.2 2.2z" />
+                            </svg>
+                            <span class="hidden text-[11px] font-semibold sm:inline sm:text-xs">{{ t('messenger.callWhatsAppShort') }}</span>
+                        </button>
 
                         <button
                             v-if="shopConnected"
