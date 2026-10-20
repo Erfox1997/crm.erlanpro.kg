@@ -90,6 +90,28 @@ class MessengerUnreadService
         return $this->unreadCountForConversation($conversation->fresh());
     }
 
+    public function markAllReadForCompany(int $companyId, ?User $user = null): int
+    {
+        $idsQuery = DB::table('messenger_conversations as c')
+            ->where('c.company_id', $companyId)
+            ->select('c.id');
+
+        $this->applyVisibility($idsQuery, $companyId, $user, 'c');
+
+        $ids = $idsQuery->pluck('id');
+
+        if ($ids->isEmpty()) {
+            return 0;
+        }
+
+        return MessengerConversation::query()
+            ->whereIn('id', $ids)
+            ->update([
+                'last_read_at' => now(),
+                'is_marked_unread' => false,
+            ]);
+    }
+
     /**
      * @return list<string>
      */

@@ -588,6 +588,24 @@ class MessengerController extends Controller
             ->with('success', __('Чат отмечен как непрочитанный.'));
     }
 
+    public function markAllRead(Request $request): JsonResponse|RedirectResponse
+    {
+        $user = $request->user();
+        $companyId = (int) $user->company_id;
+
+        $this->unread->markAllReadForCompany($companyId, $user);
+
+        if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'unread_count' => 0,
+            ]);
+        }
+
+        return redirect()
+            ->route('messenger.index')
+            ->with('success', __('Все чаты отмечены как прочитанные.'));
+    }
+
     public function updateDealStage(Request $request, MessengerConversation $conversation): RedirectResponse
     {
         $companyId = (int) $request->user()->company_id;

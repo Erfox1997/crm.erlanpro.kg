@@ -119,6 +119,8 @@ const sendError = ref('');
 const messageMenuId = ref(null);
 const messageMenuPlacement = ref('below');
 const conversationMenuId = ref(null);
+const headerMenuOpen = ref(false);
+const markingAllRead = ref(false);
 const replyToMessage = ref(null);
 const emojiPickerOpen = ref(false);
 const chatToast = ref(null);
@@ -976,6 +978,7 @@ onMounted(() => {
     document.addEventListener('click', closeMessageMenu);
     document.addEventListener('click', closeEmojiPicker);
     document.addEventListener('click', closeConversationMenu);
+    document.addEventListener('click', closeHeaderMenu);
     startPolling();
 
     if (isMiniApp.value) {
@@ -1083,6 +1086,7 @@ onUnmounted(() => {
     document.removeEventListener('click', closeMessageMenu);
     document.removeEventListener('click', closeEmojiPicker);
     document.removeEventListener('click', closeConversationMenu);
+    document.removeEventListener('click', closeHeaderMenu);
     stopPolling();
     conversationLoadToken += 1;
     conversationAbort?.abort();
@@ -1346,6 +1350,15 @@ function closeConversationMenu() {
     conversationMenuId.value = null;
 }
 
+function closeHeaderMenu() {
+    headerMenuOpen.value = false;
+}
+
+function toggleHeaderMenu(event) {
+    event?.stopPropagation?.();
+    headerMenuOpen.value = !headerMenuOpen.value;
+}
+
 function openConversationMenu(conversationId, event) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
@@ -1416,6 +1429,40 @@ async function markConversationAsUnread(conversation) {
             'error',
             2200,
         );
+    }
+}
+
+async function markAllConversationsAsRead() {
+    if (markingAllRead.value) {
+        return;
+    }
+
+    closeHeaderMenu();
+    markingAllRead.value = true;
+
+    try {
+        await window.axios.post(
+            route('messenger.mark-all-read'),
+            {},
+            { headers: jsonRequestHeaders },
+        );
+
+        localConversations.value = localConversations.value.map((item) => (
+            item.unread_count
+                ? { ...item, unread_count: 0 }
+                : item
+        ));
+
+        showChatToast(t('messenger.markedAllReadToast'), 'success', 1600);
+        syncAppBadge(0);
+    } catch (error) {
+        showChatToast(
+            error?.response?.data?.message || t('messenger.err.message'),
+            'error',
+            2200,
+        );
+    } finally {
+        markingAllRead.value = false;
     }
 }
 
@@ -1690,6 +1737,7 @@ function clearFunnelFilter() {
 }
 
 function syncConversations() {
+    closeHeaderMenu();
     syncing.value = true;
     router.post(route('messenger.sync'), {}, {
         preserveScroll: true,
@@ -2830,7 +2878,7 @@ function scrollToBottom(smooth = false) {
                     <h2 class="text-lg font-semibold text-[#111b21]">
                         {{ t('messenger.chats') }}
                     </h2>
-                    <div class="flex items-center gap-1">
+                    <div class="relative flex items-center gap-1">
                         <button
                             v-if="filterPipelines.length"
                             type="button"
@@ -2838,7 +2886,7 @@ function scrollToBottom(smooth = false) {
                             :class="funnelFilterActive
                                 ? 'bg-[#d9fdd3] text-[#008069]'
                                 : 'text-[#54656f]'"
-:title="t('messenger.filterTitleAttr')"
+                            :title="t('messenger.filterTitleAttr')"
                             @click="openFilterModal"
                         >
                             <svg
@@ -2855,49 +2903,54 @@ function scrollToBottom(smooth = false) {
                                 />
                             </svg>
                         </button>
-                        <Link
-                            v-if="messengerConnected"
-                            :href="route('messenger.quick-replies.index', isMiniApp ? { mini: 1 } : {})"
-                            class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
-:title="t('messenger.quickRepliesTitle')"
-                        >
-                            <svg
-                                class="h-5 w-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                stroke-width="1.8"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm3.75 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM8.625 12h7.5M8.625 15h4.125M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                            </svg>
-                        </Link>
                         <button
                             v-if="messengerConnected"
                             type="button"
                             class="rounded-full p-2 text-[#54656f] transition hover:bg-[#e9edef]"
-                            :disabled="syncing"
-:title="t('messenger.refreshTitle')"
-                            @click="syncConversations"
+                            :class="{ 'bg-[#e9edef]': headerMenuOpen }"
+                            :title="t('messenger.headerMenu')"
+                            @click="toggleHeaderMenu"
                         >
-                        <svg
-                            class="h-5 w-5"
-                            :class="{ 'animate-spin': syncing }"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            stroke-width="1.8"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-                            />
-                        </svg>
+                            <svg
+                                class="h-5 w-5"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                            >
+                                <circle cx="12" cy="5" r="1.75" />
+                                <circle cx="12" cy="12" r="1.75" />
+                                <circle cx="12" cy="19" r="1.75" />
+                            </svg>
                         </button>
+                        <div
+                            v-if="headerMenuOpen && messengerConnected"
+                            class="absolute right-0 top-11 z-40 min-w-[14rem] overflow-hidden rounded-lg bg-white py-1 text-sm text-[#111b21] shadow-lg ring-1 ring-black/10"
+                            @click.stop
+                        >
+                            <button
+                                type="button"
+                                class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[#f0f2f5] disabled:opacity-50"
+                                :disabled="markingAllRead || localUnreadTotal === 0"
+                                @click="markAllConversationsAsRead"
+                            >
+                                <span>{{ t('messenger.markAllRead') }}</span>
+                            </button>
+                            <Link
+                                :href="route('messenger.quick-replies.index', isMiniApp ? { mini: 1 } : {})"
+                                class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[#f0f2f5]"
+                                @click="closeHeaderMenu"
+                            >
+                                <span>{{ t('messenger.quickRepliesTitle') }}</span>
+                            </Link>
+                            <button
+                                type="button"
+                                class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[#f0f2f5] disabled:opacity-50"
+                                :disabled="syncing"
+                                @click="syncConversations"
+                            >
+                                <span>{{ syncing ? t('messenger.refreshTitle') + '…' : t('messenger.refreshTitle') }}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -3003,21 +3056,27 @@ function scrollToBottom(smooth = false) {
                                         :title="conversation.channel_label"
                                     />
                                     <p
-                                        v-if="conversation.pipeline_name"
-                                        class="flex min-w-0 items-center gap-1 truncate text-sm leading-tight font-medium"
-                                        :style="pipelineNameStyle(conversation.pipeline_color) || (conversation.unread_count > 0 ? undefined : { color: '#667781' })"
+                                        v-if="conversation.pipeline_name || conversation.stage_name"
+                                        class="flex min-w-0 items-center gap-1.5"
                                     >
                                         <span
-                                            v-if="conversation.pipeline_icon"
-                                            class="shrink-0 text-[13px] leading-none"
-                                        >{{ conversation.pipeline_icon }}</span>
-                                        <span class="truncate">
-                                            {{ conversation.pipeline_name }}
+                                            v-if="conversation.pipeline_name"
+                                            class="inline-flex min-w-0 max-w-[75%] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[11px] font-semibold leading-none"
+                                            :style="stageBadgeStyle(conversation.pipeline_color)"
+                                            :title="conversation.pipeline_name"
+                                        >
+                                            <span
+                                                v-if="conversation.pipeline_icon"
+                                                class="shrink-0 text-[12px] leading-none"
+                                            >{{ conversation.pipeline_icon }}</span>
+                                            <span class="truncate">
+                                                {{ conversation.pipeline_name }}
+                                            </span>
                                         </span>
                                         <span
                                             v-if="conversation.stage_name"
-                                            class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none"
-                                            :style="stageBadgeStyle(conversation.stage_color)"
+                                            class="min-w-0 truncate text-[12px] leading-tight text-[#667781]"
+                                            :title="conversation.stage_name"
                                         >
                                             {{ conversation.stage_name }}
                                         </span>

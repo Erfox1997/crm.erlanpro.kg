@@ -184,6 +184,7 @@ Route::middleware(['auth', 'verified', 'company', 'tenant', 'page.access'])->gro
     Route::post('/messenger/conversations/{conversation}/messages', [MessengerController::class, 'send'])->name('messenger.send');
     Route::post('/messenger/conversations/{conversation}/client', [MessengerController::class, 'saveClient'])->name('messenger.save-client');
     Route::post('/messenger/conversations/{conversation}/mark-unread', [MessengerController::class, 'markUnread'])->name('messenger.mark-unread');
+    Route::post('/messenger/mark-all-read', [MessengerController::class, 'markAllRead'])->name('messenger.mark-all-read');
     Route::patch('/messenger/conversations/{conversation}/deal-stage', [MessengerController::class, 'updateDealStage'])->name('messenger.update-deal-stage');
     Route::patch('/messenger/conversations/{conversation}/deal-pipeline', [MessengerController::class, 'updateDealPipeline'])->name('messenger.update-deal-pipeline');
     Route::post('/messenger/conversations/{conversation}/quick-replies/{quickReply}', [MessengerController::class, 'sendQuickReply'])->name('messenger.send-quick-reply');
